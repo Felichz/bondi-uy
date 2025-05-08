@@ -25,10 +25,14 @@ plugins {
 include(":app")
 
 dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    // repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS) // Comentado temporalmente para diagnóstico
     repositories {
         google()
         mavenCentral()
+        // Repositorio para artefactos de Flutter
+        maven {
+            url = uri("https://storage.googleapis.com/download.flutter.io")
+        }
         // Mapbox Maven repository
         maven {
             url = uri("https://api.mapbox.com/downloads/v2/releases/maven")

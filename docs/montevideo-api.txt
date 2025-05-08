@@ -1,0 +1,328 @@
+```
+buses : Operaciones sobre omnibus, lineas de omnibus y paradasShow/HideList OperationsExpand Operations
+get /buses/linevariants
+Variantes de linea.
+
+Implementation Notes
+Permite obtener el conjunto de las variantes de linea.
+
+Response Class (Status 200)
+coleccion de variantes de linea
+
+ModelExample Value
+[
+  {
+    "lineVariantId": 1234,
+    "line": "123SD",
+    "lineId": "324",
+    "origin": "CIUDAD VIEJA",
+    "destination": "MALVIN",
+    "subline": "CIUDAD VIEJA - MALVIN",
+    "special": true
+  }
+]
+
+
+Response Content Type 
+application/json
+Response Messages
+HTTP Status Code	Reason	Response Model	Headers
+400	
+bad input parameter
+
+get /buses/linevariants/{lineVariantId}
+Variante de linea
+
+Implementation Notes
+Permite obtener el detalle de una variante de linea.
+
+Response Class (Status 200)
+Coleccion de variantes de linea
+
+ModelExample Value
+[
+  {
+    "lineVariantId": 1234,
+    "line": "123SD",
+    "lineId": "324",
+    "origin": "CIUDAD VIEJA",
+    "destination": "MALVIN",
+    "subline": "CIUDAD VIEJA - MALVIN",
+    "special": true
+  }
+]
+
+
+Response Content Type 
+application/json
+Parameters
+Parameter	Value	Description	Parameter Type	Data Type
+lineVariantId	
+(required)
+Identificador de variante de linea
+
+path	string
+Response Messages
+HTTP Status Code	Reason	Response Model	Headers
+400	
+bad input parameter
+
+get /buses/busstops/{busstopId}/upcomingbuses
+Buses proximos a llegar a una parada. Es obligatorio pasar que lineas se quieren ver.
+
+Response Class (Status 200)
+Coleccion de proximos buses
+
+ModelExample Value
+[
+  {
+    "lineVariantId": 1234,
+    "line": "123SD",
+    "lineId": "324",
+    "origin": "CIUDAD VIEJA",
+    "destination": "MALVIN",
+    "subline": "CIUDAD VIEJA - MALVIN",
+    "special": true
+  }
+]
+
+
+Response Content Type 
+application/json
+Parameters
+Parameter	Value	Description	Parameter Type	Data Type
+busstopId	
+(required)
+Identificador de parada
+
+path	integer
+lineVariantIds	
+Provide multiple values in new lines.
+Lista de variantes de linea.
+
+query	Array[double]
+lines	
+Provide multiple values in new lines (at least one required).
+Lineas de bus. Si se informa filtra las lineas de bus que se quieran desplegar. Si se elige mas de un valor se seperan por comas.
+
+query	Array[string]
+amountperline	
+Cantidad de resultados por linea, si no se informa por defecto es 1
+
+query	integer
+format	
+Formato de la respuesta. 'geojson' formatea la salida en GeoJSON. Si no se informa retorna por defecto la salida en JSON
+
+query	string
+Response Messages
+HTTP Status Code	Reason	Response Model	Headers
+400	
+bad input parameter
+
+get /buses/busstops
+Obtiene la lista de paradas
+
+Response Class (Status 200)
+Coleccion de paradas
+
+ModelExample Value
+[
+  {
+    "busstopId": 546,
+    "street1": "CORUÑA",
+    "street2": "PURIFICACION",
+    "street1Id": 2187,
+    "street2Id": 5733,
+    "location": {
+      "type": "Point",
+      "coordinates": [
+        -56.196167,
+        -34.903778
+      ]
+    }
+  }
+]
+
+
+Response Content Type 
+application/json
+Response Messages
+HTTP Status Code	Reason	Response Model	Headers
+400	
+bad input parameter
+
+get /buses/busstops/{busstopId}/lines
+Lineas por parada
+
+Response Class (Status 200)
+Coleccion de lineas por parada
+
+ModelExample Value
+[
+  {
+    "line": "123SD",
+    "lineId": "324"
+  }
+]
+
+
+Response Content Type 
+application/json
+Parameters
+Parameter	Value	Description	Parameter Type	Data Type
+busstopId	
+(required)
+Retorna las lineas de una parada
+
+path	integer
+Response Messages
+HTTP Status Code	Reason	Response Model	Headers
+400	
+bad input parameter
+
+get /buses
+obtiene los buses del sistema
+
+Response Class (Status 200)
+Coleccion de buses del sistema que complen con los filtros
+
+ModelExample Value
+[
+  {
+    "id": "mvd:vehicle:bus:148",
+    "vehicleType": "bus",
+    "timestamp": "2019-09-13T17:05:03.00Z",
+    "location": {
+      "type": "Point",
+      "coordinates": [
+        -56.196167,
+        -34.903778
+      ]
+    },
+    "companyName": "CUTCSA",
+    "line": "116",
+    "lineVariantId": "234",
+    "origin": "POCITOS",
+    "destination": "CIUDAD VIEJA",
+    "subline": "CIUDAD VIEJA - POCITOS",
+    "special": false,
+    "vehicleIdentificationNumber": "148"
+  }
+]
+
+
+Response Content Type 
+application/json
+Parameters
+Parameter	Value	Description	Parameter Type	Data Type
+company	
+Empresa de bus.
+
+query	string
+lineVariantIds	
+Provide multiple values in new lines.
+Lista de variantes de linea.
+
+query	Array[integer]
+busId	
+Identifiador de bus.
+
+query	integer
+busstopId	
+Identificador de parada. Si se informa filtra los buses que solo pasan por esa parada.
+
+query	integer
+lines	
+Provide multiple values in new lines.
+Lineas de bus. Si se informa filtra las lineas de bus que se quieran desplegar. Si se elige mas de un valor se seperan por comas.
+
+query	Array[string]
+format	
+Opciones de formato de la respuesta. Se pueden establecer varias opciones separando por comas. 'geojson' formatea la salida en GeoJSON, 'json' formatea la salida en JSON. Si no se informa retorna por defecto la salida en JSON
+
+query	string
+Response Messages
+HTTP Status Code	Reason	Response Model	Headers
+400	
+bad input parameter
+
+get /buses/geo
+obtiene los buses del sistema en base a una consulta geografica
+
+Warning: Deprecated
+Response Class (Status 200)
+Coleccion de vehiculos del sistema que complen con los filtros
+
+ModelExample Value
+[
+  {
+    "id": "mvd:vehicle:bus:148",
+    "vehicleType": "bus",
+    "timestamp": "2019-09-13T17:05:03.00Z",
+    "location": {
+      "type": "Point",
+      "coordinates": [
+        -56.196167,
+        -34.903778
+      ]
+    },
+    "companyName": "CUTCSA",
+    "line": "116",
+    "lineVariantId": "234",
+    "origin": "POCITOS",
+    "destination": "CIUDAD VIEJA",
+    "subline": "CIUDAD VIEJA - POCITOS",
+    "special": false,
+    "vehicleIdentificationNumber": "148"
+  }
+]
+
+
+Response Content Type 
+application/json
+Parameters
+Parameter	Value	Description	Parameter Type	Data Type
+center	
+(required)
+Array de coordenadas separadas por comas. Se usa cuando se hacen busquedas geograficas para establecer las coordenadas del centro
+
+query	string
+radius	
+(required)
+radio del area que delimita la busqueda geografica. Se expresa en metros
+
+query	float
+Response Messages
+HTTP Status Code	Reason	Response Model	Headers
+400	
+bad input parameter
+
+gtfs : Información en formato GTFS de Google (BETA)Show/HideList OperationsExpand Operations
+get /buses/gtfs/static/latest/version.txt
+Obtiene un numero de version de la ultima generacion del archivo GTFS
+
+Response Messages
+HTTP Status Code	Reason	Response Model	Headers
+200	
+Operacion exitosa
+
+400	
+bad input parameter
+
+get /buses/gtfs/static/latest/google_transit.zip
+Obtiene la información estática del sistema en formato GTFS
+
+Response Messages
+HTTP Status Code	Reason	Response Model	Headers
+200	
+Operacion exitosa
+
+400	
+bad input parameter
+
+[ base url: /api/transportepublico , api version: 1.0.0 ]
+```
+
+un ejemplo de url es `https://api.montevideo.gub.uy/api/transportepublico/buses?lines=522`
+
+se usa oauth 2, el access token url es `https://mvdapi-auth.montevideo.gub.uy/auth/realms/pci/protocol/openid-connect/token`, se usan client credentials, el client id es `93d925e7`, y el client secret es `2ac468b09443250d178653e7707ea9ad`
