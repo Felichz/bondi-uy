@@ -1,0 +1,518 @@
+GraphQL tutorial
+This document will give you a quick start tutorial on how to get started with OTP's GraphQL APIs. For this tutorial we will be using the GTFS GraphQL API as this is the most commonly used one.
+
+First of all, make sure that you've loaded street and transit data into your instance by following the basic tutorial
+
+Visual GraphQL API client
+OTP has a built-in API client to help you build queries and view documentation. After having started OTP, visit http://localhost:8080/graphiql to open it.
+
+It should look like this:
+
+GraphiQL
+
+Sending your first query
+For our first query we want to get the list of routes loaded into OTP. Therefore paste the following GraphQL query in the left hand panel of the page:
+
+
+{
+    routes {
+        longName
+        shortName
+        gtfsId
+        agency {
+            gtfsId
+            name
+        }
+        mode
+    }
+}
+After pressing the "Execute query" button you should see the result of the query on the right hand side panel.
+
+Now would be a good time to explore the auto-complete capabilities of the tool by moving the cursor into the query panel and hitting Ctrl-Space to see what other query parameters are possible.
+
+GraphiQL
+
+The explorer also has documentation built into it. If you hover your pointer over a property on the left hand side you can see its documentation.
+
+GraphiQL
+
+A more advanced query
+Most people want to get routing results out of OTP, so lets see the query for this:
+
+
+{
+    plan(
+        # these coordinate are in Portland, change this to YOUR origin
+        from: { lat: 45.5552, lon: -122.6534 }
+        # these coordinate are in Portland, change this to YOUR destination
+        to: { lat: 45.4908, lon: -122.5519 }
+        # use the correct date and time of your request
+        date: "2023-02-15",
+        time: "11:37",
+        # choose the transport modes you need
+        transportModes: [
+            {
+                mode: WALK
+            },
+            {
+                mode: TRANSIT
+            },
+        ]) {
+        itineraries {
+            startTime
+            endTime
+            legs {
+                mode
+                startTime
+                endTime
+                from {
+                    name
+                    lat
+                    lon
+                    departureTime
+                    arrivalTime
+                }
+                to {
+                    name
+                    lat
+                    lon
+                    departureTime
+                    arrivalTime
+                }
+                route {
+                    gtfsId
+                    longName
+                    shortName
+                }
+                legGeometry {
+                    points
+                }
+            }
+        }
+    }
+}
+Again, please use the autocomplete and documentation viewers to figure out what each input parameter and property means.
+
+More examples for a variety of queries can also be found in the test code.
+
+## GraphQL Query Examples
+
+This section documents various example GraphQL queries.
+
+### patterns.graphql
+
+This query retrieves information about route patterns. For each pattern, it requests the `code`, `headsign`, and details of its `trips`. Within `trips`, the `gtfsId` is obtained, and for each `stoptimes`, information about the `stop`, `headsign`, `scheduledArrival`, `scheduledDeparture`, `stopPosition`, `realtimeState`, `pickupType`, and `dropoffType` is requested.
+
+```graphql
+{
+  patterns {
+    code
+    headsign
+    trips {
+      gtfsId
+      stoptimes {
+        stop {
+          gtfsId
+          name
+        }
+        headsign
+        scheduledArrival
+        scheduledDeparture
+        stopPosition
+        realtimeState
+        pickupType
+        dropoffType
+      }
+    }
+  }
+}
+```
+
+### plan-extended.graphql
+
+This query plans a trip (`plan`) with extended parameters. It requests a plan from an origin (`from`) to a destination (`to`) on a specific `date` and `time`. It includes configurations for `parking` such as `unpreferredCost`, `preferred`, and `filters`. It specifies `transportModes`, in this case, `CAR` with the qualifier `HAIL`. For each `itineraries`, `startTime`, `endTime`, `generalizedCost`, and `accessibilityScore` are retrieved. Within each `legs` of the itinerary, detailed information like `mode`, `from` and `to` (leg origin and destination), `startTime`, `endTime`, `generalizedCost`, `headsign`, `trip` details, `alerts`, `rideHailingEstimate`, and `accessibilityScore` are obtained.
+
+```graphql
+{
+  plan(
+    from: { lat: 52.3092, lon: 13.0291 }
+    to: { lat: 52.5147, lon: 13.3927 }
+    date: "2023-02-15"
+    time: "11:37"
+    parking: {
+      unpreferredCost: 555
+      preferred: [{ not: [{ tags: ["a", "b", "c"] }] }]
+      filters: [{ select: [{ tags: ["e"] }] }]
+    }
+    transportModes: [{ mode: CAR, qualifier: HAIL }]
+  ) {
+    itineraries {
+      startTime
+      endTime
+      generalizedCost
+      accessibilityScore
+      legs {
+        mode
+        from {
+          name
+          lat
+          lon
+          departureTime
+          arrivalTime
+        }
+        to {
+          name
+          lat
+          lon
+          departureTime
+          arrivalTime
+        }
+        startTime
+        endTime
+        mode
+        generalizedCost
+        headsign
+        trip {
+          tripHeadsign
+        }
+        alerts {
+          id
+          alertHeaderText
+          alertDescriptionText
+          alertEffect
+          alertCause
+          alertSeverityLevel
+          alertUrl
+          effectiveStartDate
+          effectiveEndDate
+          entities {
+            ... on Stop {
+              name
+              gtfsId
+              lat
+              lon
+            }
+          }
+        }
+        rideHailingEstimate {
+          provider {
+            id
+          }
+          productName
+          minPrice {
+            currency {
+              code
+              digits
+            }
+            amount
+          }
+          maxPrice {
+            currency {
+              code
+              digits
+            }
+            amount
+          }
+          arrival
+        }
+        accessibilityScore
+      }
+    }
+  }
+}
+```
+
+### plan-fares.graphql
+
+This query plans a trip (`plan`) and focuses on retrieving fare information. It specifies an origin (`from`), destination (`to`), `date`, `time`, and `transportModes` (in this case, `TRANSIT`). For each `itineraries`, it retrieves `legs` details including `mode`, `from`, `to`, `startTime`, `endTime`, `generalizedCost`, and `fareProducts`. Within `fareProducts`, information about the fare product such as `id`, `name`, `price` (with `currency` and `amount`), `riderCategory`, and `medium` is obtained. Additionally, for each itinerary, detailed `fares` information is requested, including `type`, `cents`, `currency`, and `components` with their associated `routes`.
+
+```graphql
+{
+  plan(
+    from: { lat: 52.3092, lon: 13.0291 }
+    to: { lat: 52.5147, lon: 13.3927 }
+    date: "2023-02-15"
+    time: "11:37"
+    transportModes: [{ mode: TRANSIT }]
+  ) {
+    itineraries {
+      legs {
+        mode
+        from {
+          name
+          lat
+          lon
+          departureTime
+          arrivalTime
+        }
+        to {
+          name
+          lat
+          lon
+          departureTime
+          arrivalTime
+        }
+        startTime
+        endTime
+        mode
+        generalizedCost
+        fareProducts {
+          id
+          product {
+            id
+            name
+            __typename
+            ... on DefaultFareProduct {
+              price {
+                currency {
+                  digits
+                  code
+                }
+                amount
+              }
+            }
+            riderCategory {
+              id
+              name
+            }
+            medium {
+              id
+              name
+            }
+          }
+        }
+      }
+      fares {
+        type
+        cents
+        currency
+        components {
+          currency
+          cents
+          fareId
+          routes {
+            gtfsId
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+### plan-stop-positions.graphql
+
+This query appears to be identical to `plan-fares.graphql`. It plans a trip (`plan`) and focuses on retrieving fare information. It specifies an origin (`from`), destination (`to`), `date`, `time`, and `transportModes` (in this case, `TRANSIT`). For each `itineraries`, it retrieves `legs` details including `mode`, `from`, `to`, `startTime`, `endTime`, `generalizedCost`, and `fareProducts`. Within `fareProducts`, information about the fare product such as `id`, `name`, `price` (with `currency` and `amount`), `riderCategory`, and `medium` is obtained. Additionally, for each itinerary, detailed `fares` information is requested, including `type`, `cents`, `currency`, and `components` with their associated `routes`.
+
+```graphql
+{
+  plan(
+    from: { lat: 52.3092, lon: 13.0291 }
+    to: { lat: 52.5147, lon: 13.3927 }
+    date: "2023-02-15"
+    time: "11:37"
+    transportModes: [{ mode: TRANSIT }]
+  ) {
+    itineraries {
+      legs {
+        mode
+        from {
+          name
+          lat
+          lon
+          departureTime
+          arrivalTime
+        }
+        to {
+          name
+          lat
+          lon
+          departureTime
+          arrivalTime
+        }
+        startTime
+        endTime
+        mode
+        generalizedCost
+        fareProducts {
+          id
+          product {
+            id
+            name
+            __typename
+            ... on DefaultFareProduct {
+              price {
+                currency {
+                  digits
+                  code
+                }
+                amount
+              }
+            }
+            riderCategory {
+              id
+              name
+            }
+            medium {
+              id
+              name
+            }
+          }
+        }
+      }
+      fares {
+        type
+        cents
+        currency
+        components {
+          currency
+          cents
+          fareId
+          routes {
+            gtfsId
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+### plan.graphql
+
+This query is very similar, if not identical, to `plan-fares.graphql` and `plan-stop-positions.graphql`. It plans a trip (`plan`) and focuses on retrieving fare information. It specifies an origin (`from`), destination (`to`), `date`, `time`, and `transportModes` (in this case, `TRANSIT`). For each `itineraries`, it retrieves `legs` details including `mode`, `from`, `to`, `startTime`, `endTime`, `generalizedCost`, and `fareProducts`. Within `fareProducts`, information about the fare product such as `id`, `name`, `price` (with `currency` and `amount`), `riderCategory`, and `medium` is obtained. Additionally, for each itinerary, detailed `fares` information is requested, including `type`, `cents`, `currency`, and `components` with their associated `routes`.
+
+```graphql
+{
+  plan(
+    from: { lat: 52.3092, lon: 13.0291 }
+    to: { lat: 52.5147, lon: 13.3927 }
+    date: "2023-02-15"
+    time: "11:37"
+    transportModes: [{ mode: TRANSIT }]
+  ) {
+    itineraries {
+      legs {
+        mode
+        from {
+          name
+          lat
+          lon
+          departureTime
+          arrivalTime
+        }
+        to {
+          name
+          lat
+          lon
+          departureTime
+          arrivalTime
+        }
+        startTime
+        endTime
+        mode
+        generalizedCost
+        fareProducts {
+          id
+          product {
+            id
+            name
+            __typename
+            ... on DefaultFareProduct {
+              price {
+                currency {
+                  digits
+                  code
+                }
+                amount
+              }
+            }
+            riderCategory {
+              id
+              name
+            }
+            medium {
+              id
+              name
+            }
+          }
+        }
+      }
+      fares {
+        type
+        cents
+        currency
+        components {
+          currency
+          cents
+          fareId
+          routes {
+            gtfsId
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+### routes.graphql
+
+This query retrieves a list of routes (`routes`). For each route, it requests `longName`, `shortName`, `gtfsId`, information about its `agency` (including the agency's `gtfsId` and `name`), and the route's `mode` of transport.
+
+```graphql
+{
+  routes {
+    longName
+    shortName
+    gtfsId
+    agency {
+      gtfsId
+      name
+    }
+    mode
+  }
+}
+```
+
+### stops.graphql
+
+This query retrieves a list of stops (`stops`). For each stop, it requests `gtfsId`, `lat` (latitude), `lon` (longitude), `name`, and `vehicleMode`.
+
+```graphql
+{
+  stops {
+    gtfsId
+    lat
+    lon
+    name
+    vehicleMode
+  }
+}
+```
+
+### vehicle-parking.graphql
+
+This query retrieves information about vehicle parkings (`vehicleParkings`). For each parking, it requests its `name` and `vehicleParkingId`.
+
+```graphql
+{
+  vehicleParkings {
+    name
+    vehicleParkingId
+  }
+}
+```
+
+### walk-steps.graphql
+
+This query appears to be identical to `vehicle-parking.graphql`. It retrieves information about vehicle parkings (`vehicleParkings`). For each parking, it requests its `name` and `vehicleParkingId`.
+
+```graphql
+{
+  vehicleParkings {
+    name
+    vehicleParkingId
+  }
+}
+``` 

@@ -1,51 +1,68 @@
 Contexto General:
 Estoy desarrollando una aplicación móvil en Flutter llamada "BondiUY". El objetivo es crear una versión simple y estética de Moovit para Montevideo, Uruguay. La funcionalidad principal del MVP incluye mostrar un mapa interactivo (Mapbox) con las paradas de ómnibus, permitir la interacción con ellas para ver qué líneas paran allí, y planificar un viaje simple (origen a destino) combinando caminatas y un tramo de ómnibus.
+
 Objetivo Actual del Agente:
-Continuar con el desarrollo de las funcionalidades restantes del MVP, enfocándose ahora en la integración con OpenTripPlanner.
+Continuar con el refinamiento de la interfaz de usuario y la experiencia general de la aplicación, e identificar próximas funcionalidades a desarrollar.
+
 Estado Actual del Proyecto:
-Mapa, Paradas y Geocoding:
-*   Se muestra un mapa de Montevideo usando mapbox_maps_flutter.
-*   Las paradas de ómnibus se cargan desde assets/stops.geojson y se visualizan como círculos rojos.
-*   Al tocar una parada, se llama a la API de transporte de Montevideo para mostrar las líneas que pasan por ella en un BottomSheet.
+Mapa y Geocoding:
+*   Se muestra un mapa de Montevideo usando `mapbox_maps_flutter`.
 *   Los campos de Origen y Destino usan autocompletado con la API de Geocoding de Mapbox.
-Planificación de Ruta (Intento con OTP REST API):
-*   Se decidió usar OpenTripPlanner (OTP) auto-hospedado para la planificación de rutas, utilizando los datos GTFS oficiales de Montevideo y datos de OpenStreetMap (uruguay-latest.osm.pbf).
-*   Se ha iniciado exitosamente un servidor OTP v2.7.0 localmente en el puerto 8080 con los datos mencionados (`java -Xmx2G -jar otp-shaded-2.7.0.jar --build --serve .`).
-*   Se intentó integrar la aplicación Flutter con la API REST del servidor OTP local (endpoint `/otp/routers/default/plan`).
-*   **Bloqueo Actual:** Se obtiene un error persistente `HTTP 404 Not Found` al intentar acceder a la API REST del router `default` (`http://localhost:8080/otp/routers/default/` y sus sub-rutas), a pesar de que el servidor parece construir el grafo e iniciarse correctamente. Se intentó usar archivos `build-config.json` y `router-config.json` explícitos sin éxito para resolver el 404.
+*   Al tocar una parada general (con zoom suficiente), se llama a la API de transporte de Montevideo para mostrar las líneas que pasan por ella en un BottomSheet.
+*   La barra de escala del mapa de Mapbox ha sido ocultada.
+
+Panel de Búsqueda Superior:
+*   Inicia expandido, permitiendo al usuario ingresar Origen y Destino.
+*   Una vez que se calcula una ruta exitosamente, este panel se colapsa automáticamente a una vista compacta.
+*   La vista compacta muestra un resumen del origen y destino, y un botón "Modificar" que permite al usuario re-expandir el panel para cambiar la búsqueda.
+
+Planificación de Ruta (Integración con OTP GraphQL):
+*   Se utiliza OpenTripPlanner (OTP) v2.7.0 auto-hospedado localmente (puerto 8080) con datos GTFS de Montevideo y OSM.
+*   Se integró exitosamente la aplicación Flutter con la API GraphQL del servidor OTP local usando la query `plan`.
+*   Se utiliza el paquete `graphql_flutter` para las llamadas a la API.
+
+Visualización de Ruta y Experiencia de Usuario (UX):
+*   Los segmentos de la ruta (caminata y bus) se dibujan como `LineLayer` con estilos diferenciados (grosor, color) y un efecto de sombra.
+*   Paradas Generales: Se cargan desde `assets/stops.geojson`. Se visualizan como `SymbolLayer` usando un ícono personalizado (`bus-icon` cargado desde `assets/icons/bus_icon.png`) y solo son visibles a nivel de zoom >= 14.0.
+*   Paradas de Ruta: Las paradas de inicio y fin de los tramos de autobús del itinerario calculado se muestran como `SymbolLayer` separada, usando el mismo ícono `bus-icon` (ligeramente más grande).
+*   "Wizard" de Ruta en Dos Pasos:
+    1.  **Vista General**: Tras calcular la ruta, el mapa hace zoom para mostrar todo el recorrido con un estilo uniforme. Se muestra un mensaje "Este será tu recorrido completo" (integrado en la UI, no como SnackBar) y un botón "Iniciar Viaje".
+    2.  **Navegación Detallada**: Al pulsar "Iniciar Viaje", el mapa se enfoca en el primer tramo, se aplica resaltado al tramo seleccionado (más opaco y grueso, los demás más tenues), y aparece la barra de previsualización de instrucciones inferior.
+*   Barra de Previsualización de Instrucciones Inferior (Tras "Iniciar Viaje"):
+    *   Muestra dinámicamente los detalles del tramo actualmente seleccionado (ícono de modo, descripción, distancia/duración).
+    *   Incluye botones de navegación (flecha izquierda/derecha) para moverse rápidamente entre los tramos. Estos botones actualizan el mapa (zoom y resaltado) y la información en la barra.
+    *   Tocar la sección central de esta barra expande un `BottomSheet` con la lista completa de instrucciones del viaje.
+*   BottomSheet de Instrucciones (Expandible):
+    *   Muestra la lista detallada de todos los tramos del viaje (origen, caminatas, buses, destino).
+    *   Permite al usuario tocar un tramo para seleccionarlo, lo que actualiza el resaltado y el zoom en el mapa, y la información en la barra de previsualización inferior.
+*   Indicadores de Carga: Se muestran indicadores visuales en el botón de búsqueda y sobre el mapa mientras se calcula la ruta.
+
+Bloqueo Actual / Problema Reciente:
+*   **Solucionado**: Los íconos personalizados (`bus-icon`) de todas las paradas (generales y de ruta) ahora se muestran correctamente.
+
 Archivos Principales y Dependencias:
-*   `lib/main.dart`: Contiene la UI principal, lógica de mapa, geocoding y la llamada (actualmente fallida) a la API REST de OTP.
-*   `pubspec.yaml`: Incluye `mapbox_maps_flutter`, `http`, `flutter_polyline_points`.
-*   `assets/`: Contiene `stops.geojson`, `gtfs.zip`, `uruguay-latest.osm.pbf`.
-*   `/Users/felixandersson/otp/`: Directorio donde corre el servidor OTP y contiene `gtfs.zip`, `uruguay-latest.osm.pbf`, `otp-shaded-2.7.0.jar`, y los archivos de configuración `build-config.json` y `router-config.json` creados para depuración.
+*   `lib/main.dart`: Contiene la UI principal, lógica de mapa, geocoding, cliente GraphQL, query, dibujado de ruta/paradas, BottomSheet de instrucciones, indicadores de carga, y la nueva lógica de UI/UX.
+*   `pubspec.yaml`: Incluye `mapbox_maps_flutter`, `http`, `flutter_polyline_points`, `graphql_flutter`. Se declaró la carpeta `assets/icons/`.
+*   `assets/`: Contiene `stops.geojson`.
+*   `assets/icons/`: Contiene `bus_icon.png`.
+*   Servidor OTP: Auto-hospedado localmente.
 
-Próximos Pasos Planificados (Nueva Estrategia):
-
-1.  **Integración con OpenTripPlanner usando GraphQL:**
-    a.  **Investigar API GraphQL de OTP:** Analizar la documentación de OTP 2.x para entender cómo funciona su API GraphQL para la planificación de viajes multimodales (Walk-Transit-Walk).
-        *   Identificar el endpoint GraphQL (probablemente `http://localhost:8080/otp/graphql` según los logs).
-        *   Determinar la estructura de la consulta (query) necesaria para solicitar un itinerario entre dos coordenadas (lat/lon), especificando modos (WALK, TRANSIT), fecha y hora.
-        *   Entender la estructura de la respuesta GraphQL, incluyendo cómo obtener los diferentes tramos (legs) del viaje, sus modos, geometrías (probablemente polylines codificadas) y posibles instrucciones.
-    b.  **Implementar Cliente GraphQL en Flutter:**
-        *   Añadir una dependencia de cliente GraphQL para Flutter (ej. `graphql_flutter`).
-        *   Configurar el cliente para apuntar al endpoint GraphQL del servidor OTP local (`http://10.0.2.2:8080/otp/graphql` desde el emulador Android).
-        *   Modificar la función `_handleSearchRouteWithOtp` (o crear una nueva `_handleSearchRouteWithGraphQl`) para construir y ejecutar la consulta GraphQL cuando se presione "Buscar Ruta".
-    c.  **Procesar Respuesta y Dibujar Ruta:**
-        *   Adaptar la lógica existente para parsear la respuesta GraphQL (en lugar de la REST).
-        *   Extraer los tramos (legs) y sus geometrías (polylines).
-        *   Usar `flutter_polyline_points` para decodificar las polylines.
-        *   Usar la función `_drawRouteSegment` (o una adaptada) para dibujar cada tramo en el mapa Mapbox con colores apropiados según el modo (WALK, BUS).
-    d.  **Ajustar Vista y Mostrar Instrucciones (Pasos Futuros):**
-        *   Implementar el ajuste automático del zoom del mapa para mostrar la ruta completa.
-        *   Mostrar las instrucciones del viaje obtenidas de la respuesta GraphQL en un formato amigable (ej. BottomSheet).
-
-2.  **Mejorar Visualización de Paradas (Opcional, o posterior):**
-    *   Reintentar el uso de SymbolLayer para mostrar las paradas con un ícono.
+Próximos Pasos Planificados (Ideas para futuras features, no necesariamente en orden estricto):
+1.  **Preferencias de Ruta**: Permitir al usuario elegir optimizaciones (más rápida, menos transbordos, minimizar caminata) y pasar parámetros a OTP.
+2.  **Guardar Rutas Favoritas/Recientes**: Almacenamiento local para búsquedas frecuentes.
+3.  **Selección de Origen/Destino en el Mapa**: Permitir "tap largo" en el mapa para seleccionar puntos.
+4.  **Información en Tiempo Real de Autobuses**: Si la API de Montevideo lo soporta, integrar datos en vivo.
+5.  **Alertas de Viaje**: Notificación para bajar en la próxima parada.
+6.  **Refinamiento UI/UX Continuo**:
+    *   Mejorar manejo de errores (más específicos y amigables).
+    *   Pulir diseño del BottomSheet de instrucciones (si es necesario).
+    *   (Opcional) Añadir instrucciones más detalladas de caminata (paso a paso) si OTP las provee y se considera útil.
+7.  **Probar Casos Borde Extensivamente**: Rutas solo caminata, errores de OTP, sin conexión, etc.
 
 Consideraciones Adicionales:
 Mantener una UI limpia y funcional.
 El código debe ser legible y bien estructurado.
-Priorizar la obtención y visualización exitosa de la ruta completa (Walk-Transit-Walk) usando GraphQL.
+Priorizar la experiencia del usuario.
 
 @montevideo-api.txt
 
