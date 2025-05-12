@@ -1,4 +1,4 @@
-name: asd
+name: bondi_uy
 description: "A new Flutter project."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
@@ -39,6 +39,9 @@ dependencies:
   vector_math: ^2.1.4
   flutter_polyline_points: ^2.1.0
   graphql_flutter: ^5.2.0
+  flutter_riverpod: ^2.6.1
+  flutter_typeahead: ^5.2.0
+  intl: ^0.20.2
 
 dev_dependencies:
   flutter_test:
