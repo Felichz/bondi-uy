@@ -1103,6 +1103,17 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           );
         }
 
+        // ===> MOVER LA LLAMADA A drawIncomingBusSegment AQUÍ <===
+        // Llamar inmediatamente después de actualizar el estado (o tener el valor nuevo)
+        if (_mapboxService != null) {
+          await _mapboxService!.drawIncomingBusSegment(
+            newHighlightedBusPosition, // Usar la variable local actualizada
+            _currentFullShapeForBusLeg,
+            _originStopIndexOnShape,
+          );
+        }
+        // ===> FIN DEL MOVIMIENTO <===
+
         final String modifiedGeoJsonString = json.encode(geoJsonData);
         final sourceExists = await mapboxMap!.style.styleSourceExists(
           REALTIME_BUS_SOURCE_ID,
@@ -1158,21 +1169,28 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             );
         } catch (_) {}
         _mapboxService?.stopTooltipFloatingAnimation();
+        // ===> ASEGURAR QUE EL SEGMENTO TAMBIÉN SE LIMPIE AQUÍ <===
+        if (_mapboxService != null) {
+          await _mapboxService!.drawIncomingBusSegment(
+            null,
+            null,
+            null,
+          ); // Llamar con null para limpiar
+        }
       }
     } catch (e, s) {
       print(
         "[MapScreen_Debug_RealtimeBus] Excepción obteniendo buses desde el servicio: $e",
       );
       print(s);
-    }
-
-    if (_mapboxService != null) {
-      // Usar el highlightedBusPosition del estado
-      await _mapboxService!.drawIncomingBusSegment(
-        mapState.highlightedBusPosition,
-        _currentFullShapeForBusLeg,
-        _originStopIndexOnShape,
-      );
+      // ===> LIMPIAR SEGMENTO EN CASO DE ERROR TAMBIÉN <===
+      if (_mapboxService != null) {
+        await _mapboxService!.drawIncomingBusSegment(
+          null,
+          null,
+          null,
+        ); // Llamar con null para limpiar
+      }
     }
   }
 
@@ -1271,16 +1289,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final List<Object> tooltipFilter = [
       'all',
       [
-        [
-          '==',
-          ['get', 'isRelevant'],
-          true,
-        ],
-        [
-          '==',
-          ['get', 'isClosestUpcoming'],
-          true,
-        ],
+        '==',
+        ['get', 'isRelevant'],
+        true,
+      ],
+      [
+        '==',
+        ['get', 'isClosestUpcoming'],
+        true,
       ],
     ];
     final bool shouldShowTooltip = features.any(
