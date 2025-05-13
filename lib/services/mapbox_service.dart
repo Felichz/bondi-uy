@@ -262,7 +262,7 @@ class MapboxService {
     // if (mapboxMap == null) return; // mapboxMap es final y non-null aquí
     try {
       final layers = await mapboxMap.style.getStyleLayers();
-      print('[MapboxService_Debug] Orden actual de capas:');
+      // print('[MapboxService_Debug] Orden actual de capas:');
       for (final l in layers) {
         // Corrección para ANSI escape codes
         print('  - \x1B[36m${l?.id ?? "(null)"}\x1B[0m');
@@ -727,7 +727,15 @@ class MapboxService {
     Color lineColor,
     double lineWidth,
   ) async {
-    if (positions.length < 2) return;
+    print(
+      "[MapboxService_Debug] drawFullBusLineShape called for source: $sourceId, layer: $layerId",
+    );
+    if (positions.length < 2) {
+      print(
+        "[MapboxService_Debug] drawFullBusLineShape: Not enough positions (<2). Aborting.",
+      );
+      return;
+    }
 
     final Map<String, dynamic> geometry = {
       'type': 'LineString',
@@ -745,10 +753,16 @@ class MapboxService {
     try {
       final sourceExists = await mapboxMap.style.styleSourceExists(sourceId);
       if (!sourceExists) {
+        print(
+          "[MapboxService_Debug] drawFullBusLineShape: Adding source $sourceId.",
+        );
         await mapboxMap.style.addSource(
           GeoJsonSource(id: sourceId, data: geoJsonDataString),
         );
       } else {
+        print(
+          "[MapboxService_Debug] drawFullBusLineShape: Updating source $sourceId.",
+        );
         final source =
             await mapboxMap.style.getSource(sourceId) as GeoJsonSource?;
         await source?.updateGeoJSON(geoJsonDataString);
@@ -756,6 +770,9 @@ class MapboxService {
 
       final layerExists = await mapboxMap.style.styleLayerExists(layerId);
       if (!layerExists) {
+        print(
+          "[MapboxService_Debug] drawFullBusLineShape: Adding layer $layerId.",
+        );
         await mapboxMap.style.addLayer(
           LineLayer(
             id: layerId,
@@ -767,8 +784,7 @@ class MapboxService {
             lineCap: LineCap.ROUND,
           ),
         );
-        // Lógica de ordenamiento de capas mejorada:
-        // Intentar colocar debajo de la capa de ruta del usuario o segmento de bus en aproximación.
+
         String? determinedBelowLayerId;
         if (_legLayerIds.containsKey(0) && _legLayerIds[0]!.length == 2) {
           // Asumimos que el primer tramo de la ruta del usuario es _legLayerIds[0]
@@ -780,34 +796,34 @@ class MapboxService {
             determinedBelowLayerId = firstUserRouteLegShadowLayer;
           }
         }
-        // Podríamos añadir más lógica para buscar "incoming-bus-segment-layer-shadow" si es relevante
-        // o simplemente colocarla por defecto si no se encuentra ninguna capa de ruta.
 
         if (determinedBelowLayerId != null) {
           try {
+            print(
+              "[MapboxService_Debug] drawFullBusLineShape: Moving layer $layerId below $determinedBelowLayerId.",
+            );
             await mapboxMap.style.moveStyleLayer(
               layerId,
               LayerPosition(below: determinedBelowLayerId),
             );
-            print(
-              "[MapboxService_Debug] Capa de línea base ($layerId) movida debajo de $determinedBelowLayerId.",
-            );
           } catch (e) {
             print(
-              '[MapboxService_Debug] Error moviendo capa de línea base $layerId debajo de $determinedBelowLayerId: $e',
+              '[MapboxService_Debug] drawFullBusLineShape: Error moving layer $layerId: $e',
             );
           }
         } else {
-          // Línea de print simplificada para evitar error de linter
           print(
-            "[MapboxService_Debug] Capa de linea base anadida: $layerId (sin posicionamiento especifico debajo).",
-          ); // Comentado temporalmente
+            "[MapboxService_Debug] drawFullBusLineShape: Layer $layerId added without specific positioning.",
+          );
         }
-        await _printLayerOrder();
+      } else {
+        print(
+          "[MapboxService_Debug] drawFullBusLineShape: Layer $layerId already exists.",
+        );
       }
     } catch (e) {
       print(
-        "[MapboxService_Debug] Error añadiendo fuente/capa para el recorrido completo de línea $layerId: $e",
+        "[MapboxService_Debug] drawFullBusLineShape: Error adding source/layer $layerId: $e",
       );
     }
   }
@@ -818,35 +834,55 @@ class MapboxService {
     List<Position>? currentFullShapeForBusLeg,
     int? originStopIndexOnShape,
   ) async {
+    print(
+      "[MapboxService_Debug] drawIncomingBusSegment called. BusPos: $highlightedBusPosition, HasShape: ${currentFullShapeForBusLeg != null}, OriginIndex: $originStopIndexOnShape",
+    );
     // Definir IDs únicos para la fuente y capa ya están como constantes de clase
 
     // Limpiar capa/fuente anterior si existen
     try {
-      if (await mapboxMap.style.styleLayerExists(
+      bool segmentLayerExists = await mapboxMap.style.styleLayerExists(
         INCOMING_BUS_SEGMENT_LAYER_ID,
-      )) {
+      );
+      if (segmentLayerExists) {
+        print(
+          "[MapboxService_Debug] drawIncomingBusSegment: Removing existing layer $INCOMING_BUS_SEGMENT_LAYER_ID.",
+        );
         await mapboxMap.style.removeStyleLayer(INCOMING_BUS_SEGMENT_LAYER_ID);
       }
-      if (await mapboxMap.style.styleLayerExists(
+      bool shadowLayerExists = await mapboxMap.style.styleLayerExists(
         "$INCOMING_BUS_SEGMENT_LAYER_ID-shadow",
-      )) {
+      );
+      if (shadowLayerExists) {
+        print(
+          "[MapboxService_Debug] drawIncomingBusSegment: Removing existing shadow layer.",
+        );
         await mapboxMap.style.removeStyleLayer(
           "$INCOMING_BUS_SEGMENT_LAYER_ID-shadow",
         );
       }
-      if (await mapboxMap.style.styleSourceExists(
+      bool sourceExists = await mapboxMap.style.styleSourceExists(
         INCOMING_BUS_SEGMENT_SOURCE_ID,
-      )) {
+      );
+      if (sourceExists) {
+        print(
+          "[MapboxService_Debug] drawIncomingBusSegment: Removing existing source $INCOMING_BUS_SEGMENT_SOURCE_ID.",
+        );
         await mapboxMap.style.removeStyleSource(INCOMING_BUS_SEGMENT_SOURCE_ID);
       }
-    } catch (_) {
-      // Ignorar errores durante la limpieza, ya que las capas/fuentes podrían no existir
+    } catch (e) {
+      print(
+        "[MapboxService_Debug] drawIncomingBusSegment: Error during cleanup: $e",
+      );
+      // Ignorar errores durante la limpieza, pero loguearlos
     }
 
     if (highlightedBusPosition == null ||
         currentFullShapeForBusLeg == null ||
         originStopIndexOnShape == null) {
-      // print("[MapboxService_Debug] No se puede dibujar segmento de bus en aproximación: datos faltantes.");
+      print(
+        "[MapboxService_Debug] drawIncomingBusSegment: Missing data. Not drawing segment.",
+      );
       return;
     }
 
@@ -858,44 +894,54 @@ class MapboxService {
       ),
     );
     final originIndex = originStopIndexOnShape;
+    print(
+      "[MapboxService_Debug] drawIncomingBusSegment: Calculated busIndex=$busIndex, originIndex=$originIndex",
+    );
     if (busIndex == -1) {
-      // No es necesario verificar originIndex == -1 porque ya se hizo en la condición anterior
-      // print("[MapboxService_Debug] No se pudo encontrar el bus en el shape.");
+      print(
+        "[MapboxService_Debug] drawIncomingBusSegment: Bus not found on shape (busIndex=-1). Not drawing segment.",
+      );
       return;
     }
 
-    // Recortar el shape entre el bus y la parada de origen
-    // Asegurarse de que los índices estén en el orden correcto para sublist
     final start = math.min(busIndex, originIndex);
     final end = math.max(busIndex, originIndex);
 
-    // Validar que start y end sean índices válidos para la lista y que start <= end
     if (start < 0 || end >= currentFullShapeForBusLeg.length || start > end) {
-      // print("[MapboxService_Debug] Índices de segmento de bus inválidos. Start: $start, End: $end, Length: ${currentFullShapeForBusLeg.length}");
+      print(
+        "[MapboxService_Debug] drawIncomingBusSegment: Invalid segment indices (start=$start, end=$end, shapeLength=${currentFullShapeForBusLeg.length}). Not drawing segment.",
+      );
       return;
     }
 
     final segment = currentFullShapeForBusLeg.sublist(start, end + 1);
+    print(
+      "[MapboxService_Debug] drawIncomingBusSegment: Calculated segment length: ${segment.length}",
+    );
     if (segment.length < 2) {
-      // print("[MapboxService_Debug] Segmento de bus demasiado corto para dibujar (<2 puntos).");
+      print(
+        "[MapboxService_Debug] drawIncomingBusSegment: Segment too short (<2). Not drawing.",
+      );
       return;
     }
 
-    // Dibujar la línea verde usando el método drawRouteSegment del servicio
+    print(
+      "[MapboxService_Debug] drawIncomingBusSegment: Calling internal drawRouteSegment to draw green line.",
+    );
     await drawRouteSegment(
       segment,
       INCOMING_BUS_SEGMENT_SOURCE_ID,
       INCOMING_BUS_SEGMENT_LAYER_ID,
-      Colors.green, // Color para el segmento del bus en aproximación
-      9999, // Índice especial para que no interfiera con los tramos normales de la ruta del usuario
-      lineWidth: 6.0, // Ancho de línea específico
-      shadowWidth: 8.0, // Ancho de sombra específico
+      Colors.green,
+      9999,
+      lineWidth: 6.0,
+      shadowWidth: 8.0,
     );
 
-    // Mover la capa principal y la sombra justo debajo de las paradas principales
-    // Esto asume que ROUTE_MAIN_STOPS_LAYER_ID ya existe o se añadirá después.
-    // La lógica de ordenamiento de capas puede ser compleja y podría necesitar ajustes.
     try {
+      print(
+        "[MapboxService_Debug] drawIncomingBusSegment: Attempting to move segment layers below $ROUTE_MAIN_STOPS_LAYER_ID.",
+      );
       if (await mapboxMap.style.styleLayerExists(ROUTE_MAIN_STOPS_LAYER_ID)) {
         if (await mapboxMap.style.styleLayerExists(
           "$INCOMING_BUS_SEGMENT_LAYER_ID-shadow",
@@ -910,30 +956,27 @@ class MapboxService {
         )) {
           await mapboxMap.style.moveStyleLayer(
             INCOMING_BUS_SEGMENT_LAYER_ID,
-            LayerPosition(
-              below: ROUTE_MAIN_STOPS_LAYER_ID,
-            ), // CORREGIDO EL TYPO
+            LayerPosition(below: ROUTE_MAIN_STOPS_LAYER_ID),
           );
         }
-        await _printLayerOrder();
         print(
-          "[MapboxService_Debug] Segmento de bus en aproximación movido debajo de las paradas principales.",
+          "[MapboxService_Debug] drawIncomingBusSegment: Segment layers moved.",
         );
       } else {
         print(
-          "[MapboxService_Debug] Capa de paradas principales no encontrada, el segmento de bus en aproximación podría no estar ordenado correctamente.",
+          "[MapboxService_Debug] drawIncomingBusSegment: Layer $ROUTE_MAIN_STOPS_LAYER_ID not found, segment layers not moved.",
         );
       }
     } catch (e) {
       print(
-        "[MapboxService_Debug] Error moviendo capas del segmento de bus en aproximación: $e",
+        "[MapboxService_Debug] drawIncomingBusSegment: Error moving segment layers: $e",
       );
     }
   }
 
   // AÑADIDO: Método para hacer zoom y centrar el mapa en la ruta calculada.
   Future<bool> zoomToRouteBounds(List<RouteLeg> legs) async {
-    if (legs.isEmpty) return false;
+    if (mapboxMap == null || legs.isEmpty) return false;
 
     final CoordinateBounds? routeBounds = await calculateBoundsForRoute(
       legs,
@@ -980,27 +1023,31 @@ class MapboxService {
     }
   }
 
-  // AÑADIDO: Método para hacer zoom a un tramo específico.
+  // MODIFICADO: Devolver Future<bool>
   Future<bool> zoomToLeg(
-    List<RouteLeg> currentRouteLegs,
+    List<RouteLeg> legs,
     int legIndex,
-    Position? highlightedBusPosition,
-    bool showCollapsedInstructionsBar,
+    Position? busToInclude,
+    bool isInstructionsCollapsed,
   ) async {
-    if (legIndex < 0 || legIndex >= currentRouteLegs.length) return false;
+    if (mapboxMap == null || legIndex < 0 || legIndex >= legs.length) {
+      print(
+        "[MapboxService_Debug] zoomToLeg: Condiciones no cumplidas (mapa nulo o índice de tramo inválido). No se inició el zoom.",
+      );
+      return false; // No se inició el zoom
+    }
 
-    final RouteLeg currentLeg = currentRouteLegs[legIndex];
-    final String mode = currentLeg.mode.toUpperCase();
+    final RouteLeg leg = legs[legIndex];
+    final String mode = leg.mode.toUpperCase();
 
     CoordinateBounds? legBounds;
 
-    if ((mode == 'BUS' || mode == 'TRANSIT') &&
-        highlightedBusPosition != null) {
-      final LegEndpoint fromPlace = currentLeg.from;
+    if ((mode == 'BUS' || mode == 'TRANSIT') && busToInclude != null) {
+      final LegEndpoint fromPlace = leg.from;
       if (fromPlace.lat != 0.0 && fromPlace.lon != 0.0) {
         // Verificar validez de coordenadas
         final Position paradaOrigen = Position(fromPlace.lon, fromPlace.lat);
-        final Position busPos = highlightedBusPosition;
+        final Position busPos = busToInclude;
 
         const double paddingGrados = 0.002;
         final double minLat =
@@ -1025,19 +1072,17 @@ class MapboxService {
         );
       } else {
         legBounds = await calculateBoundsForLeg(
-          currentRouteLegs,
+          legs,
           legIndex,
-          additionalPoint: highlightedBusPosition,
+          additionalPoint: busToInclude,
         );
       }
     } else {
       legBounds = await calculateBoundsForLeg(
-        currentRouteLegs,
+        legs,
         legIndex,
         additionalPoint:
-            (mode == 'BUS' || mode == 'TRANSIT')
-                ? highlightedBusPosition
-                : null,
+            (mode == 'BUS' || mode == 'TRANSIT') ? busToInclude : null,
       );
     }
 
@@ -1046,7 +1091,7 @@ class MapboxService {
         final MbxEdgeInsets padding = MbxEdgeInsets(
           top: 80.0,
           left: 50.0,
-          bottom: showCollapsedInstructionsBar ? 100.0 : 80.0,
+          bottom: isInstructionsCollapsed ? 100.0 : 80.0,
           right: 50.0,
         );
         final CameraOptions cameraOptions = await mapboxMap
@@ -1080,8 +1125,78 @@ class MapboxService {
     }
   }
 
+  // MODIFICADO: Devolver Future<bool>
+  Future<bool> zoomToFitPositions(
+    List<Position> positions,
+    EdgeInsets flutterPadding, {
+    Duration? animationDuration,
+  }) async {
+    print(
+      "[MapboxService_Debug] zoomToFitPositions llamado con ${positions.length} posiciones.",
+    );
+    if (mapboxMap == null || positions.isEmpty) {
+      print(
+        "[MapboxService_Debug] zoomToFitPositions: MapboxMap es null o no hay posiciones. Abortando. No se inició el zoom.",
+      );
+      return false; // No se inició el zoom
+    }
+
+    final MbxEdgeInsets mapboxPadding = MbxEdgeInsets(
+      top: flutterPadding.top,
+      left: flutterPadding.left,
+      bottom: flutterPadding.bottom,
+      right: flutterPadding.right,
+    );
+
+    final MapAnimationOptions animationOptions = MapAnimationOptions(
+      duration:
+          (animationDuration ?? const Duration(milliseconds: 1200))
+              .inMilliseconds
+              .toInt(),
+      startDelay: 0,
+    );
+
+    try {
+      if (positions.length == 1) {
+        final CameraOptions cameraOptions = CameraOptions(
+          center: Point(coordinates: positions.first),
+          padding: mapboxPadding,
+          zoom: 16.0,
+        );
+        await mapboxMap!.flyTo(cameraOptions, animationOptions);
+        print(
+          "[MapboxService_Debug] zoomToFitPositions (single): flyTo ejecutado.",
+        );
+        return true; // Zoom iniciado
+      } else {
+        // Para múltiples posiciones, Mapbox espera una lista de Point, no List<List<double>> para cameraForCoordinates
+        final List<Point> mapboxPoints =
+            positions
+                .map((p) => Point(coordinates: p)) // Convertir Position a Point
+                .toList();
+
+        final CameraOptions cameraOptions = await mapboxMap!
+            .cameraForCoordinates(
+              mapboxPoints, // Usar la lista de Point
+              mapboxPadding,
+              null, // bearing
+              null, // pitch
+            );
+        await mapboxMap!.flyTo(cameraOptions, animationOptions);
+        print(
+          "[MapboxService_Debug] zoomToFitPositions (multiple): flyTo ejecutado.",
+        );
+        return true; // Zoom iniciado
+      }
+    } catch (e) {
+      print("[MapboxService_Debug] zoomToFitPositions: Excepción: $e");
+      return false; // No se inició el zoom
+    }
+  }
+
   // AÑADIDO: Método para iniciar la animación flotante del tooltip
   void startTooltipFloatingAnimation() {
+    print("[MapboxService_Debug] startTooltipFloatingAnimation called.");
     _tooltipFloatTimer?.cancel();
     // 60 FPS aprox
     _tooltipFloatTimer = Timer.periodic(const Duration(milliseconds: 16), (
@@ -1099,49 +1214,54 @@ class MapboxService {
       // Actualiza el iconOffset del tooltip layer
       // mapboxMap está disponible directamente en la clase
       try {
+        // Log reducido para evitar spam
+        // print("[MapboxService_Debug] Updating tooltip offset: $offsetY");
         await mapboxMap.style.setStyleLayerProperty(
-          INCOMING_BUS_TOOLTIP_LAYER_ID, // Usar constante
+          INCOMING_BUS_TOOLTIP_LAYER_ID,
           'icon-offset',
           [0.0, offsetY],
         );
-      } catch (_) {
-        // Podría ocurrir si la capa no existe o el estilo está siendo modificado.
-        // Considerar loguear si es necesario para depuración.
+      } catch (e) {
+        print("[MapboxService_Debug] Error updating tooltip offset: $e");
+        // Considerar cancelar timer si hay error persistente?
       }
     });
   }
 
   // AÑADIDO: Método para detener la animación flotante del tooltip
   void stopTooltipFloatingAnimation() {
+    print("[MapboxService_Debug] stopTooltipFloatingAnimation called.");
     _tooltipFloatTimer?.cancel();
     _tooltipFloatTimer = null;
     _tooltipFloatPhase = 0.0;
-    // Al detener, resetea el offset a 0
-    // mapboxMap está disponible directamente en la clase
     try {
-      // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-      // AÑADIR COMPROBACIÓN DE EXISTENCIA DE CAPA
-      // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
       mapboxMap.style
           .styleLayerExists(INCOMING_BUS_TOOLTIP_LAYER_ID)
           .then((exists) {
             if (exists) {
-              // Solo intentar modificar si la capa existe
+              print(
+                "[MapboxService_Debug] Resetting tooltip offset to [0.0, 0.0].",
+              );
               mapboxMap.style.setStyleLayerProperty(
-                INCOMING_BUS_TOOLTIP_LAYER_ID, // Usar constante
+                INCOMING_BUS_TOOLTIP_LAYER_ID,
                 'icon-offset',
-                [0.0, 0.0], // Resetear offset
+                [0.0, 0.0],
+              );
+            } else {
+              print(
+                "[MapboxService_Debug] Tooltip layer doesn't exist, cannot reset offset.",
               );
             }
           })
-          .catchError((_) {
-            // Ignorar errores aquí también, por si styleLayerExists falla
-            // (por ejemplo, si el mapa se destruye concurrentemente)
+          .catchError((e) {
+            print(
+              "[MapboxService_Debug] Error checking/resetting tooltip offset: $e",
+            );
           });
-      // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-    } catch (_) {
-      // Similar a startTooltipFloatingAnimation, ignorar errores si la capa/mapa ya no existe.
-      // Aunque el .catchError() anterior debería manejar la mayoría de los casos.
+    } catch (e) {
+      print(
+        "[MapboxService_Debug] Exception in stopTooltipFloatingAnimation catch block: $e",
+      );
     }
   }
 
@@ -1210,5 +1330,9 @@ class MapboxService {
         }
       }
     }
+  }
+
+  Future<void> drawRouteLegs(List<RouteLeg> legs, int? selectedLegIndex) async {
+    // ... existing code ...
   }
 }

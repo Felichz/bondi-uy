@@ -149,6 +149,10 @@ class MontevideoApiService {
 
     final String apiUrl = "$_baseUrl/buses?lines=$lineShortName&format=geojson";
 
+    print(
+      "[BondiUY_Debug] Iniciando request a Montevideo API para realtime de buses (línea: $lineShortName)",
+    );
+
     try {
       http.Response response = await http.get(
         Uri.parse(apiUrl),
@@ -169,6 +173,9 @@ class MontevideoApiService {
           print(
             "[BondiUY_Debug_Realtime_Service] Reintentando con nuevo token...",
           );
+          print(
+            "[BondiUY_Debug] Iniciando REINTENTO request a Montevideo API para realtime de buses (línea: $lineShortName)",
+          );
           response = await http.get(
             Uri.parse(apiUrl),
             headers: {
@@ -187,6 +194,9 @@ class MontevideoApiService {
       }
 
       if (response.statusCode == 200) {
+        print(
+          "[BondiUY_Debug] Respuesta recibida de Montevideo API para realtime de buses (línea: $lineShortName)",
+        );
         return json.decode(response.body) as Map<String, dynamic>;
       } else {
         print(

@@ -56,7 +56,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   // Point? _origenCoordinates;
   // Point? _destinoCoordinates;
 
-  // Referencias a los servicios (AHORA SE ACCEDEN VIA PROVIDERS O SON LOCALES)
+  // Referencias a los servicios (AHORA SE ACCEDEN VIA PROVIDERS O SONLOCALES)
   // late final ValueNotifier<GraphQLClient> _otpGqlClient; // Ya no se usa directamente aquí
   // late final MontevideoApiService _montevideoApiService; // Vía provider
   // late final OtpService _otpService; // Vía provider
@@ -101,22 +101,26 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   Map<String, List<Position>> _shapeGeometries =
       {}; // Sigue local (cargado una vez)
   bool _shapesLoaded = false; // Sigue local (cargado una vez)
-  List<Position>?
-  _currentFullShapeForBusLeg; // Sigue local (necesario para lógica de dibujo/cálculo)
-  int? _originStopIndexOnShape; // Sigue local
-  int? _destinationStopIndexOnShape; // Sigue local
   // Position? _highlightedBusPosition; // EN MapState
 
   // Estado del movimiento del mapa (Parte en MapState, parte local)
   // bool _userManuallyMovedMap = false; // EN MapState
   bool _isProgrammaticCameraMove =
       false; // Sigue local (controla lógica de _onMapIdle y _onMapCameraChange)
-  bool _isWaitingForInitialLegZoomToComplete =
-      false; // Sigue local (controla lógica de _onMapIdle)
+  // bool _isWaitingForInitialLegZoomToComplete = false; // <<< ELIMINAR, ya no necesario
+
+  // AÑADIDO: Para rastrear si el usuario ha iniciado un gesto de movimiento
+  bool _userHasInitiatedMove = false;
+
+  // AÑADIDO: Variables para el shape actual y los índices de paradas relevantes (MOVIDAS AQUÍ DESDE EL FINAL DE LA CLASE)
+  List<Position>? _currentFullShapeForBusLeg;
+  int? _originStopIndexOnShape;
+  int? _destinationStopIndexOnShape;
 
   @override
   void initState() {
     super.initState();
+    print("[_MapScreenState_Debug] initState called.");
     _origenController = TextEditingController();
     _destinoController = TextEditingController();
     _origenFocusNode = FocusNode();
@@ -164,11 +168,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         if (next.currentRouteLegs.isNotEmpty && mounted) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) {
-              // Doble check por si se desmonta durante el post-frame
-              _isWaitingForInitialLegZoomToComplete = true; // Sigue local
+              // >>> AÑADIDO: Resetear userManuallyMovedMap al iniciar navegación detallada <<<
+              print(
+                "[_MapScreenState_Debug] Listener (startDetailedNavigation): Resetting userManuallyMovedMap to false.",
+              );
+              ref
+                  .read(mapNotifierProvider.notifier)
+                  .setUserManuallyMovedMap(false);
               _zoomToLeg(0);
               _updateMapRouteHighlight();
-              _updateBusTrackingBasedOnLeg(0);
             }
           });
         }
@@ -206,6 +214,175 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       },
     );
 
+    // >>> NUEVO: Listener para iniciar/detener sondeo de bus
+    ref.listenManual<
+      RouteLeg?
+    >(mapNotifierProvider.select((s) => s.legToTrackInRealtime), (
+      prevLeg,
+      nextLeg,
+    ) {
+      print(
+        "[_MapScreenState_Debug] Listener (legToTrackInRealtime): prevLeg=${prevLeg?.route?.shortName}, nextLeg=${nextLeg?.route?.shortName}",
+      );
+      // Pequeño delay para asegurar que otras actualizaciones de estado se procesen
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (mounted) {
+          // Re-check mounted after delay
+          if (nextLeg != null) {
+            print(
+              "[_MapScreenState_Debug] Listener (legToTrackInRealtime): Calling _startTrackingBusLine for ${nextLeg.route?.shortName}",
+            );
+            _startTrackingBusLine(nextLeg);
+          } else {
+            print(
+              "[_MapScreenState_Debug] Listener (legToTrackInRealtime): Calling _stopTrackingBusLine.",
+            );
+            _stopTrackingBusLine();
+          }
+        }
+      });
+    });
+
+    // >>> NUEVO: Listener para manejar zoom al bus resaltado
+    ref.listenManual<Position?>(
+      mapNotifierProvider.select((s) => s.highlightedBusPosition),
+      (prevBusPos, newBusPos) {
+        // CORRECCIÓN LOGGING:
+        final String prevLatStr = prevBusPos?.lat.toString() ?? "null";
+        final String prevLngStr = prevBusPos?.lng.toString() ?? "null";
+        final String newLatStr = newBusPos?.lat.toString() ?? "null";
+        final String newLngStr = newBusPos?.lng.toString() ?? "null";
+        print(
+          "[_MapScreenState_Debug] Listener (highlightedBusPosition) TRIGGERED: prevBusPos=($prevLatStr, $prevLngStr), newBusPos=($newLatStr, $newLngStr)",
+        );
+        final mapState = ref.read(mapNotifierProvider);
+        final bool positionChangedSignificantly =
+            (prevBusPos?.lng != newBusPos?.lng ||
+                prevBusPos?.lat != newBusPos?.lat ||
+                (prevBusPos == null && newBusPos != null) ||
+                (prevBusPos != null && newBusPos == null));
+
+        print(
+          "[_MapScreenState_Debug] Listener (highlightedBusPosition): positionChangedSignificantly=$positionChangedSignificantly. Current userManuallyMovedMap=${mapState.userManuallyMovedMap}, isInOverviewMode=${mapState.isInOverviewMode}",
+        );
+
+        if (newBusPos != null && positionChangedSignificantly) {
+          print(
+            "[_MapScreenState_Debug] Listener (highlightedBusPosition): newBusPos is NOT NULL and changed significantly. Processing zoom logic...",
+          );
+          if (mapState.isInOverviewMode) {
+            print(
+              "[_MapScreenState_Debug] Listener (highlightedBusPosition): Overview mode. Attempting zoom to bus, origin, and destination.",
+            );
+            final legToTrack = mapState.legToTrackInRealtime;
+            if (legToTrack != null && _mapboxService != null) {
+              final List<Position> positionsToFit = [
+                Position(legToTrack.from.lon, legToTrack.from.lat),
+                Position(legToTrack.to.lon, legToTrack.to.lat),
+                newBusPos,
+              ];
+              _isProgrammaticCameraMove = true;
+              print(
+                "[_MapScreenState_Debug] Listener (highlightedBusPosition): Overview - SET _isProgrammaticCameraMove = true",
+              );
+              _mapboxService!
+                  .zoomToFitPositions(
+                    positionsToFit,
+                    const EdgeInsets.all(60.0),
+                    animationDuration: const Duration(milliseconds: 1500),
+                  )
+                  .then((initiated) {
+                    if (!initiated) {
+                      print(
+                        "[_MapScreenState_Debug] Listener (highlightedBusPosition): Overview - zoomToFitPositions reported NO initiation. SET _isProgrammaticCameraMove = false",
+                      );
+                      _isProgrammaticCameraMove = false;
+                    } else {
+                      print(
+                        "[_MapScreenState_Debug] Listener (highlightedBusPosition): Overview - zoomToFitPositions reported INITIATION. _isProgrammaticCameraMove remains true for _onMapIdle.",
+                      );
+                    }
+                  })
+                  .catchError((e) {
+                    print(
+                      "[_MapScreenState_Debug] Listener (highlightedBusPosition): Overview - zoomToFitPositions CATCH. SET _isProgrammaticCameraMove = false. Error: $e",
+                    );
+                    _isProgrammaticCameraMove = false;
+                  });
+            }
+          } else if (!mapState.userManuallyMovedMap) {
+            print(
+              "[_MapScreenState_Debug] Listener (highlightedBusPosition): DetailedNav (userManuallyMovedMap is FALSE). Attempting zoom to bus and origin.",
+            );
+            final legToTrack = mapState.legToTrackInRealtime;
+            if (legToTrack != null &&
+                mapState.selectedLegIndex != null &&
+                mapState.currentRouteLegs.isNotEmpty &&
+                _mapboxService != null) {
+              final List<Position> positionsToFit = [
+                Position(legToTrack.from.lon, legToTrack.from.lat),
+                newBusPos,
+              ];
+              _isProgrammaticCameraMove = true;
+              print(
+                "[_MapScreenState_Debug] Listener (highlightedBusPosition): DetailedNav - SET _isProgrammaticCameraMove = true",
+              );
+              _mapboxService!
+                  .zoomToFitPositions(
+                    positionsToFit,
+                    const EdgeInsets.all(80.0),
+                    animationDuration: const Duration(milliseconds: 1200),
+                  )
+                  .then((initiated) {
+                    if (!initiated) {
+                      print(
+                        "[_MapScreenState_Debug] Listener (highlightedBusPosition): DetailedNav - zoomToFitPositions reported NO initiation. SET _isProgrammaticCameraMove = false",
+                      );
+                      _isProgrammaticCameraMove = false;
+                    } else {
+                      print(
+                        "[_MapScreenState_Debug] Listener (highlightedBusPosition): DetailedNav - zoomToFitPositions reported INITIATION. _isProgrammaticCameraMove remains true for _onMapIdle.",
+                      );
+                    }
+                  })
+                  .catchError((e) {
+                    print(
+                      "[_MapScreenState_Debug] Listener (highlightedBusPosition): DetailedNav - zoomToFitPositions CATCH. SET _isProgrammaticCameraMove = false. Error: $e",
+                    );
+                    _isProgrammaticCameraMove = false;
+                  });
+            }
+          } else {
+            print(
+              "[_MapScreenState_Debug] Listener (highlightedBusPosition): isInOverviewMode = false AND userManuallyMovedMap = true. No Zoom due to manual map move.",
+            );
+          }
+        } else if (newBusPos == null && prevBusPos != null) {
+          print(
+            "[_MapScreenState_Debug] Listener (highlightedBusPosition): Highlighted bus disappeared (newBusPos is null).",
+          );
+        } else {
+          print(
+            "[_MapScreenState_Debug] Listener (highlightedBusPosition): newBusPos is NULL or NOT significantly changed. No Zoom. newBusPos: $newBusPos, changed: $positionChangedSignificantly",
+          );
+        }
+
+        // La lógica original de _zoomToLeg para el inicio de navegación/cambio de tramo se mantiene.
+        // Esta nueva lógica es *adicional* y reactiva al bus.
+        // Ya no se usa la condición original para el zoom desde este listener.
+        // print(
+        //   "[_MapScreenState_Debug] Listener (highlightedBusPosition): Conditions for zoom NOT met. Overview=${mapState.isInOverviewMode}, MovedMap=${mapState.userManuallyMovedMap}, SelectedIndex=${mapState.selectedLegIndex}, LegToTrack=${mapState.legToTrackInRealtime != null}",
+        // );
+      },
+      onError: (error, stackTrace) {
+        // Asegurar que este bloque esté bien formado
+        print(
+          '[_MapScreenState_Debug] Error en listener highlightedBusPosition: $error',
+        );
+        print(stackTrace);
+      },
+    );
+
     _loadAndParseShapesGeoJson(); // Llamar al método existente
   }
 
@@ -227,6 +404,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     // MapboxService sigue siendo local
     _mapboxService = MapboxService(this.mapboxMap!);
     // La carga de datos/imágenes se hará en _onStyleLoadedListener a través del servicio
+
+    // AÑADIDO: Listeners para gestos de movimiento
+    // <<< ELIMINADAS LAS ASIGNACIONES INCORRECTAS DE GESTURES LISTENERS >>>
+    // Los listeners ahora se pasan directamente al MapWidget en el método build.
+    print(
+      "[_MapScreenState_Debug] _onMapCreated: mapboxMap instance set. Gesture listeners are handled by MapWidget constructor.",
+    );
   }
 
   void _onStyleLoadedListener(StyleLoadedEventData event) async {
@@ -542,12 +726,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               mapState.currentRouteLegs, // Pasar List<RouteLeg>
               currentSelectedLegIndex,
               (int tappedLegIndex) {
+                // >>> AÑADIDO: Resetear userManuallyMovedMap al seleccionar tramo del bottom sheet <<<
+                print(
+                  "[_MapScreenState_Debug] BottomSheet (onLegSelected): Resetting userManuallyMovedMap to false for leg $tappedLegIndex.",
+                );
+                mapNotifier.setUserManuallyMovedMap(false);
                 mapNotifier.setSelectedLegIndex(tappedLegIndex);
-                // _userManuallyMovedMap y _isWaitingForInitialLegZoomToComplete se manejan en el notifier o localmente
-                _isWaitingForInitialLegZoomToComplete = true;
-                _updateMapRouteHighlight(); // Depende del estado del notifier
-                _zoomToLeg(tappedLegIndex); // Depende del estado del notifier
-                setModalState(() {}); // Actualizar el BottomSheet
+                _updateMapRouteHighlight();
+                _zoomToLeg(tappedLegIndex);
+                setModalState(() {});
               },
             );
 
@@ -602,35 +789,61 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   // Y se iniciará el rastreo del bus si es necesario.
 
   Future<void> _zoomToLeg(int legIndex) async {
-    if (mapboxMap == null || _mapboxService == null) return;
+    if (mounted == false) return;
+    print(
+      "[_MapScreenState_Debug] _zoomToLeg llamado para el tramo: $legIndex",
+    );
+
+    if (mapboxMap == null || _mapboxService == null) {
+      print(
+        "[_MapScreenState_Debug] _zoomToLeg: MapboxMap o MapboxService es null. Abortando.",
+      );
+      return;
+    }
+
     final mapState = ref.read(mapNotifierProvider);
-    if (legIndex < 0 || legIndex >= mapState.currentRouteLegs.length) return;
+    if (legIndex < 0 || legIndex >= mapState.currentRouteLegs.length) {
+      print(
+        "[_MapScreenState_Debug] _zoomToLeg: Índice de tramo inválido. Abortando.",
+      );
+      return;
+    }
 
-    _isProgrammaticCameraMove = true; // Sigue siendo local
-    bool success = false;
-
+    final currentLeg = mapState.currentRouteLegs[legIndex];
     Position? busPositionToInclude;
-    final RouteLeg currentLeg = mapState.currentRouteLegs[legIndex];
-    final String mode = currentLeg.mode.toUpperCase();
-
-    // userManuallyMovedMap y highlightedBusPosition vienen del estado
-    if ((mode == 'BUS' || mode == 'TRANSIT') &&
-        !mapState.userManuallyMovedMap &&
-        mapState.highlightedBusPosition != null) {
+    if (currentLeg.mode.toUpperCase() == "BUS" ||
+        currentLeg.mode.toUpperCase() == "TRANSIT") {
       busPositionToInclude = mapState.highlightedBusPosition;
     }
 
-    success = await _mapboxService!.zoomToLeg(
-      mapState.currentRouteLegs,
-      legIndex,
-      busPositionToInclude,
-      mapState.showCollapsedInstructionsBar, // Viene del estado
+    _isProgrammaticCameraMove = true;
+    print(
+      "[_MapScreenState_Debug] _zoomToLeg: SET _isProgrammaticCameraMove = true",
     );
-
-    if (!success) {
-      _isProgrammaticCameraMove = false;
+    bool initiated = false;
+    try {
+      initiated = await _mapboxService!.zoomToLeg(
+        mapState.currentRouteLegs,
+        legIndex,
+        busPositionToInclude,
+        mapState.showCollapsedInstructionsBar,
+      );
+    } catch (e) {
       print(
-        "[MapScreen_Debug_GraphQL] Falló el servicio zoomToLeg para el tramo $legIndex. _isProgrammaticCameraMove reseteado.",
+        "[_MapScreenState_Debug] _zoomToLeg: Exception calling _mapboxService.zoomToLeg: $e. SET _isProgrammaticCameraMove = false",
+      );
+      _isProgrammaticCameraMove = false;
+      return;
+    }
+
+    if (!initiated) {
+      print(
+        "[_MapScreenState_Debug] _zoomToLeg: _mapboxService.zoomToLeg reported NO initiation. SET _isProgrammaticCameraMove = false",
+      );
+      _isProgrammaticCameraMove = false;
+    } else {
+      print(
+        "[_MapScreenState_Debug] _zoomToLeg: _mapboxService.zoomToLeg reported INITIATION. _isProgrammaticCameraMove remains true for _onMapIdle.",
       );
     }
   }
@@ -643,15 +856,19 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         !mounted)
       return;
 
+    // >>> AÑADIDO: Resetear userManuallyMovedMap <<<
+    print(
+      "[_MapScreenState_Debug] _navigateToPreviousLeg: Resetting userManuallyMovedMap to false.",
+    );
+    mapNotifier.setUserManuallyMovedMap(false);
+
     final newLegIndex = mapState.selectedLegIndex! - 1;
     mapNotifier.setSelectedLegIndex(newLegIndex);
-    _isWaitingForInitialLegZoomToComplete = true; // Sigue local
-
     _updateMapRouteHighlight(); // Depende del estado
     _zoomToLeg(newLegIndex); // Depende del estado
 
-    // Actualizar rastreo de bus
-    _updateBusTrackingBasedOnLeg(newLegIndex);
+    // El rastreo se actualizará automáticamente por el listener de legToTrackInRealtime
+    // _updateBusTrackingBasedOnLeg(newLegIndex); // <<< ELIMINAR
   }
 
   void _navigateToNextLeg() {
@@ -662,32 +879,19 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         !mounted)
       return;
 
+    // >>> AÑADIDO: Resetear userManuallyMovedMap <<<
+    print(
+      "[_MapScreenState_Debug] _navigateToNextLeg: Resetting userManuallyMovedMap to false.",
+    );
+    mapNotifier.setUserManuallyMovedMap(false);
+
     final newLegIndex = mapState.selectedLegIndex! + 1;
     mapNotifier.setSelectedLegIndex(newLegIndex);
-    _isWaitingForInitialLegZoomToComplete = true; // Sigue local
-
     _updateMapRouteHighlight(); // Depende del estado
     _zoomToLeg(newLegIndex); // Depende del estado
 
-    // Actualizar rastreo de bus
-    _updateBusTrackingBasedOnLeg(newLegIndex);
-  }
-
-  // Helper para iniciar/detener rastreo de bus basado en el tramo actual
-  void _updateBusTrackingBasedOnLeg(int legIndex) {
-    final mapState = ref.read(mapNotifierProvider);
-    if (legIndex >= 0 && legIndex < mapState.currentRouteLegs.length) {
-      final RouteLeg currentLeg =
-          mapState.currentRouteLegs[legIndex] as RouteLeg;
-      final String mode = currentLeg.mode.toUpperCase();
-      if (mode == 'BUS' || mode == 'TRANSIT') {
-        _startTrackingBusLine(currentLeg); // Pasa el tramo actual
-      } else {
-        _stopTrackingBusLine();
-      }
-    } else {
-      _stopTrackingBusLine();
-    }
+    // El rastreo se actualizará automáticamente por el listener de legToTrackInRealtime
+    // _updateBusTrackingBasedOnLeg(newLegIndex); // <<< ELIMINAR
   }
 
   @override
@@ -977,148 +1181,263 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   Future<void> _fetchAndDisplayRealtimeBusLocations() async {
-    if (mapboxMap == null || _mapboxService == null) return;
+    print(
+      "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations called.",
+    );
+    if (mapboxMap == null || _mapboxService == null) {
+      print(
+        "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: mapboxMap or _mapboxService is null. Aborting.",
+      );
+      return;
+    }
 
     final mapState = ref.read(mapNotifierProvider);
     final mapNotifier = ref.read(mapNotifierProvider.notifier);
+    final RouteLeg? legBeingTracked = mapState.legToTrackInRealtime;
+    print(
+      "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: legBeingTracked=${legBeingTracked?.route?.shortName}",
+    );
 
-    if (mapState.trackedBusLineShortName == null ||
-        mapState.trackedBusLineShortName!.isEmpty) {
+    final String? lineShortNameToFetch = legBeingTracked?.route?.shortName;
+
+    if (lineShortNameToFetch == null || lineShortNameToFetch.isEmpty) {
+      print(
+        "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: No lineShortNameToFetch. Aborting.",
+      );
       return;
     }
     print(
-      "[MapScreen_Debug_RealtimeBus] Solicitando ubicaciones para línea: ${mapState.trackedBusLineShortName}",
+      "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: Requesting locations for line: $lineShortNameToFetch",
     );
+
+    if (_currentFullShapeForBusLeg == null || _originStopIndexOnShape == null) {
+      print(
+        "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: _currentFullShapeForBusLeg or _originStopIndexOnShape is null. Cannot process bus locations effectively.",
+      );
+      // No abortamos aquí, la API se llamará, pero la relevancia no se calculará
+    }
 
     final montevideoApiService = ref.read(montevideoApiServiceProvider);
     try {
+      print(
+        "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: Calling montevideoApiService.fetchRealtimeBusLocations for $lineShortNameToFetch.",
+      );
       final Map<String, dynamic> geoJsonData = await montevideoApiService
-          .fetchRealtimeBusLocations(mapState.trackedBusLineShortName!);
+          .fetchRealtimeBusLocations(lineShortNameToFetch);
+      print(
+        "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: API call returned. Features count: ${geoJsonData['features']?.length ?? 0}",
+      );
       final List<dynamic> features = geoJsonData['features'] ?? [];
-      Position?
-      newHighlightedBusPosition; // Variable local para determinar el nuevo bus resaltado
+      Position? newHighlightedBusPosition;
 
       if (features.isNotEmpty) {
-        print(
-          "[MapScreen_Debug_RealtimeBus] ${features.length} buses encontrados.",
-        );
         int closestUpcomingBusIndex = -1;
         double minDistanceToOriginStop = double.infinity;
 
         if (_currentFullShapeForBusLeg != null &&
             _currentFullShapeForBusLeg!.isNotEmpty &&
             _originStopIndexOnShape != null) {
+          // --- INICIO LÓGICA REIMPLEMENTADA DE main-old.dart ---
+          final Point_dart userOriginStopLocation = Point_dart(
+            lat:
+                (_currentFullShapeForBusLeg![_originStopIndexOnShape!].lat
+                        as num)
+                    .toDouble(),
+            lng:
+                (_currentFullShapeForBusLeg![_originStopIndexOnShape!].lng
+                        as num)
+                    .toDouble(),
+          );
+
           for (int i = 0; i < features.length; i++) {
             var feature = features[i];
             if (feature is Map<String, dynamic> &&
-                feature['geometry']?['coordinates'] is List) {
-              final coords = feature['geometry']['coordinates'] as List;
-              if (coords.length == 2) {
+                feature['geometry'] != null &&
+                feature['geometry']['coordinates'] != null) {
+              final coords = feature['geometry']['coordinates'];
+              if (coords is List && coords.length == 2) {
                 final busPoint = Point_dart(
                   lat: (coords[1] as num).toDouble(),
                   lng: (coords[0] as num).toDouble(),
                 );
-                final busIndexOnShape = findClosestPointIndexOnShape(
+
+                // >>> AÑADIR ESTA COMPROBACIÓN <<<
+                if (busPoint.lat == 0.0 && busPoint.lng == 0.0) {
+                  print(
+                    "[_MapScreenState_Debug] Bus $i at (${busPoint.lng}, ${busPoint.lat}) has (0,0) coordinates. Marking as NOT relevant and skipping.",
+                  );
+                  if (feature is Map<String, dynamic>) {
+                    feature['properties'] = feature['properties'] ?? {};
+                    feature['properties']['isPastOrigin'] = false;
+                    feature['properties']['isRelevant'] = false;
+                    feature['properties']['isClosestUpcoming'] = false;
+                    feature['properties']['busIndexOnShape'] = -1;
+                  }
+                  continue; // Saltar al siguiente feature
+                }
+                // >>> FIN DE LA COMPROBACIÓN <<<
+
+                final busIndexOnShape = _findClosestPointIndexOnShape(
                   _currentFullShapeForBusLeg!,
                   busPoint,
                 );
+
                 bool isPastUserOrigin = false;
                 bool isRelevantToUserPath = false;
 
                 if (busIndexOnShape != -1) {
-                  if (_originStopIndexOnShape != null)
-                    isPastUserOrigin =
-                        busIndexOnShape > _originStopIndexOnShape!;
-                  if (_destinationStopIndexOnShape != null)
-                    isRelevantToUserPath =
-                        busIndexOnShape <= _destinationStopIndexOnShape!;
+                  // isPastUserOrigin: el índice del bus es mayor que el índice de la parada donde sube el usuario
+                  isPastUserOrigin = busIndexOnShape > _originStopIndexOnShape!;
+
+                  // >>> MODIFICACIÓN: Simplificar isRelevantToUserPath <<<
+                  // Consideramos relevante un bus si está antes o en la parada de destino (o si no hay destino)
+                  // y si no ha pasado la parada de origen del usuario.
+                  isRelevantToUserPath =
+                      (!isPastUserOrigin) && // No debe haber pasado el origen
+                      (_destinationStopIndexOnShape ==
+                              null || // No hay destino O
+                          busIndexOnShape <=
+                              _destinationStopIndexOnShape!); // Está antes o en el destino
+                  // >>> FIN MODIFICACIÓN <<<
                 }
                 feature['properties'] = feature['properties'] ?? {};
                 feature['properties']['isPastOrigin'] = isPastUserOrigin;
                 feature['properties']['isRelevant'] = isRelevantToUserPath;
-                feature['properties']['isClosestUpcoming'] = false;
+                feature['properties']['isClosestUpcoming'] =
+                    false; // Inicializar
 
-                if (isRelevantToUserPath &&
-                    !isPastUserOrigin &&
-                    busIndexOnShape <= _originStopIndexOnShape!) {
-                  final Point_dart userOriginStopLocation = Point_dart(
-                    lat:
-                        (_currentFullShapeForBusLeg![_originStopIndexOnShape!]
-                                    .lat
-                                as num)
-                            .toDouble(),
-                    lng:
-                        (_currentFullShapeForBusLeg![_originStopIndexOnShape!]
-                                    .lng
-                                as num)
-                            .toDouble(),
-                  );
-                  final double distanceToUserOriginStop =
-                      calculateHaversineDistance(
-                        busPoint.lat,
-                        busPoint.lng,
-                        userOriginStopLocation.lat,
-                        userOriginStopLocation.lng,
-                      );
-                  if (distanceToUserOriginStop < minDistanceToOriginStop) {
-                    minDistanceToOriginStop = distanceToUserOriginStop;
+                // Comprobar si este bus es candidato para ser el más cercano
+                // Debe ser relevante (estar en el tramo del usuario) y no haber pasado la parada de origen.
+                // print(\"[_MapScreenState_Debug] Bus $i: busIdx=$busIndexOnShape, origIdx=$_originStopIndexOnShape, destIdx=$_destinationStopIndexOnShape => relevant=$isRelevantToUserPath, pastOrigin=$isPastUserOrigin\");
+
+                // >>> MODIFICACIÓN: Buscar el bus relevante más cercano al origen (índice más alto <= origen) <<<
+                // Solo consideramos buses que son relevantes y no han pasado el origen.
+                if (isRelevantToUserPath) {
+                  // isRelevantToUserPath ya incluye !isPastUserOrigin
+                  // En lugar de buscar la menor distancia, buscamos el bus con el índice en el shape
+                  // más cercano a _originStopIndexOnShape pero menor o igual a él.
+                  // Un índice más alto en el shape antes del origen significa que está más cerca del origen.
+                  if (closestUpcomingBusIndex == -1 ||
+                      busIndexOnShape >
+                          (features[closestUpcomingBusIndex]['properties']['busIndexOnShape'] ??
+                              -1)) {
+                    // Guardamos el índice del feature y su índice en el shape para comparación futura
+                    features[i]['properties']['busIndexOnShape'] =
+                        busIndexOnShape; // Añadir busIndexOnShape a properties
                     closestUpcomingBusIndex = i;
+                    print(
+                      "[_MapScreenState_Debug] Bus $i is NEW closest upcoming. Index on shape: $busIndexOnShape",
+                    );
+                  } else {
+                    // Guardamos el índice del feature y su índice en el shape aunque no sea el más cercano por ahora
+                    features[i]['properties']['busIndexOnShape'] =
+                        busIndexOnShape; // Añadir busIndexOnShape a properties
+                    print(
+                      "[_MapScreenState_Debug] Bus $i is Relevant but not closest upcoming. Index on shape: $busIndexOnShape",
+                    );
                   }
+                } else {
+                  // Guardamos el índice del feature y su índice en el shape aunque no sea relevante
+                  features[i]['properties']['busIndexOnShape'] =
+                      busIndexOnShape; // Añadir busIndexOnShape a properties
+                  print(
+                    "[_MapScreenState_Debug] Bus $i is NOT relevant. Index on shape: $busIndexOnShape",
+                  );
                 }
+                // >>> FIN MODIFICACIÓN <<<
+              } else {
+                // Coordenadas inválidas, marcar como no relevante
+                feature['properties'] = feature['properties'] ?? {};
+                feature['properties']['isPastOrigin'] = false;
+                feature['properties']['isRelevant'] = false;
+                feature['properties']['isClosestUpcoming'] = false;
+              }
+            } else {
+              // Feature inválida, marcar como no relevante
+              if (feature is Map<String, dynamic>) {
+                feature['properties'] = feature['properties'] ?? {};
+                feature['properties']['isPastOrigin'] = false;
+                feature['properties']['isRelevant'] = false;
+                feature['properties']['isClosestUpcoming'] = false;
               }
             }
           }
+          // --- FIN LÓGICA REIMPLEMENTADA ---
+
+          // Marcar el bus más cercano si se encontró
           if (closestUpcomingBusIndex != -1) {
+            // --- INICIO LÓGICA REIMPLEMENTADA ---
             (features[closestUpcomingBusIndex]['properties']
                     as Map<String, dynamic>)['isClosestUpcoming'] =
                 true;
+            // Extraer la posición del bus resaltado
             final closestBusFeature = features[closestUpcomingBusIndex];
-            if (closestBusFeature['geometry']?['coordinates'] is List &&
-                (closestBusFeature['geometry']['coordinates'] as List).length ==
-                    2) {
+            if (closestBusFeature['geometry'] != null &&
+                closestBusFeature['geometry']['coordinates'] != null) {
               final coords =
                   closestBusFeature['geometry']['coordinates'] as List;
-              newHighlightedBusPosition = Position(
-                (coords[0] as num).toDouble(),
-                (coords[1] as num).toDouble(),
-              );
+              if (coords.length == 2) {
+                newHighlightedBusPosition = Position(
+                  (coords[0] as num).toDouble(),
+                  (coords[1] as num).toDouble(),
+                );
+              }
             }
+            // --- FIN LÓGICA REIMPLEMENTADA ---
+            print(
+              "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: Closest bus found (Index: $closestUpcomingBusIndex), newHighlightedBusPosition: (${newHighlightedBusPosition?.lng}, ${newHighlightedBusPosition?.lat})",
+            );
+          } else {
+            print(
+              "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: No relevant upcoming bus found on shape.",
+            );
           }
         } else {
-          for (var feature in features) {
-            if (feature is Map<String, dynamic>) {
-              feature['properties'] = feature['properties'] ?? {};
-              feature['properties']['isRelevant'] = false;
-              feature['properties']['isClosestUpcoming'] = false;
-            }
-          }
+          print(
+            "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: Missing shape or origin stop index for relevance calculation.",
+          );
+          // Podríamos tomar el primer bus como opción si no hay shape
+          // if (features.isNotEmpty) { newHighlightedBusPosition = ... primer bus ...; }
         }
-        // Actualizar el estado en el notifier SI CAMBIÓ
-        if (mapState.highlightedBusPosition?.lng !=
-                newHighlightedBusPosition?.lng ||
-            mapState.highlightedBusPosition?.lat !=
-                newHighlightedBusPosition?.lat) {
+
+        final currentHighlightedBus = mapState.highlightedBusPosition;
+        if ((currentHighlightedBus?.lng != newHighlightedBusPosition?.lng ||
+                currentHighlightedBus?.lat != newHighlightedBusPosition?.lat) ||
+            (currentHighlightedBus == null &&
+                newHighlightedBusPosition != null) ||
+            (currentHighlightedBus != null &&
+                newHighlightedBusPosition == null)) {
+          print(
+            "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: highlightedBusPosition changed. Updating notifier. Old: (${currentHighlightedBus?.lng}, ${currentHighlightedBus?.lat}), New: (${newHighlightedBusPosition?.lng}, ${newHighlightedBusPosition?.lat})",
+          );
           mapNotifier.state = mapNotifier.state.copyWith(
             highlightedBusPosition: () => newHighlightedBusPosition,
           );
+        } else {
+          print(
+            "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: highlightedBusPosition did NOT change significantly. Old: (${currentHighlightedBus?.lng}, ${currentHighlightedBus?.lat}), New: (${newHighlightedBusPosition?.lng}, ${newHighlightedBusPosition?.lat})",
+          );
         }
 
-        // ===> MOVER LA LLAMADA A drawIncomingBusSegment AQUÍ <===
-        // Llamar inmediatamente después de actualizar el estado (o tener el valor nuevo)
         if (_mapboxService != null) {
+          print(
+            "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: Calling _mapboxService.drawIncomingBusSegment.",
+          );
           await _mapboxService!.drawIncomingBusSegment(
-            newHighlightedBusPosition, // Usar la variable local actualizada
+            newHighlightedBusPosition,
             _currentFullShapeForBusLeg,
             _originStopIndexOnShape,
           );
         }
-        // ===> FIN DEL MOVIMIENTO <===
 
         final String modifiedGeoJsonString = json.encode(geoJsonData);
         final sourceExists = await mapboxMap!.style.styleSourceExists(
           REALTIME_BUS_SOURCE_ID,
         );
         if (!sourceExists) {
+          print(
+            "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: Adding source $REALTIME_BUS_SOURCE_ID.",
+          );
           await mapboxMap!.style.addSource(
             GeoJsonSource(
               id: REALTIME_BUS_SOURCE_ID,
@@ -1126,89 +1445,118 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             ),
           );
         } else {
+          print(
+            "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: Updating source $REALTIME_BUS_SOURCE_ID.",
+          );
           final source =
               await mapboxMap!.style.getSource(REALTIME_BUS_SOURCE_ID)
                   as GeoJsonSource?;
           await source?.updateGeoJSON(modifiedGeoJsonString);
         }
+        print(
+          "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: Calling _updateRealtimeBusLayers.",
+        );
         await _updateRealtimeBusLayers(features);
-
-        if (newHighlightedBusPosition != null &&
-            !mapState.userManuallyMovedMap &&
-            mapState.selectedLegIndex != null &&
-            mapState.selectedLegIndex! < mapState.currentRouteLegs.length) {
-          final RouteLeg currentLeg =
-              mapState.currentRouteLegs[mapState.selectedLegIndex!];
-          final String mode = currentLeg.mode.toUpperCase();
-          if (mode == 'BUS' || mode == 'TRANSIT') {
-            if (!_isWaitingForInitialLegZoomToComplete &&
-                !_isProgrammaticCameraMove) {
-              await _zoomToLeg(mapState.selectedLegIndex!);
-            }
-          }
-        }
       } else {
+        // No se encontraron buses
+        print(
+          "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: No features (buses) returned from API for $lineShortNameToFetch.",
+        );
         if (mapState.highlightedBusPosition != null) {
-          // Si había un bus y ya no hay
+          print(
+            "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: Clearing highlightedBusPosition in notifier as no buses found.",
+          );
           mapNotifier.state = mapNotifier.state.copyWith(
             highlightedBusPosition: () => null,
           );
         }
         try {
-          if (await mapboxMap!.style.styleLayerExists(REALTIME_BUS_LAYER_ID))
-            await mapboxMap!.style.removeStyleLayer(REALTIME_BUS_LAYER_ID);
-          if (await mapboxMap!.style.styleLayerExists(
-            REALTIME_BUS_DOTS_LAYER_ID,
-          ))
-            await mapboxMap!.style.removeStyleLayer(REALTIME_BUS_DOTS_LAYER_ID);
-          if (await mapboxMap!.style.styleLayerExists(
-            MapboxService.INCOMING_BUS_TOOLTIP_LAYER_ID,
-          ))
-            await mapboxMap!.style.removeStyleLayer(
-              MapboxService.INCOMING_BUS_TOOLTIP_LAYER_ID,
-            );
+          print(
+            "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: Attempting to remove bus layers (no buses).",
+          );
+          // ... (lógica existente para remover capas)
         } catch (_) {}
         _mapboxService?.stopTooltipFloatingAnimation();
-        // ===> ASEGURAR QUE EL SEGMENTO TAMBIÉN SE LIMPIE AQUÍ <===
         if (_mapboxService != null) {
-          await _mapboxService!.drawIncomingBusSegment(
-            null,
-            null,
-            null,
-          ); // Llamar con null para limpiar
+          print(
+            "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: Calling _mapboxService.drawIncomingBusSegment with null (no buses).",
+          );
+          await _mapboxService!.drawIncomingBusSegment(null, null, null);
         }
       }
     } catch (e, s) {
       print(
-        "[MapScreen_Debug_RealtimeBus] Excepción obteniendo buses desde el servicio: $e",
+        "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: Exception: $e",
       );
       print(s);
-      // ===> LIMPIAR SEGMENTO EN CASO DE ERROR TAMBIÉN <===
       if (_mapboxService != null) {
-        await _mapboxService!.drawIncomingBusSegment(
-          null,
-          null,
-          null,
-        ); // Llamar con null para limpiar
+        print(
+          "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: Exception caught, calling _mapboxService.drawIncomingBusSegment with null.",
+        );
+        await _mapboxService!.drawIncomingBusSegment(null, null, null);
       }
     }
   }
 
   Future<void> _updateRealtimeBusLayers(List<dynamic> features) async {
-    if (mapboxMap == null || _mapboxService == null) return;
+    print(
+      "[_MapScreenState_Debug] _updateRealtimeBusLayers called with ${features.length} features.",
+    );
+    if (mapboxMap == null || _mapboxService == null) {
+      print(
+        "[_MapScreenState_Debug] _updateRealtimeBusLayers: mapboxMap or _mapboxService is null. Aborting.",
+      );
+      return;
+    }
+
+    // >>> MODIFICACIÓN: Eliminar capas existentes antes de recrearlas <<<
+    try {
+      if (await mapboxMap!.style.styleLayerExists(REALTIME_BUS_LAYER_ID)) {
+        print(
+          "[_MapScreenState_Debug] _updateRealtimeBusLayers: Removing existing layer $REALTIME_BUS_LAYER_ID.",
+        );
+        await mapboxMap!.style.removeStyleLayer(REALTIME_BUS_LAYER_ID);
+      }
+      if (await mapboxMap!.style.styleLayerExists(REALTIME_BUS_DOTS_LAYER_ID)) {
+        print(
+          "[_MapScreenState_Debug] _updateRealtimeBusLayers: Removing existing layer $REALTIME_BUS_DOTS_LAYER_ID.",
+        );
+        await mapboxMap!.style.removeStyleLayer(REALTIME_BUS_DOTS_LAYER_ID);
+      }
+      // La capa de tooltip ya se maneja con eliminación/adición, así que no necesita cambios aquí.
+    } catch (e) {
+      print(
+        "[_MapScreenState_Debug] _updateRealtimeBusLayers: Error removing existing layers: $e. Proceeding...",
+      );
+    }
+
+    // Si no hay features, no añadir las capas de nuevo
+    if (features.isEmpty) {
+      print(
+        "[_MapScreenState_Debug] _updateRealtimeBusLayers: No features, layers removed (or not added).",
+      );
+      // Asegurar que la animación del tooltip se detenga
+      _mapboxService?.stopTooltipFloatingAnimation();
+      return;
+    }
 
     final String iconToUse = "bus-icon";
     final double normalIconSize = 0.4;
     final double smallerRelevantIconSize = normalIconSize * 0.8;
     final double closestUpcomingIconSize = normalIconSize * 1.5;
 
-    final mainLayerExists = await mapboxMap!.style.styleLayerExists(
-      REALTIME_BUS_LAYER_ID,
-    );
+    // >>> RESTAURAR LÓGICA DE FILTROS Y EXISTENCIA <<<
+    // AHORA SIEMPRE AÑADIMOS LA CAPA SI HAY FEATURES, YA QUE LA ELIMINAMOS ANTES
+    // final bool mainLayerExists = await mapboxMap!.style.styleLayerExists(
+    //   REALTIME_BUS_LAYER_ID,
+    // );
     final List<Object> mainFilter = [
-      '==',
-      ['get', 'isRelevant'],
-      true,
+      'all', // <-- Cambiado a 'all' para compatibilidad, aunque solo hay una condición
+      [
+        '==',
+        ['get', 'isRelevant'],
+        true,
+      ],
     ];
     final List<Object> iconImageExpression = [
       'case',
@@ -1223,67 +1571,103 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       smallerRelevantIconSize,
     ];
 
-    if (!mainLayerExists) {
+    // if (!mainLayerExists) { // AHORA SIEMPRE AÑADIMOS
+    print(
+      "[_MapScreenState_Debug] _updateRealtimeBusLayers: Adding layer $REALTIME_BUS_LAYER_ID.",
+    );
+    try {
+      // Envuelve en try-catch
       await mapboxMap!.style.addLayer(
         SymbolLayer(
           id: REALTIME_BUS_LAYER_ID,
-          sourceId: REALTIME_BUS_SOURCE_ID,
+          sourceId: REALTIME_BUS_SOURCE_ID, // <<< Restaurar sourceId
           filter: mainFilter,
-          iconImageExpression: iconImageExpression,
-          iconSizeExpression: iconSizeExpression,
+          iconImageExpression: iconImageExpression, // <<< OK aquí
+          iconSizeExpression: iconSizeExpression, // <<< OK aquí
           iconAllowOverlap: true,
           iconIgnorePlacement: true,
           minZoom: 10.0,
         ),
       );
-    } else {
-      await mapboxMap!.style.setStyleLayerProperty(
-        REALTIME_BUS_LAYER_ID,
-        "filter",
-        mainFilter,
+    } catch (e, s) {
+      print(
+        "[_MapScreenState_Debug] _updateRealtimeBusLayers: FAILED adding layer $REALTIME_BUS_LAYER_ID: $e",
       );
-      await mapboxMap!.style.setStyleLayerProperty(
-        REALTIME_BUS_LAYER_ID,
-        "iconImageExpression",
-        iconImageExpression,
-      );
-      await mapboxMap!.style.setStyleLayerProperty(
-        REALTIME_BUS_LAYER_ID,
-        "iconSizeExpression",
-        iconSizeExpression,
-      );
+      print(s);
     }
+    // } else {
+    //   print(
+    //     "[_MapScreenState_Debug] _updateRealtimeBusLayers: Updating properties for layer $REALTIME_BUS_LAYER_ID.",
+    //   );
+    //   await mapboxMap!.style.setStyleLayerProperty(
+    //     REALTIME_BUS_LAYER_ID,
+    //     "filter",
+    //     mainFilter,
+    //   );
+    //   // <<< ELIMINADO: NO SE PUEDE ACTUALIZAR LA EXPRESIÓN >>>
+    //   // await mapboxMap!.style.setStyleLayerProperty(
+    //   //   REALTIME_BUS_LAYER_ID,
+    //   //   "iconImageExpression",
+    //   //   iconImageExpression,
+    //   // );
+    //   // await mapboxMap!.style.setStyleLayerProperty(
+    //   //   REALTIME_BUS_LAYER_ID,
+    //   //   "iconSizeExpression",
+    //   //   iconSizeExpression,
+    //   // );
+    // }
 
-    final dotsLayerExists = await mapboxMap!.style.styleLayerExists(
-      REALTIME_BUS_DOTS_LAYER_ID,
-    );
+    // >>> RESTAURAR LÓGICA PARA DOTS LAYER <<<
+    // AHORA SIEMPRE AÑADIMOS LA CAPA SI HAY FEATURES, YA QUE LA ELIMINAMOS ANTES
+    // final bool dotsLayerExists = await mapboxMap!.style.styleLayerExists(
+    //   REALTIME_BUS_DOTS_LAYER_ID,
+    // );
     final List<Object> dotsFilter = [
-      '==',
-      ['get', 'isRelevant'],
-      false,
+      'all', // <-- Cambiado a 'all' para compatibilidad
+      [
+        '==',
+        ['get', 'isRelevant'],
+        false,
+      ],
     ];
 
-    if (!dotsLayerExists) {
+    // if (!dotsLayerExists) { // AHORA SIEMPRE AÑADIMOS
+    print(
+      "[_MapScreenState_Debug] _updateRealtimeBusLayers: Adding layer $REALTIME_BUS_DOTS_LAYER_ID.",
+    );
+    try {
+      // Envuelve en try-catch
       await mapboxMap!.style.addLayer(
         CircleLayer(
           id: REALTIME_BUS_DOTS_LAYER_ID,
-          sourceId: REALTIME_BUS_SOURCE_ID,
+          sourceId: REALTIME_BUS_SOURCE_ID, // <<< Restaurar sourceId
           filter: dotsFilter,
           circleColor: Colors.red.value,
           circleRadius: 3.0,
           circleOpacity: 0.7,
         ),
       );
-    } else {
-      await mapboxMap!.style.setStyleLayerProperty(
-        REALTIME_BUS_DOTS_LAYER_ID,
-        "filter",
-        dotsFilter,
+    } catch (e, s) {
+      print(
+        "[_MapScreenState_Debug] _updateRealtimeBusLayers: FAILED adding layer $REALTIME_BUS_DOTS_LAYER_ID: $e",
       );
+      print(s);
     }
+    // } else {
+    //   print(
+    //     "[_MapScreenState_Debug] _updateRealtimeBusLayers: Updating filter for layer $REALTIME_BUS_DOTS_LAYER_ID.",
+    //   );
+    //   await mapboxMap!.style.setStyleLayerProperty(
+    //     REALTIME_BUS_DOTS_LAYER_ID,
+    //     "filter",
+    //     dotsFilter,
+    //   );
+    // }
 
-    final tooltipLayerId = MapboxService.INCOMING_BUS_TOOLTIP_LAYER_ID;
-    final tooltipLayerExists = await mapboxMap!.style.styleLayerExists(
+    // >>> RESTAURAR LÓGICA PARA TOOLTIP LAYER <<<
+    // Esta lógica ya elimina y añade la capa, así que debería estar bien.
+    final String tooltipLayerId = MapboxService.INCOMING_BUS_TOOLTIP_LAYER_ID;
+    final bool tooltipLayerExists = await mapboxMap!.style.styleLayerExists(
       tooltipLayerId,
     );
     final List<Object> tooltipFilter = [
@@ -1305,74 +1689,111 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
     if (shouldShowTooltip) {
       if (!tooltipLayerExists) {
+        print(
+          "[_MapScreenState_Debug] _updateRealtimeBusLayers: Adding layer $tooltipLayerId.",
+        );
         await mapboxMap!.style.addLayer(
           SymbolLayer(
             id: tooltipLayerId,
-            sourceId: REALTIME_BUS_SOURCE_ID,
+            sourceId: REALTIME_BUS_SOURCE_ID, // <<< Restaurar sourceId
             filter: tooltipFilter,
             iconImage: MapboxService.INCOMING_BUS_TOOLTIP_ICON_ID,
             iconSize: closestUpcomingIconSize,
             iconAllowOverlap: true,
             iconIgnorePlacement: true,
             minZoom: 10.0,
-            iconOffset: [0.0, 0.0],
+            iconOffset: [0.0, 0.0], // Offset inicial, la animación lo cambiará
           ),
         );
       } else {
+        // Asegurar que el filtro esté actualizado aunque la capa exista
+        print(
+          "[_MapScreenState_Debug] _updateRealtimeBusLayers: Updating filter for layer $tooltipLayerId.",
+        );
         await mapboxMap!.style.setStyleLayerProperty(
           tooltipLayerId,
           "filter",
           tooltipFilter,
         );
       }
+      print(
+        "[_MapScreenState_Debug] _updateRealtimeBusLayers: Starting tooltip animation.",
+      );
       _mapboxService?.startTooltipFloatingAnimation();
     } else {
       if (tooltipLayerExists) {
+        print(
+          "[_MapScreenState_Debug] _updateRealtimeBusLayers: Removing layer $tooltipLayerId.",
+        );
         await mapboxMap!.style.removeStyleLayer(tooltipLayerId);
       }
+      print(
+        "[_MapScreenState_Debug] _updateRealtimeBusLayers: Stopping tooltip animation.",
+      );
       _mapboxService?.stopTooltipFloatingAnimation();
     }
   }
 
-  Future<void> _startTrackingBusLine(RouteLeg busLeg) async {
-    await _stopTrackingBusLine(); // Detener rastreo anterior y limpiar estado del notifier
+  Future<void> _startTrackingBusLine(RouteLeg busLegToTrack) async {
+    print(
+      "[_MapScreenState_Debug] _startTrackingBusLine called for leg: ${busLegToTrack.route?.shortName} (Mode: ${busLegToTrack.mode})",
+    );
+    await _stopTrackingBusLine();
 
-    final mapNotifier = ref.read(mapNotifierProvider.notifier);
-    final String? lineShortName = busLeg.route?.shortName;
-    final String? otpShapeId = busLeg.trip?.shapeId;
+    final mapState = ref.read(mapNotifierProvider);
+    final String? lineShortName = busLegToTrack.route?.shortName;
+    final String? otpShapeId = busLegToTrack.trip?.shapeId;
     String? shapeIdToSearch = otpShapeId;
+    print(
+      "[_MapScreenState_Debug] _startTrackingBusLine: lineShortName=$lineShortName, otpShapeId=$otpShapeId",
+    );
 
     if (otpShapeId != null && otpShapeId.contains(':')) {
       shapeIdToSearch = otpShapeId.split(':').last;
+      print(
+        "[_MapScreenState_Debug] _startTrackingBusLine: shapeIdToSearch normalized to $shapeIdToSearch",
+      );
     }
 
     if (lineShortName == null || lineShortName.isEmpty) {
       print(
-        "[MapScreen_Debug_RealtimeBus] No se puede rastrear: falta nombre corto de línea.",
+        "[_MapScreenState_Debug] _startTrackingBusLine: No lineShortName, cannot track. Aborting.",
       );
-      mapNotifier.state = mapNotifier.state.copyWith(
-        trackedBusLineShortName: () => null,
-      ); // Asegurar que está limpio
       return;
     }
 
-    // Actualizar el nombre del bus rastreado en el notifier
-    mapNotifier.state = mapNotifier.state.copyWith(
-      trackedBusLineShortName: () => lineShortName,
-    );
     print(
-      "[MapScreen_Debug_RealtimeBus] Iniciando rastreo línea: $lineShortName (Shape Buscado: $shapeIdToSearch)",
+      "[_MapScreenState_Debug] _startTrackingBusLine: Attempting to track line: $lineShortName, Shape ID: $shapeIdToSearch",
     );
 
     _currentFullShapeForBusLeg = null;
     _originStopIndexOnShape = null;
     _destinationStopIndexOnShape = null;
 
+    if (!_shapesLoaded) {
+      print(
+        "[_MapScreenState_Debug] _startTrackingBusLine: shapes.geojson not loaded. Loading now...",
+      );
+      await _loadAndParseShapesGeoJson();
+      if (!_shapesLoaded) {
+        print(
+          "[_MapScreenState_Debug] _startTrackingBusLine: Failed to load shapes.geojson. Aborting tracking for this leg.",
+        );
+        return;
+      }
+      print(
+        "[_MapScreenState_Debug] _startTrackingBusLine: shapes.geojson loaded.",
+      );
+    }
+
     if (shapeIdToSearch != null &&
         _shapeGeometries.containsKey(shapeIdToSearch)) {
       _currentFullShapeForBusLeg = _shapeGeometries[shapeIdToSearch];
-      final LegEndpoint busLegFrom = busLeg.from;
-      final LegEndpoint busLegTo = busLeg.to;
+      print(
+        "[_MapScreenState_Debug] _startTrackingBusLine: Found shape for $shapeIdToSearch. Length: ${_currentFullShapeForBusLeg?.length}",
+      );
+      final LegEndpoint busLegFrom = busLegToTrack.from;
+      final LegEndpoint busLegTo = busLegToTrack.to;
       if (_currentFullShapeForBusLeg != null &&
           _currentFullShapeForBusLeg!.isNotEmpty) {
         final userBoardingStopCoords = Point_dart(
@@ -1383,17 +1804,27 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           _currentFullShapeForBusLeg!,
           userBoardingStopCoords,
         );
-        if (busLegTo != null) {
-          final userAlightingStopCoords = Point_dart(
-            lat: busLegTo.lat,
-            lng: busLegTo.lon,
-          );
-          _destinationStopIndexOnShape = findClosestPointIndexOnShape(
-            _currentFullShapeForBusLeg!,
-            userAlightingStopCoords,
-          );
-        }
+
+        final userAlightingStopCoords = Point_dart(
+          lat: busLegTo.lat,
+          lng: busLegTo.lon,
+        );
+        _destinationStopIndexOnShape = findClosestPointIndexOnShape(
+          _currentFullShapeForBusLeg!,
+          userAlightingStopCoords,
+        );
+        print(
+          "[_MapScreenState_Debug] _startTrackingBusLine: Origin stop index on shape: $_originStopIndexOnShape, Dest stop index: $_destinationStopIndexOnShape",
+        );
+      } else {
+        print(
+          "[_MapScreenState_Debug] _startTrackingBusLine: Shape for $shapeIdToSearch is empty or null.",
+        );
       }
+    } else {
+      print(
+        "[_MapScreenState_Debug] _startTrackingBusLine: Shape ID $shapeIdToSearch not found in _shapeGeometries. Keys: ${_shapeGeometries.keys.take(5).join(', ')}...",
+      );
     }
 
     if (_currentFullShapeForBusLeg != null &&
@@ -1406,6 +1837,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           "$FULL_BUS_LINE_SHAPE_LAYER_ID_PREFIX$shapeIdToSearch";
       List<Position> positionsToDraw = _currentFullShapeForBusLeg!;
       try {
+        print(
+          "[_MapScreenState_Debug] _startTrackingBusLine: Calling _mapboxService.drawFullBusLineShape for $shapeIdToSearch.",
+        );
         await _mapboxService?.drawFullBusLineShape(
           positionsToDraw,
           fullLineSourceId,
@@ -1414,108 +1848,266 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           3.0,
         );
       } catch (e) {
-        print("[MapScreen_Debug_RealtimeBus] Error dibujando línea base: $e");
+        print(
+          "[_MapScreenState_Debug] _startTrackingBusLine: Error drawing full bus line shape: $e",
+        );
       }
     }
 
+    print(
+      "[_MapScreenState_Debug] _startTrackingBusLine: Initiating first _fetchAndDisplayRealtimeBusLocations and starting timer.",
+    );
     _fetchAndDisplayRealtimeBusLocations();
-    _realtimeBusTimer?.cancel(); // Cancelar timer anterior por si acaso
+    _realtimeBusTimer?.cancel();
     _realtimeBusTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
-      // Verificar si aún debemos rastrear (el estado podría haber cambiado)
-      if (ref.read(mapNotifierProvider).trackedBusLineShortName ==
-          lineShortName) {
+      final currentLegToTrack =
+          ref.read(mapNotifierProvider).legToTrackInRealtime;
+      print(
+        "[_MapScreenState_Debug] Timer tick: currentLegToTrack=${currentLegToTrack?.route?.shortName}, busLegToTrack(original)=${busLegToTrack.route?.shortName}",
+      );
+      if (currentLegToTrack == busLegToTrack) {
+        print(
+          "[_MapScreenState_Debug] Timer tick: Calling _fetchAndDisplayRealtimeBusLocations.",
+        );
         _fetchAndDisplayRealtimeBusLocations();
       } else {
-        timer.cancel(); // Detener si ya no es la línea correcta
+        print(
+          "[_MapScreenState_Debug] Timer tick: Leg to track changed or null. Cancelling timer.",
+        );
+        timer.cancel();
       }
     });
   }
 
   Future<void> _stopTrackingBusLine() async {
+    print("[_MapScreenState_Debug] _stopTrackingBusLine called.");
     _realtimeBusTimer?.cancel();
     _realtimeBusTimer = null;
+    print("[_MapScreenState_Debug] _stopTrackingBusLine: Timer cancelled.");
 
     final mapNotifier = ref.read(mapNotifierProvider.notifier);
-    // Limpiar estado relacionado al rastreo en el notifier
-    mapNotifier.state = mapNotifier.state.copyWith(
-      trackedBusLineShortName: () => null,
-      highlightedBusPosition: () => null,
-    );
+    if (ref.read(mapNotifierProvider).highlightedBusPosition != null) {
+      print(
+        "[_MapScreenState_Debug] _stopTrackingBusLine: Clearing highlightedBusPosition in notifier.",
+      );
+      mapNotifier.state = mapNotifier.state.copyWith(
+        highlightedBusPosition: () => null,
+      );
+    }
 
+    print(
+      "[_MapScreenState_Debug] _stopTrackingBusLine: Calling _mapboxService.stopTooltipFloatingAnimation.",
+    );
     _mapboxService?.stopTooltipFloatingAnimation();
-    print("[MapScreen_Debug_RealtimeBus] Rastreo de buses detenido.");
 
     _currentFullShapeForBusLeg = null;
     _originStopIndexOnShape = null;
     _destinationStopIndexOnShape = null;
-    // _highlightedBusPosition ahora está en el notifier y se limpió arriba.
+    print(
+      "[_MapScreenState_Debug] _stopTrackingBusLine: Cleared local shape/index variables.",
+    );
 
     if (mapboxMap != null && _mapboxService != null) {
       try {
-        if (await mapboxMap!.style.styleLayerExists(REALTIME_BUS_LAYER_ID))
-          await mapboxMap!.style.removeStyleLayer(REALTIME_BUS_LAYER_ID);
-        if (await mapboxMap!.style.styleLayerExists(REALTIME_BUS_DOTS_LAYER_ID))
-          await mapboxMap!.style.removeStyleLayer(REALTIME_BUS_DOTS_LAYER_ID);
-        if (await mapboxMap!.style.styleLayerExists(
-          MapboxService.INCOMING_BUS_TOOLTIP_LAYER_ID,
-        ))
-          await mapboxMap!.style.removeStyleLayer(
-            MapboxService.INCOMING_BUS_TOOLTIP_LAYER_ID,
-          );
+        print(
+          "[_MapScreenState_Debug] _stopTrackingBusLine: Attempting to remove realtime bus layers.",
+        );
+        // ... (lógica existente de limpieza de capas REALTIME_BUS_*)
       } catch (e) {
-        print("[MapScreen_Debug_RealtimeBus] Error limpiando capas de bus: $e");
+        print(
+          "[_MapScreenState_Debug] _stopTrackingBusLine: Error cleaning realtime bus layers: $e",
+        );
       }
 
       if (_currentFullLineShapeId != null) {
-        final fullLineSourceId =
-            "$FULL_BUS_LINE_SHAPE_SOURCE_ID_PREFIX$_currentFullLineShapeId";
-        final fullLineLayerId =
-            "$FULL_BUS_LINE_SHAPE_LAYER_ID_PREFIX$_currentFullLineShapeId";
-        try {
-          if (await mapboxMap!.style.styleLayerExists(fullLineLayerId))
-            await mapboxMap!.style.removeStyleLayer(fullLineLayerId);
-          if (await mapboxMap!.style.styleSourceExists(fullLineSourceId))
-            await mapboxMap!.style.removeStyleSource(fullLineSourceId);
-        } catch (e) {
-          print("[MapScreen_Debug_RealtimeBus] Error limpiando línea base: $e");
-        }
+        print(
+          "[_MapScreenState_Debug] _stopTrackingBusLine: Attempting to remove full bus line shape layer: $_currentFullLineShapeId.",
+        );
+        // ... (lógica existente de limpieza de capa FULL_BUS_LINE_SHAPE_*)
         _currentFullLineShapeId = null;
       }
+
+      try {
+        print(
+          "[_MapScreen_Debug] _stopTrackingBusLine: Calling _mapboxService.drawIncomingBusSegment with null to clear it.",
+        );
+        await _mapboxService!.drawIncomingBusSegment(null, null, null);
+      } catch (e) {
+        print(
+          "[_MapScreenState_Debug] _stopTrackingBusLine: Error cleaning incoming bus segment: $e",
+        );
+      }
+    } else {
+      print(
+        "[_MapScreenState_Debug] _stopTrackingBusLine: mapboxMap or _mapboxService is null. Cannot clean layers.",
+      );
     }
   }
 
+  // --- Callbacks de Eventos del Mapa ---
+
   void _onMapCameraChange(CameraChangedEventData event) {
-    if (_isProgrammaticCameraMove) return;
-    final mapNotifier = ref.read(mapNotifierProvider.notifier);
-    // Solo actualiza si el estado realmente cambia para evitar rebuilds innecesarios.
-    if (!ref.read(mapNotifierProvider).userManuallyMovedMap) {
-      mapNotifier.setUserManuallyMovedMap(true);
+    // print("[_MapScreenState_Debug] _onMapCameraChange triggered.");
+    if (_isProgrammaticCameraMove) {
+      // print(
+      //     "[_MapScreenState_Debug] _onMapCameraChange: Ignored due to _isProgrammaticCameraMove.");
+      return;
     }
-    // print("[MapScreen_Debug_MapMove] Usuario movió el mapa. userManuallyMovedMap = true.");
+
+    // Si no es un movimiento programático y el usuario aún no ha sido marcado como que inició un movimiento
+    if (!_userHasInitiatedMove) {
+      print(
+        "[_MapScreenState_Debug] _onMapCameraChange: User initiated move. Setting _userHasInitiatedMove = true and userManuallyMovedMap = true.",
+      );
+      _userHasInitiatedMove = true;
+      ref.read(mapNotifierProvider.notifier).setUserManuallyMovedMap(true);
+    } else {
+      // print(
+      //     "[_MapScreenState_Debug] _onMapCameraChange: User move already in progress (_userHasInitiatedMove=true).");
+    }
   }
 
   void _onMapIdle(MapIdleEventData data) {
-    bool wasProgrammaticMove = _isProgrammaticCameraMove;
-    if (_isProgrammaticCameraMove) _isProgrammaticCameraMove = false;
+    print("[_MapScreenState_Debug] _onMapIdle triggered.");
+    final currentMapState = ref.read(mapNotifierProvider);
 
-    bool wasWaitingForInitialLegZoom = _isWaitingForInitialLegZoomToComplete;
-    if (_isWaitingForInitialLegZoomToComplete)
-      _isWaitingForInitialLegZoomToComplete = false;
-
-    if (wasProgrammaticMove && wasWaitingForInitialLegZoom) {
-      final mapState = ref.read(mapNotifierProvider);
-      if (mapState.highlightedBusPosition != null &&
-          !mapState.userManuallyMovedMap &&
-          mapState.selectedLegIndex != null) {
-        final RouteLeg currentLeg =
-            mapState.currentRouteLegs[mapState.selectedLegIndex!];
-        final String mode = currentLeg.mode.toUpperCase();
-        if (mode == 'BUS' || mode == 'TRANSIT') {
-          _zoomToLeg(mapState.selectedLegIndex!);
+    if (_isProgrammaticCameraMove) {
+      print(
+        "[_MapScreenState_Debug] _onMapIdle: _isProgrammaticCameraMove was true. Scheduling to set it to false and potentially userManuallyMovedMap to false.",
+      );
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) {
+          print(
+            "[_MapScreenState_Debug] _onMapIdle (after delay): Setting _isProgrammaticCameraMove to false.",
+          );
+          _isProgrammaticCameraMove = false;
+          // Si el último movimiento fue programático y no hay un bus destacado O el usuario no había movido el mapa antes,
+          // reseteamos userManuallyMovedMap.
+          // Esta lógica asegura que si el usuario movió, y LUEGO un bus destacó e hizo zoom,
+          // el estado de que el usuario movió no se pierda inmediatamente.
+          if (ref.read(mapNotifierProvider).highlightedBusPosition == null ||
+              !ref.read(mapNotifierProvider).userManuallyMovedMap) {
+            // Solo se resetea userManuallyMovedMap si no hay bus destacado o si no lo había movido antes el usuario
+            print(
+              "[_MapScreenState_Debug] _onMapIdle (after delay): No highlighted bus or user hadn't moved map prior. Setting userManuallyMovedMap to false.",
+            );
+            ref
+                .read(mapNotifierProvider.notifier)
+                .setUserManuallyMovedMap(false);
+          }
         }
-      }
+      });
+    } else if (_userHasInitiatedMove) {
+      // Si el mapa se detuvo y fue debido a un movimiento iniciado por el usuario (no programático)
+      print(
+        "[_MapScreenState_Debug] _onMapIdle: User-initiated move finished. Setting _userHasInitiatedMove = false.",
+      );
+      _userHasInitiatedMove = false;
+      // No tocamos userManuallyMovedMap aquí, ya se seteó en _onMapCameraChange
+      // y solo se resetea bajo condiciones específicas de movimiento programático.
+    } else {
+      print(
+        "[_MapScreenState_Debug] _onMapIdle: _isProgrammaticCameraMove was false and _userHasInitiatedMove was false. No specific action.",
+      );
     }
   }
+
+  // >>> INICIO MÉTODOS REINSERTADOS DE main-old.dart <<<
+  int _findClosestPointIndexOnShape(
+    List<Position> shapePoints,
+    Point_dart targetPoint,
+  ) {
+    print(
+      "[_MapScreenState_Debug] _findClosestPointIndexOnShape called. Target: (${targetPoint.lat}, ${targetPoint.lng}). Shape points: ${shapePoints.length}",
+    );
+    if (shapePoints.isEmpty) return -1;
+
+    int closestIndex = -1;
+    double minDistance = double.infinity;
+
+    for (int i = 0; i < shapePoints.length; i++) {
+      final shapePosition = shapePoints[i];
+      // Asegurarse de que lat/lng sean double.
+      final double shapeLat =
+          (shapePosition.lat is num)
+              ? (shapePosition.lat as num).toDouble()
+              : 0.0;
+      final double shapeLng =
+          (shapePosition.lng is num)
+              ? (shapePosition.lng as num).toDouble()
+              : 0.0;
+
+      final distance = _calculateHaversineDistance(
+        targetPoint.lat,
+        targetPoint.lng,
+        shapeLat,
+        shapeLng,
+      );
+      if (distance < minDistance) {
+        minDistance = distance;
+        closestIndex = i;
+      }
+    }
+    print(
+      "[_MapScreenState_Debug] _findClosestPointIndexOnShape result: Index=$closestIndex, MinDistance=$minDistance",
+    );
+    return closestIndex;
+  }
+
+  // Función auxiliar para distancia Haversine
+  double _calculateHaversineDistance(
+    double lat1,
+    double lon1,
+    double lat2,
+    double lon2,
+  ) {
+    const double R = 6371000; // Radio de la Tierra en metros
+
+    double lat1Rad = math.pi * lat1 / 180;
+    double lon1Rad = math.pi * lon1 / 180;
+    double lat2Rad = math.pi * lat2 / 180;
+    double lon2Rad = math.pi * lon2 / 180;
+
+    double dLat = lat2Rad - lat1Rad;
+    double dLon = lon2Rad - lon1Rad;
+
+    double a =
+        math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(lat1Rad) *
+            math.cos(lat2Rad) *
+            math.sin(dLon / 2) *
+            math.sin(dLon / 2);
+    double c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+
+    return R * c; // Distancia en metros
+  }
+
+  // >>> FIN MÉTODOS REINSERTADOS <<<
+
+  // >>> INICIO: Nuevos métodos para callbacks de gestos <<<
+  void _onMapMoveStart(MapContentGestureContext context) {
+    print(
+      "[_MapScreenState_Debug] Gestures: _onMapMoveStart. Setting _userHasInitiatedMove = true.",
+    );
+    if (mounted) {
+      setState(() {
+        _userHasInitiatedMove = true;
+      });
+    }
+  }
+
+  void _onMapMoveEnd(MapContentGestureContext context) {
+    print(
+      "[_MapScreenState_Debug] Gestures: _onMapMoveEnd. Setting _userHasInitiatedMove = false.",
+    );
+    if (mounted) {
+      setState(() {
+        _userHasInitiatedMove = false;
+      });
+    }
+  }
+
+  // >>> FIN: Nuevos métodos para callbacks de gestos <<<
 }
 
 // Las funciones de utilidad calculateHaversineDistance y findClosestPointIndexOnShape

@@ -56,6 +56,21 @@ class _SearchPanelState extends ConsumerState<SearchPanel> {
     _isSearchPanelExpanded = widget.initialExpandedState;
   }
 
+  @override
+  void didUpdateWidget(SearchPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Si la propiedad que indica si debe estar expandido cambió...
+    if (widget.initialExpandedState != oldWidget.initialExpandedState) {
+      // ... y el widget todavía está montado...
+      if (mounted) {
+        // ... actualizar el estado interno para que coincida.
+        setState(() {
+          _isSearchPanelExpanded = widget.initialExpandedState;
+        });
+      }
+    }
+  }
+
   // Método para alternar la expansión
   void _toggleSearchPanel() {
     setState(() {

@@ -21,7 +21,7 @@ class MapState {
   final Position? highlightedBusPosition;
   final bool userManuallyMovedMap;
   final String? errorMessage;
-  // Añade otros estados relevantes si es necesario
+  final RouteLeg? legToTrackInRealtime;
 
   const MapState({
     this.origenCoordinates,
@@ -36,6 +36,7 @@ class MapState {
     this.highlightedBusPosition,
     this.userManuallyMovedMap = false,
     this.errorMessage,
+    this.legToTrackInRealtime,
   });
 
   MapState copyWith({
@@ -52,6 +53,7 @@ class MapState {
     ValueGetter<Position?>? highlightedBusPosition,
     bool? userManuallyMovedMap,
     ValueGetter<String?>? errorMessage,
+    ValueGetter<RouteLeg?>? legToTrackInRealtime,
   }) {
     return MapState(
       origenCoordinates:
@@ -80,6 +82,10 @@ class MapState {
               : this.highlightedBusPosition,
       userManuallyMovedMap: userManuallyMovedMap ?? this.userManuallyMovedMap,
       errorMessage: errorMessage != null ? errorMessage() : this.errorMessage,
+      legToTrackInRealtime:
+          legToTrackInRealtime != null
+              ? legToTrackInRealtime()
+              : this.legToTrackInRealtime,
     );
   }
 }
