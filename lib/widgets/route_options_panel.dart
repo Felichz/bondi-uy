@@ -60,7 +60,11 @@ void showRouteOptionsModal({
                     List<Widget> modeIcons = [];
                     RouteLeg? firstBusLeg;
                     String? firstBusLegLineName;
-                    String? firstBusLegFromStopGtfsId;
+                    String? firstBusLegFromStopId;
+
+                    print(
+                      "[RouteOptionsPanel_Debug] Procesando Opción ${index + 1} para itinerario con startTime: ${itinerary.startTime}",
+                    );
 
                     for (RouteLeg leg in legs) {
                       String mode = leg.mode.toUpperCase();
@@ -77,7 +81,32 @@ void showRouteOptionsModal({
                         if (firstBusLeg == null) {
                           firstBusLeg = leg;
                           firstBusLegLineName = leg.route?.shortName;
-                          firstBusLegFromStopGtfsId = null;
+                          print(
+                            "[RouteOptionsPanel_Debug] Primer tramo de bus encontrado: Linea=${firstBusLegLineName}",
+                          );
+                          print(
+                            "[RouteOptionsPanel_Debug]   Leg.from: name='${leg.from.name}', stopId='${leg.from.stopId}', stopGtfsId='${leg.from.stopGtfsId}'",
+                          );
+
+                          if (leg.from.stopId != null) {
+                            firstBusLegFromStopId = _getStringValueLocal(
+                              leg.from.stopId,
+                            );
+                            print(
+                              "[RouteOptionsPanel_Debug]     Usando stopId de leg.from.stopId: ${firstBusLegFromStopId}",
+                            );
+                          } else if (leg.from.stopGtfsId != null) {
+                            firstBusLegFromStopId = _getStringValueLocal(
+                              leg.from.stopGtfsId,
+                            );
+                            print(
+                              "[RouteOptionsPanel_Debug]     Usando stopId de leg.from.stopGtfsId: ${firstBusLegFromStopId}",
+                            );
+                          } else {
+                            print(
+                              "[RouteOptionsPanel_Debug]     No se encontró stopId en leg.from.stopId ni en leg.from.stopGtfsId. firstBusLegFromStopId sigue siendo null.",
+                            );
+                          }
                         }
                       }
 
@@ -132,9 +161,115 @@ void showRouteOptionsModal({
                       child: Row(children: interspersedModeIcons),
                     );
 
+                    Widget? etaWidget;
+                    if (firstBusLeg != null &&
+                        firstBusLegFromStopId != null &&
+                        firstBusLegLineName != null) {
+                      // MODIFICACIÓN: Extraer solo la parte numérica del stopId si contiene ":"
+                      String finalStopIdForApi = firstBusLegFromStopId!;
+                      if (finalStopIdForApi.contains(':')) {
+                        final parts = finalStopIdForApi.split(':');
+                        if (parts.length > 1) {
+                          finalStopIdForApi = parts.last;
+                          print(
+                            "[RouteOptionsPanel_Debug] ID de parada normalizado para API: ${parts.last} (original: ${firstBusLegFromStopId})",
+                          );
+                        } else {
+                          print(
+                            "[RouteOptionsPanel_Debug] ID de parada contiene ':' pero no se pudo splitear: ${firstBusLegFromStopId}",
+                          );
+                          // Considerar si en este caso no se debe llamar a la API o si se usa el ID original
+                        }
+                      }
+
+                      etaWidget = FutureBuilder<List<Map<String, dynamic>>>(
+                        future: fetchUpcomingBuses(
+                          finalStopIdForApi, // Usar el ID normalizado
+                          firstBusLegLineName!,
+                        ),
+                        builder: (context, snapshot) {
+                          print(
+                            "[RouteOptionsPanel_Debug] FutureBuilder para ${firstBusLegLineName} (parada ${finalStopIdForApi} / original: ${firstBusLegFromStopId}):",
+                          );
+                          print(
+                            "[RouteOptionsPanel_Debug]   ConnectionState: ${snapshot.connectionState}",
+                          );
+                          if (snapshot.hasError) {
+                            print(
+                              "[RouteOptionsPanel_Debug]   Error: ${snapshot.error}",
+                            );
+                          }
+                          if (snapshot.hasData) {
+                            print(
+                              "[RouteOptionsPanel_Debug]   Data: ${snapshot.data}",
+                            );
+                          }
+
+                          if (snapshot.connectionState ==
+                              ConnectionState.waiting) {
+                            return const Padding(
+                              padding: EdgeInsets.only(top: 4.0),
+                              child: Text(
+                                "Obteniendo ETA...",
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            );
+                          } else if (snapshot.hasError) {
+                            return const Padding(
+                              padding: EdgeInsets.only(top: 4.0),
+                              child: Text(
+                                "No se pudo obtener ETA",
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.redAccent,
+                                ),
+                              ),
+                            );
+                          } else if (snapshot.hasData &&
+                              snapshot.data!.isNotEmpty) {
+                            final etas = snapshot.data!;
+                            final nextBus = etas.first;
+                            final minutesToArrival =
+                                nextBus['minutesToArrival'];
+                            return Padding(
+                              padding: const EdgeInsets.only(top: 4.0),
+                              child: Text(
+                                "Próximo bus en ${minutesToArrival} min",
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.green,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            );
+                          } else {
+                            return const Padding(
+                              padding: EdgeInsets.only(top: 4.0),
+                              child: Text(
+                                "No hay buses próximos",
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.orangeAccent,
+                                ),
+                              ),
+                            );
+                          }
+                        },
+                      );
+                    }
+
                     return ListTile(
                       title: titleWidget,
-                      subtitle: subtitleWidget,
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          subtitleWidget,
+                          if (etaWidget != null) etaWidget,
+                        ],
+                      ),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: () {
                         Navigator.pop(context);

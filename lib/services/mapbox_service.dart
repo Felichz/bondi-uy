@@ -350,7 +350,10 @@ class MapboxService {
         _dynamicRouteLayerIds.add(mainLayerId);
       }
 
-      _legLayerIds[legIndex] = [mainLayerId, shadowLayerId];
+      if (legIndex != 9999) {
+        // Solo añade a _legLayerIds si NO es la capa especial del bus en aproximación
+        _legLayerIds[legIndex] = [mainLayerId, shadowLayerId];
+      }
       print(
         "[MapboxService_Debug] Segmento de ruta ($mainLayerId) dibujado (con sombra) por MapboxService.",
       );

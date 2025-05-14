@@ -16,11 +16,8 @@ final mapNotifierProvider = StateNotifierProvider<MapNotifier, MapState>((ref) {
 
 class MapNotifier extends StateNotifier<MapState> {
   final Ref _ref;
-  // MapboxService NO se almacena aquí, se pasa a los métodos o se usa desde el widget
-  // Timer para debounce de geocoding (si se maneja aquí)
   Timer? _debounceTimer;
-  // Timer para bus en tiempo real (se manejará en el widget que tiene el MapboxService)
-  // Timer? _realtimeBusTimer;
+  Timer? _manualMapMoveTimeoutTimer; // Nuevo temporizador
 
   MapNotifier(this._ref) : super(const MapState());
 
@@ -36,6 +33,7 @@ class MapNotifier extends StateNotifier<MapState> {
 
   void clearRouteState() {
     print("[MapNotifier_Debug] clearRouteState called.");
+    _manualMapMoveTimeoutTimer?.cancel(); // Cancelar timer si se limpia la ruta
     state = state.copyWith(
       isCalculatingRoute: false,
       showCollapsedInstructionsBar: false,
@@ -47,6 +45,7 @@ class MapNotifier extends StateNotifier<MapState> {
       highlightedBusPosition: () => null,
       userManuallyMovedMap: false,
       legToTrackInRealtime: () => null,
+      shouldRecenterMapAfterTimeout: false, // Resetear flag
     );
     print(
       "[MapNotifier_Debug] clearRouteState: legToTrackInRealtime set to null.",
@@ -54,9 +53,51 @@ class MapNotifier extends StateNotifier<MapState> {
   }
 
   void setUserManuallyMovedMap(bool value) {
-    if (state.userManuallyMovedMap != value) {
-      // Solo actualizar si cambia
-      state = state.copyWith(userManuallyMovedMap: value);
+    _manualMapMoveTimeoutTimer?.cancel(); // Siempre cancelar timer anterior
+
+    if (value) {
+      // El usuario movió el mapa manualmente
+      state = state.copyWith(
+        userManuallyMovedMap: true,
+        shouldRecenterMapAfterTimeout:
+            false, // Asegurar que esté en false al inicio
+      );
+      _manualMapMoveTimeoutTimer = Timer(const Duration(seconds: 60), () {
+        print(
+          "[MapNotifier_Debug] Manual map move timeout. Setting userManuallyMovedMap to false and shouldRecenterMapAfterTimeout to true.",
+        );
+        // Verificar si el estado actual todavía es userManuallyMovedMap = true antes de cambiar
+        if (mounted && state.userManuallyMovedMap) {
+          state = state.copyWith(
+            userManuallyMovedMap: false,
+            shouldRecenterMapAfterTimeout: true,
+          );
+        }
+      });
+    } else {
+      // Se está estableciendo userManuallyMovedMap a false directamente (ej. por un zoom programático o el timeout)
+      // Si es por el timeout, shouldRecenterMapAfterTimeout ya se habrá puesto en true
+      // Si es por otra razón (ej. inicio de navegación), no queremos recentrar por timeout.
+      // El flag shouldRecenterMapAfterTimeout solo se pone en true por el propio timer.
+      // Si este método es llamado con false ANTES de que el timer dispare, el timer se cancela y no pasa nada.
+      // Si es llamado con false DESPUÉS de que el timer disparó y puso shouldRecenterMapAfterTimeout = true,
+      // no debemos resetear shouldRecenterMapAfterTimeout aquí, MapScreen lo hará.
+      if (state.userManuallyMovedMap != value) {
+        // Solo actualiza si el valor realmente cambia.
+        // No modificamos shouldRecenterMapAfterTimeout aquí directamente cuando value es false,
+        // ya que podría ser activado por el propio timer.
+        state = state.copyWith(userManuallyMovedMap: value);
+      }
+    }
+  }
+
+  // Nuevo método para que MapScreen resetee el flag después de actuar
+  void resetRecenterMapFlag() {
+    if (state.shouldRecenterMapAfterTimeout) {
+      print(
+        "[MapNotifier_Debug] resetRecenterMapFlag called. Setting shouldRecenterMapAfterTimeout to false.",
+      );
+      state = state.copyWith(shouldRecenterMapAfterTimeout: false);
     }
   }
 
@@ -233,6 +274,8 @@ class MapNotifier extends StateNotifier<MapState> {
   // Método principal para buscar ruta
   Future<void> searchRoute() async {
     print("[MapNotifier_Debug] searchRoute called.");
+    _manualMapMoveTimeoutTimer
+        ?.cancel(); // Cancelar timer si se busca nueva ruta
     if (state.origenCoordinates == null || state.destinoCoordinates == null) {
       print("[MapNotifier_Debug] searchRoute: Missing origin or destination.");
       state = state.copyWith(
@@ -254,6 +297,8 @@ class MapNotifier extends StateNotifier<MapState> {
       trackedBusLineShortName: () => null,
       highlightedBusPosition: () => null,
       legToTrackInRealtime: () => null,
+      userManuallyMovedMap: false, // Resetear al buscar ruta
+      shouldRecenterMapAfterTimeout: false, // Resetear flag
     );
 
     final otpService = _ref.read(otpServiceProvider);
@@ -362,11 +407,27 @@ class MapNotifier extends StateNotifier<MapState> {
     state = state.copyWith(errorMessage: () => null);
   }
 
+  // Método para establecer la posición del bus resaltado en el mapa
+  void setHighlightedBusPosition(Position? position) {
+    state = state.copyWith(highlightedBusPosition: () => position);
+  }
+
+  // NUEVO: Método para establecer el ETA en minutos del bus resaltado
+  void setHighlightedBusEta(int? etaMinutes) {
+    state = state.copyWith(highlightedBusEtaMinutes: () => etaMinutes);
+  }
+
+  // Método para establecer el nombre corto de la línea de bus que se está rastreando
+  void setTrackedBusLineShortName(String? lineShortName) {
+    state = state.copyWith(trackedBusLineShortName: () => lineShortName);
+  }
+
   // --- Métodos de ayuda ---
 
   @override
   void dispose() {
     _debounceTimer?.cancel();
+    _manualMapMoveTimeoutTimer?.cancel(); // Asegurar cancelación al disponer
     super.dispose();
   }
 }

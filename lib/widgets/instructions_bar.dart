@@ -23,6 +23,9 @@ class TripInstructions extends StatelessWidget {
   final VoidCallback onNavigateToPreviousLeg;
   final VoidCallback onNavigateToNextLeg;
   final VoidCallback? onExpandInstructionsTap; // Añadir nuevo callback opcional
+  final int? realtimeEtaMinutes; // NUEVO: ETA en tiempo real en minutos
+  final String?
+  trackedBusLineShortNameForEta; // NUEVO: Nombre corto de la línea para el ETA
 
   const TripInstructions({
     Key? key,
@@ -36,6 +39,8 @@ class TripInstructions extends StatelessWidget {
     required this.onNavigateToPreviousLeg,
     required this.onNavigateToNextLeg,
     this.onExpandInstructionsTap, // Añadir al constructor
+    this.realtimeEtaMinutes, // NUEVO
+    this.trackedBusLineShortNameForEta, // NUEVO
   }) : super(key: key);
 
   // Método para construir los tiles de la lista de instrucciones (movido de _MapScreenState)
@@ -251,17 +256,49 @@ class TripInstructions extends StatelessWidget {
           destinoControllerText.isNotEmpty) {
         walkDestinationDisplay = destinoControllerText;
       }
+
+      // Cálculo de durationText para WALK
+      final double durationSecondsWalk = leg.duration;
+      final durationMinutesWalk = (durationSecondsWalk / 60).round();
+      String currentDurationTextWalk = "";
+      if (durationMinutesWalk > 0) {
+        currentDurationTextWalk = " (~${durationMinutesWalk} min)";
+      } else if (durationSecondsWalk > 0) {
+        currentDurationTextWalk = " (< 1 min)";
+      }
+
       legTitle =
-          "Caminar ${distance}m hacia $walkDestinationDisplay" + durationText;
-    } else if (mode == 'BUS' || mode == 'TRANSIT') {
+          "Caminar ${distance}m hacia $walkDestinationDisplay" +
+          currentDurationTextWalk;
+      legSubtitle = ""; // No hay subtítulo para caminar en la barra colapsada
+    } else if (mode == 'BUS') {
       legIconData = Icons.directions_bus;
       legIconColor = Colors.deepOrangeAccent;
       final LegRoute? route = leg.route;
       final String lineName =
           route?.shortName ?? route?.longName ?? 'Bus desconocido';
-      legTitle = "Tomar bus línea $lineName" + durationText;
-    } else {
-      legTitle = "$mode ${distance}m$durationText";
+
+      String currentDurationTextBus;
+      String currentLegLineName = route?.shortName ?? route?.longName ?? '';
+
+      if (realtimeEtaMinutes != null &&
+          trackedBusLineShortNameForEta == currentLegLineName &&
+          currentLegLineName.isNotEmpty) {
+        currentDurationTextBus = " (~$realtimeEtaMinutes min)"; // Usar ETA real
+      } else {
+        // Fallback al cálculo original de durationText basado en leg.duration
+        final double durationSecondsBus = leg.duration;
+        final durationMinutesBus = (durationSecondsBus / 60).round();
+        if (durationMinutesBus > 0) {
+          currentDurationTextBus = " (~${durationMinutesBus} min)";
+        } else if (durationSecondsBus > 0) {
+          currentDurationTextBus = " (< 1 min)";
+        } else {
+          currentDurationTextBus = "";
+        }
+      }
+      legTitle = "Tomar bus línea $lineName" + currentDurationTextBus;
+      legSubtitle = "Desde: $fromName";
     }
 
     return Positioned(

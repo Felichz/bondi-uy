@@ -19,9 +19,11 @@ class MapState {
   final List<Itinerary> availableItineraries; // Usar List<Itinerary>
   final String? trackedBusLineShortName;
   final Position? highlightedBusPosition;
+  final int? highlightedBusEtaMinutes;
   final bool userManuallyMovedMap;
   final String? errorMessage;
   final RouteLeg? legToTrackInRealtime;
+  final bool shouldRecenterMapAfterTimeout;
 
   const MapState({
     this.origenCoordinates,
@@ -34,9 +36,11 @@ class MapState {
     this.availableItineraries = const [], // Lista vacía de Itinerary
     this.trackedBusLineShortName,
     this.highlightedBusPosition,
+    this.highlightedBusEtaMinutes,
     this.userManuallyMovedMap = false,
     this.errorMessage,
     this.legToTrackInRealtime,
+    this.shouldRecenterMapAfterTimeout = false,
   });
 
   MapState copyWith({
@@ -51,9 +55,11 @@ class MapState {
     List<Itinerary>? availableItineraries, // Usar List<Itinerary>
     ValueGetter<String?>? trackedBusLineShortName,
     ValueGetter<Position?>? highlightedBusPosition,
+    ValueGetter<int?>? highlightedBusEtaMinutes,
     bool? userManuallyMovedMap,
     ValueGetter<String?>? errorMessage,
     ValueGetter<RouteLeg?>? legToTrackInRealtime,
+    bool? shouldRecenterMapAfterTimeout,
   }) {
     return MapState(
       origenCoordinates:
@@ -80,12 +86,18 @@ class MapState {
           highlightedBusPosition != null
               ? highlightedBusPosition()
               : this.highlightedBusPosition,
+      highlightedBusEtaMinutes:
+          highlightedBusEtaMinutes != null
+              ? highlightedBusEtaMinutes()
+              : this.highlightedBusEtaMinutes,
       userManuallyMovedMap: userManuallyMovedMap ?? this.userManuallyMovedMap,
       errorMessage: errorMessage != null ? errorMessage() : this.errorMessage,
       legToTrackInRealtime:
           legToTrackInRealtime != null
               ? legToTrackInRealtime()
               : this.legToTrackInRealtime,
+      shouldRecenterMapAfterTimeout:
+          shouldRecenterMapAfterTimeout ?? this.shouldRecenterMapAfterTimeout,
     );
   }
 }

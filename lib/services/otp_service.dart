@@ -39,13 +39,13 @@ class OtpService {
               endTime
               duration
               distance
-              from { name lat lon }
-              to { name lat lon }
+              from { name lat lon stop { gtfsId } }
+              to { name lat lon stop { gtfsId } }
               route { gtfsId longName shortName }
               trip { gtfsId shapeId }
               legGeometry { points length }
               steps { streetName distance relativeDirection absoluteDirection }
-              intermediatePlaces { name lat lon }
+              intermediatePlaces { name lat lon stop { gtfsId } }
             }
           }
         }

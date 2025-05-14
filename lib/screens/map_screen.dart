@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/services.dart'; // CAMBIADO: Importar todo el paquete en lugar de solo rootBundle
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'dart:math' as math;
 import 'package:flutter_polyline_points/flutter_polyline_points.dart';
@@ -20,6 +20,7 @@ import '../widgets/route_options_panel.dart';
 import '../services/mapbox_service.dart';
 import '../utils/geometry_utils.dart';
 import '../utils/geometry_utils.dart' as geometry_utils;
+import '../models/bus_realtime.dart'; // IMPORTAR BusRealtime
 
 // Importar proveedores y estado
 import '../providers/service_providers.dart';
@@ -383,6 +384,120 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       },
     );
 
+    // >>> NUEVO: Listener para recentrar el mapa después del timeout de movimiento manual <<<
+    ref.listenManual<
+      bool
+    >(mapNotifierProvider.select((s) => s.shouldRecenterMapAfterTimeout), (
+      prevShouldRecenter,
+      nextShouldRecenter,
+    ) {
+      if (nextShouldRecenter) {
+        print(
+          "[_MapScreenState_Debug] Listener (shouldRecenterMapAfterTimeout): Flag is true. Attempting to recenter map.",
+        );
+        final mapState = ref.read(mapNotifierProvider);
+        final mapNotifier = ref.read(mapNotifierProvider.notifier);
+
+        // Resetear el flag inmediatamente para evitar ejecuciones múltiples
+        mapNotifier.resetRecenterMapFlag();
+
+        if (_mapboxService == null) {
+          print(
+            "[_MapScreenState_Debug] Listener (shouldRecenterMapAfterTimeout): MapboxService is null. Cannot recenter.",
+          );
+          return;
+        }
+
+        _isProgrammaticCameraMove = true;
+        print(
+          "[_MapScreenState_Debug] Listener (shouldRecenterMapAfterTimeout): SET _isProgrammaticCameraMove = true",
+        );
+
+        Future<bool> zoomFuture = Future.value(false);
+
+        if (mapState.isInOverviewMode) {
+          if (mapState.highlightedBusPosition != null &&
+              mapState.legToTrackInRealtime != null) {
+            print(
+              "[_MapScreenState_Debug] Listener (shouldRecenterMapAfterTimeout): Overview - Zooming to bus, origin, and destination.",
+            );
+            final legToTrack = mapState.legToTrackInRealtime!;
+            final List<Position> positionsToFit = [
+              Position(legToTrack.from.lon, legToTrack.from.lat),
+              Position(legToTrack.to.lon, legToTrack.to.lat),
+              mapState.highlightedBusPosition!,
+            ];
+            zoomFuture = _mapboxService!.zoomToFitPositions(
+              positionsToFit,
+              const EdgeInsets.all(60.0),
+              animationDuration: const Duration(milliseconds: 1500),
+            );
+          } else if (mapState.currentRouteLegs.isNotEmpty) {
+            print(
+              "[_MapScreenState_Debug] Listener (shouldRecenterMapAfterTimeout): Overview - Zooming to full route bounds.",
+            );
+            zoomFuture = _mapboxService!.zoomToRouteBounds(
+              mapState.currentRouteLegs,
+            );
+          }
+        } else {
+          // Modo de navegación detallada
+          if (mapState.highlightedBusPosition != null &&
+              mapState.legToTrackInRealtime != null) {
+            print(
+              "[_MapScreenState_Debug] Listener (shouldRecenterMapAfterTimeout): DetailedNav - Zooming to bus and current leg origin.",
+            );
+            final legToTrack = mapState.legToTrackInRealtime!;
+            final List<Position> positionsToFit = [
+              Position(legToTrack.from.lon, legToTrack.from.lat),
+              mapState.highlightedBusPosition!,
+            ];
+            zoomFuture = _mapboxService!.zoomToFitPositions(
+              positionsToFit,
+              const EdgeInsets.all(80.0),
+              animationDuration: const Duration(milliseconds: 1200),
+            );
+          } else if (mapState.selectedLegIndex != null &&
+              mapState.currentRouteLegs.isNotEmpty) {
+            print(
+              "[_MapScreenState_Debug] Listener (shouldRecenterMapAfterTimeout): DetailedNav - Zooming to current leg (${mapState.selectedLegIndex}).",
+            );
+            // _zoomToLeg ya setea _isProgrammaticCameraMove y maneja su reseteo.
+            // Así que aquí simplemente llamamos y confiamos en su lógica interna.
+            // No necesitamos re-setear _isProgrammaticCameraMove = false explícitamente para este caso.
+            _zoomToLeg(mapState.selectedLegIndex!);
+            // Como _zoomToLeg maneja su propio _isProgrammaticCameraMove,
+            // no usamos su Future para resetear el flag aquí.
+            // Considerar que _isProgrammaticCameraMove ya está en true.
+            // Si _zoomToLeg lo setea a false al final, está bien.
+            // Para consistencia, evitamos el .then() de zoomFuture para este caso específico.
+            return; // Salir temprano ya que _zoomToLeg maneja el flag.
+          }
+        }
+
+        zoomFuture
+            .then((initiated) {
+              if (!initiated) {
+                print(
+                  "[_MapScreenState_Debug] Listener (shouldRecenterMapAfterTimeout): Zoom initiation FAILED. SET _isProgrammaticCameraMove = false",
+                );
+                _isProgrammaticCameraMove = false;
+              }
+              // Si initiated es true, _onMapIdle se encargará de resetear _isProgrammaticCameraMove.
+              // No necesitamos hacer nada más aquí en el .then para el caso de initiated = true.
+              print(
+                "[_MapScreenState_Debug] Listener (shouldRecenterMapAfterTimeout): Zoom initiated ($initiated). _isProgrammaticCameraMove state will be handled by _onMapIdle or subsequent logic.",
+              );
+            })
+            .catchError((e) {
+              print(
+                "[_MapScreenState_Debug] Listener (shouldRecenterMapAfterTimeout): Zoom CATCH. SET _isProgrammaticCameraMove = false. Error: $e",
+              );
+              _isProgrammaticCameraMove = false;
+            });
+      }
+    });
+
     _loadAndParseShapesGeoJson(); // Llamar al método existente
   }
 
@@ -443,6 +558,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final montevideoApiService = ref.read(montevideoApiServiceProvider);
     List<Map<String, String>> busLinesData = [];
     String errorMessage = 'No hay información de líneas para esta parada.';
+    bool isLoadingLines = true; // Para mostrar un indicador de carga inicial
 
     try {
       busLinesData = await montevideoApiService.fetchBusLinesForStop(stopId);
@@ -454,48 +570,177 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       errorMessage = "Excepción al obtener líneas desde el servicio: $e";
       print("[MapScreen_Debug] $errorMessage");
       print("[MapScreen_Debug] StackTrace: $s");
+    } finally {
+      if (mounted) {
+        isLoadingLines = false;
+      }
     }
 
     if (!mounted) return;
 
+    String?
+    _expandedLineId; // Usaremos lineId para identificar la línea expandida
+
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true, // Permite que el bottom sheet sea más alto
       builder: (BuildContext bc) {
-        return SafeArea(
-          child: Container(
-            child: ListView(
-              shrinkWrap: true,
-              children: <Widget>[
-                ListTile(
-                  title: Text(
-                    'Parada: $stopName (ID: $stopId)',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
+        return StatefulBuilder(
+          // StatefulBuilder para manejar el estado de expansión
+          builder: (BuildContext context, StateSetter setModalState) {
+            return SafeArea(
+              child: Container(
+                constraints: BoxConstraints(
+                  maxHeight:
+                      MediaQuery.of(context).size.height *
+                      0.6, // Limitar altura máxima
                 ),
-                const Divider(),
-                if (busLinesData.isNotEmpty)
-                  ...busLinesData.map(
-                    (lineInfo) => ListTile(
-                      leading: CircleAvatar(
-                        child: Text(lineInfo['line'] ?? '?'),
+                child: Column(
+                  // Usar Column para título fijo y ListView scrollable
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Text(
+                        'Parada: $stopName (ID: $stopId)',
+                        style: Theme.of(context).textTheme.titleLarge,
                       ),
-                      title: Text('Línea: ${lineInfo['line']}'),
-                      subtitle: Text('ID Variante: ${lineInfo['lineId']}'),
-                      onTap: () {
-                        Navigator.pop(context);
-                        print(
-                          "Línea ${lineInfo['line']} (ID: ${lineInfo['lineId']}) seleccionada para parada $stopId",
-                        );
-                        // TODO: Implementar visualización de la ruta de esta línea
-                        // Esto podría implicar llamar a un método en MapNotifier
-                      },
                     ),
-                  )
-                else
-                  ListTile(title: Text(errorMessage)),
-              ],
-            ),
-          ),
+                    const Divider(height: 1),
+                    Expanded(
+                      // ListView scrollable para las líneas
+                      child:
+                          isLoadingLines
+                              ? const Center(child: CircularProgressIndicator())
+                              : busLinesData.isNotEmpty
+                              ? ListView.builder(
+                                shrinkWrap: true,
+                                itemCount: busLinesData.length,
+                                itemBuilder: (context, index) {
+                                  final lineInfo = busLinesData[index];
+                                  final String currentLineId =
+                                      lineInfo['lineId'] ?? '';
+                                  final String currentLineShortName =
+                                      lineInfo['line'] ?? '?';
+                                  final bool isExpanded =
+                                      _expandedLineId == currentLineId;
+
+                                  return Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      ListTile(
+                                        leading: CircleAvatar(
+                                          child: Text(currentLineShortName),
+                                        ),
+                                        title: Text(
+                                          'Línea: $currentLineShortName',
+                                        ),
+                                        subtitle: Text(
+                                          'ID Variante: $currentLineId',
+                                        ),
+                                        trailing: Icon(
+                                          isExpanded
+                                              ? Icons.expand_less
+                                              : Icons.expand_more,
+                                        ),
+                                        onTap: () {
+                                          setModalState(() {
+                                            if (isExpanded) {
+                                              _expandedLineId = null;
+                                            } else {
+                                              _expandedLineId = currentLineId;
+                                            }
+                                          });
+                                        },
+                                      ),
+                                      if (isExpanded)
+                                        Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 16.0,
+                                            vertical: 8.0,
+                                          ),
+                                          child: FutureBuilder<
+                                            List<Map<String, dynamic>>
+                                          >(
+                                            future: montevideoApiService
+                                                .fetchUpcomingBusesForStopAndLine(
+                                                  stopId,
+                                                  currentLineShortName,
+                                                ),
+                                            builder: (context, snapshot) {
+                                              if (snapshot.connectionState ==
+                                                  ConnectionState.waiting) {
+                                                return const Center(
+                                                  child:
+                                                      CircularProgressIndicator(
+                                                        strokeWidth: 2.0,
+                                                      ),
+                                                );
+                                              }
+                                              if (snapshot.hasError) {
+                                                return Text(
+                                                  'Error al cargar ETAs: ${snapshot.error}',
+                                                  style: const TextStyle(
+                                                    color: Colors.red,
+                                                  ),
+                                                );
+                                              }
+                                              if (!snapshot.hasData ||
+                                                  snapshot.data!.isEmpty) {
+                                                return const Text(
+                                                  'No hay próximos arribos para esta línea.',
+                                                );
+                                              }
+                                              final etas =
+                                                  snapshot.data!
+                                                      .map(
+                                                        (etaData) =>
+                                                            BusRealtime.fromJson(
+                                                              etaData,
+                                                            ),
+                                                      )
+                                                      .toList();
+                                              return Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children:
+                                                    etas.map((eta) {
+                                                      return Padding(
+                                                        padding:
+                                                            const EdgeInsets.only(
+                                                              left: 16.0,
+                                                              top: 4.0,
+                                                              bottom: 4.0,
+                                                            ),
+                                                        child: Text(
+                                                          '• Hacia ${eta.destination}: ${eta.minutesToArrival} min.',
+                                                          style:
+                                                              Theme.of(context)
+                                                                  .textTheme
+                                                                  .bodyMedium,
+                                                        ),
+                                                      );
+                                                    }).toList(),
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                      const Divider(
+                                        height: 0.5,
+                                        indent: 16,
+                                        endIndent: 16,
+                                      ),
+                                    ],
+                                  );
+                                },
+                              )
+                              : ListTile(title: Text(errorMessage)),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
         );
       },
     );
@@ -989,12 +1234,18 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       onNavigateToPreviousLeg: _navigateToPreviousLeg,
                       onNavigateToNextLeg: _navigateToNextLeg,
                       onExpandInstructionsTap: () {
-                        if (mapState.currentRouteLegs.isNotEmpty) {
-                          _showTripInstructionsBottomSheet(
-                            mapState.currentRouteLegs,
-                          );
-                        }
+                        // Lógica para mostrar el BottomSheet completo
+                        _showTripInstructionsBottomSheet(
+                          // context, // ELIMINADO
+                          mapState.currentRouteLegs, // SOLO PASAR LAS PIERNAS
+                        );
                       },
+                      // NUEVOS PARÁMETROS AÑADIDOS (corregido):
+                      realtimeEtaMinutes:
+                          mapState
+                              .highlightedBusEtaMinutes, // USAR EL CAMPO CORRECTO DE MapState
+                      trackedBusLineShortNameForEta:
+                          mapState.trackedBusLineShortName,
                     ),
                   ],
                 ),
@@ -1182,7 +1433,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   Future<void> _fetchAndDisplayRealtimeBusLocations() async {
     print(
-      "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations called.",
+      "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations called (NEW IMPLEMENTATION v2).",
     );
     if (mapboxMap == null || _mapboxService == null) {
       print(
@@ -1194,249 +1445,245 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final mapState = ref.read(mapNotifierProvider);
     final mapNotifier = ref.read(mapNotifierProvider.notifier);
     final RouteLeg? legBeingTracked = mapState.legToTrackInRealtime;
-    print(
-      "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: legBeingTracked=${legBeingTracked?.route?.shortName}",
-    );
 
-    final String? lineShortNameToFetch = legBeingTracked?.route?.shortName;
+    if (legBeingTracked == null) {
+      print(
+        "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: legBeingTracked is null. Aborting.",
+      );
+      if (mapState.highlightedBusPosition != null) {
+        mapNotifier.state = mapNotifier.state.copyWith(
+          highlightedBusPosition: () => null,
+        );
+      }
+      _mapboxService?.stopTooltipFloatingAnimation();
+      if (_mapboxService != null) {
+        await _mapboxService!.drawIncomingBusSegment(null, null, null);
+      }
+      await _updateRealtimeBusLayers([]);
+      return;
+    }
 
+    final String? lineShortNameToFetch = legBeingTracked.route?.shortName;
     if (lineShortNameToFetch == null || lineShortNameToFetch.isEmpty) {
       print(
         "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: No lineShortNameToFetch. Aborting.",
       );
       return;
     }
-    print(
-      "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: Requesting locations for line: $lineShortNameToFetch",
-    );
 
-    if (_currentFullShapeForBusLeg == null || _originStopIndexOnShape == null) {
-      print(
-        "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: _currentFullShapeForBusLeg or _originStopIndexOnShape is null. Cannot process bus locations effectively.",
-      );
-      // No abortamos aquí, la API se llamará, pero la relevancia no se calculará
+    String? userBoardingStopId;
+    if (legBeingTracked.from.stopId != null &&
+        legBeingTracked.from.stopId!.isNotEmpty) {
+      userBoardingStopId = legBeingTracked.from.stopId!;
+    } else if (legBeingTracked.from.stopGtfsId != null &&
+        legBeingTracked.from.stopGtfsId!.isNotEmpty) {
+      userBoardingStopId = legBeingTracked.from.stopGtfsId!;
     }
 
+    if (userBoardingStopId == null || userBoardingStopId.isEmpty) {
+      print(
+        "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: No userBoardingStopId found for leg. Aborting.",
+      );
+      return;
+    }
+
+    if (userBoardingStopId.contains(':')) {
+      userBoardingStopId = userBoardingStopId.split(':').last;
+    }
+    if (int.tryParse(userBoardingStopId) == null) {
+      print(
+        "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: userBoardingStopId '$userBoardingStopId' is not numeric after normalization. Aborting.",
+      );
+      return;
+    }
+
+    print(
+      "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: Requesting upcoming buses for line: $lineShortNameToFetch, stop: $userBoardingStopId",
+    );
+
     final montevideoApiService = ref.read(montevideoApiServiceProvider);
+    Position? newHighlightedBusPosition;
+    int? newHighlightedBusEtaMinutes; // Variable local para el ETA
+    List<Map<String, dynamic>> geoJsonFeatures = [];
+
     try {
+      // Continuación con la lógica existente para el endpoint de ETA (/upcomingbuses)
       print(
-        "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: Calling montevideoApiService.fetchRealtimeBusLocations for $lineShortNameToFetch.",
+        "[_MapScreenState_DEBUG_UPCOMING_BUSES] Proceeding to fetch upcoming buses for line: $lineShortNameToFetch, stop: $userBoardingStopId",
       );
-      final Map<String, dynamic> geoJsonData = await montevideoApiService
-          .fetchRealtimeBusLocations(lineShortNameToFetch);
-      print(
-        "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: API call returned. Features count: ${geoJsonData['features']?.length ?? 0}",
-      );
-      final List<dynamic> features = geoJsonData['features'] ?? [];
-      Position? newHighlightedBusPosition;
-
-      if (features.isNotEmpty) {
-        int closestUpcomingBusIndex = -1;
-        double minDistanceToOriginStop = double.infinity;
-
-        if (_currentFullShapeForBusLeg != null &&
-            _currentFullShapeForBusLeg!.isNotEmpty &&
-            _originStopIndexOnShape != null) {
-          // --- INICIO LÓGICA REIMPLEMENTADA DE main-old.dart ---
-          final Point_dart userOriginStopLocation = Point_dart(
-            lat:
-                (_currentFullShapeForBusLeg![_originStopIndexOnShape!].lat
-                        as num)
-                    .toDouble(),
-            lng:
-                (_currentFullShapeForBusLeg![_originStopIndexOnShape!].lng
-                        as num)
-                    .toDouble(),
+      final List<Map<String, dynamic>> upcomingBusesData =
+          await montevideoApiService.fetchUpcomingBusesForStopAndLine(
+            userBoardingStopId,
+            lineShortNameToFetch,
           );
 
-          for (int i = 0; i < features.length; i++) {
-            var feature = features[i];
-            if (feature is Map<String, dynamic> &&
-                feature['geometry'] != null &&
-                feature['geometry']['coordinates'] != null) {
-              final coords = feature['geometry']['coordinates'];
-              if (coords is List && coords.length == 2) {
-                final busPoint = Point_dart(
-                  lat: (coords[1] as num).toDouble(),
-                  lng: (coords[0] as num).toDouble(),
+      print(
+        "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: API call (upcomingbuses) returned. Buses count: ${upcomingBusesData.length}",
+      );
+
+      if (upcomingBusesData.isNotEmpty) {
+        // El primer bus en la lista es el más cercano según la API de ETA
+        final Map<String, dynamic> closestBusDataFromEta =
+            upcomingBusesData.first;
+        print(
+          "[_MapScreenState_Debug] Closest bus data from ETA: $closestBusDataFromEta",
+        );
+
+        // Extraer la ubicación del bus desde la respuesta del ETA
+        final dynamic locationField = closestBusDataFromEta['location'];
+        final dynamic etaField =
+            closestBusDataFromEta['minutesToArrival']; // Asumimos que esto ya está en minutos
+
+        if (etaField is int) {
+          newHighlightedBusEtaMinutes = etaField;
+          print(
+            "[_MapScreenState_Debug] Extracted ETA from API: $newHighlightedBusEtaMinutes minutes.",
+          );
+        } else {
+          print(
+            "[_MapScreenState_Debug] ETA field ('minutesToArrival') is not an int or is missing.",
+          );
+        }
+
+        if (locationField is Map<String, dynamic> &&
+            locationField['type'] == 'Point' &&
+            locationField.containsKey('coordinates')) {
+          final List<dynamic>? coordsList =
+              locationField['coordinates'] as List<dynamic>?;
+
+          if (coordsList != null && coordsList.length == 2) {
+            final lon = coordsList[0];
+            final lat = coordsList[1];
+            if (lon is num && lat is num) {
+              newHighlightedBusPosition = Position(
+                lon.toDouble(),
+                lat.toDouble(),
+              );
+              print(
+                "[_MapScreenState_Debug] Extracted bus position from ETA: Lat=${lat.toDouble()}, Lon=${lon.toDouble()}",
+              );
+
+              // Crear la feature para el bus resaltado (si hay ETA y posición)
+              if (newHighlightedBusPosition != null &&
+                  newHighlightedBusEtaMinutes != null) {
+                geoJsonFeatures.add({
+                  'type': 'Feature',
+                  'id':
+                      'highlighted-realtime-bus-from-eta', // ID único para el bus de ETA
+                  'geometry': {
+                    'type': 'Point',
+                    'coordinates': [lon.toDouble(), lat.toDouble()],
+                  },
+                  'properties': {
+                    'eType':
+                        'buses', // Tipo de entidad, podría usarse para filtros generales si hay otros tipos de features.
+                    'line': lineShortNameToFetch,
+                    'etaMinutes': newHighlightedBusEtaMinutes,
+                    'isRelevant':
+                        true, // Marcar como relevante para el filtro de la capa principal de buses
+                    'isClosestUpcoming':
+                        true, // Marcar como el bus más cercano para estilo especial (ícono/tamaño)
+                    // 'icon': MapboxService.INCOMING_BUS_ICON_ID, // Quitado: La capa lo decidirá por expresión
+                    // 'isHighlighted': true, // Quitado: 'isClosestUpcoming' cumple esta función
+                  },
+                });
+
+                print(
+                  "[_MapScreenState_Debug] Created GeoJSON feature for ETA bus: ${geoJsonFeatures.last}",
                 );
-
-                // >>> AÑADIR ESTA COMPROBACIÓN <<<
-                if (busPoint.lat == 0.0 && busPoint.lng == 0.0) {
-                  print(
-                    "[_MapScreenState_Debug] Bus $i at (${busPoint.lng}, ${busPoint.lat}) has (0,0) coordinates. Marking as NOT relevant and skipping.",
-                  );
-                  if (feature is Map<String, dynamic>) {
-                    feature['properties'] = feature['properties'] ?? {};
-                    feature['properties']['isPastOrigin'] = false;
-                    feature['properties']['isRelevant'] = false;
-                    feature['properties']['isClosestUpcoming'] = false;
-                    feature['properties']['busIndexOnShape'] = -1;
-                  }
-                  continue; // Saltar al siguiente feature
-                }
-                // >>> FIN DE LA COMPROBACIÓN <<<
-
-                final busIndexOnShape = _findClosestPointIndexOnShape(
-                  _currentFullShapeForBusLeg!,
-                  busPoint,
-                );
-
-                bool isPastUserOrigin = false;
-                bool isRelevantToUserPath = false;
-
-                if (busIndexOnShape != -1) {
-                  // isPastUserOrigin: el índice del bus es mayor que el índice de la parada donde sube el usuario
-                  isPastUserOrigin = busIndexOnShape > _originStopIndexOnShape!;
-
-                  // >>> MODIFICACIÓN: Simplificar isRelevantToUserPath <<<
-                  // Consideramos relevante un bus si está antes o en la parada de destino (o si no hay destino)
-                  // y si no ha pasado la parada de origen del usuario.
-                  isRelevantToUserPath =
-                      (!isPastUserOrigin) && // No debe haber pasado el origen
-                      (_destinationStopIndexOnShape ==
-                              null || // No hay destino O
-                          busIndexOnShape <=
-                              _destinationStopIndexOnShape!); // Está antes o en el destino
-                  // >>> FIN MODIFICACIÓN <<<
-                }
-                feature['properties'] = feature['properties'] ?? {};
-                feature['properties']['isPastOrigin'] = isPastUserOrigin;
-                feature['properties']['isRelevant'] = isRelevantToUserPath;
-                feature['properties']['isClosestUpcoming'] =
-                    false; // Inicializar
-
-                // Comprobar si este bus es candidato para ser el más cercano
-                // Debe ser relevante (estar en el tramo del usuario) y no haber pasado la parada de origen.
-                // print(\"[_MapScreenState_Debug] Bus $i: busIdx=$busIndexOnShape, origIdx=$_originStopIndexOnShape, destIdx=$_destinationStopIndexOnShape => relevant=$isRelevantToUserPath, pastOrigin=$isPastUserOrigin\");
-
-                // >>> MODIFICACIÓN: Buscar el bus relevante más cercano al origen (índice más alto <= origen) <<<
-                // Solo consideramos buses que son relevantes y no han pasado el origen.
-                if (isRelevantToUserPath) {
-                  // isRelevantToUserPath ya incluye !isPastUserOrigin
-                  // En lugar de buscar la menor distancia, buscamos el bus con el índice en el shape
-                  // más cercano a _originStopIndexOnShape pero menor o igual a él.
-                  // Un índice más alto en el shape antes del origen significa que está más cerca del origen.
-                  if (closestUpcomingBusIndex == -1 ||
-                      busIndexOnShape >
-                          (features[closestUpcomingBusIndex]['properties']['busIndexOnShape'] ??
-                              -1)) {
-                    // Guardamos el índice del feature y su índice en el shape para comparación futura
-                    features[i]['properties']['busIndexOnShape'] =
-                        busIndexOnShape; // Añadir busIndexOnShape a properties
-                    closestUpcomingBusIndex = i;
-                    print(
-                      "[_MapScreenState_Debug] Bus $i is NEW closest upcoming. Index on shape: $busIndexOnShape",
-                    );
-                  } else {
-                    // Guardamos el índice del feature y su índice en el shape aunque no sea el más cercano por ahora
-                    features[i]['properties']['busIndexOnShape'] =
-                        busIndexOnShape; // Añadir busIndexOnShape a properties
-                    print(
-                      "[_MapScreenState_Debug] Bus $i is Relevant but not closest upcoming. Index on shape: $busIndexOnShape",
-                    );
-                  }
-                } else {
-                  // Guardamos el índice del feature y su índice en el shape aunque no sea relevante
-                  features[i]['properties']['busIndexOnShape'] =
-                      busIndexOnShape; // Añadir busIndexOnShape a properties
-                  print(
-                    "[_MapScreenState_Debug] Bus $i is NOT relevant. Index on shape: $busIndexOnShape",
-                  );
-                }
-                // >>> FIN MODIFICACIÓN <<<
-              } else {
-                // Coordenadas inválidas, marcar como no relevante
-                feature['properties'] = feature['properties'] ?? {};
-                feature['properties']['isPastOrigin'] = false;
-                feature['properties']['isRelevant'] = false;
-                feature['properties']['isClosestUpcoming'] = false;
               }
             } else {
-              // Feature inválida, marcar como no relevante
-              if (feature is Map<String, dynamic>) {
-                feature['properties'] = feature['properties'] ?? {};
-                feature['properties']['isPastOrigin'] = false;
-                feature['properties']['isRelevant'] = false;
-                feature['properties']['isClosestUpcoming'] = false;
-              }
+              print(
+                "[_MapScreenState_Debug] Bus coordinates from ETA are not valid numbers.",
+              );
             }
-          }
-          // --- FIN LÓGICA REIMPLEMENTADA ---
-
-          // Marcar el bus más cercano si se encontró
-          if (closestUpcomingBusIndex != -1) {
-            // --- INICIO LÓGICA REIMPLEMENTADA ---
-            (features[closestUpcomingBusIndex]['properties']
-                    as Map<String, dynamic>)['isClosestUpcoming'] =
-                true;
-            // Extraer la posición del bus resaltado
-            final closestBusFeature = features[closestUpcomingBusIndex];
-            if (closestBusFeature['geometry'] != null &&
-                closestBusFeature['geometry']['coordinates'] != null) {
-              final coords =
-                  closestBusFeature['geometry']['coordinates'] as List;
-              if (coords.length == 2) {
-                newHighlightedBusPosition = Position(
-                  (coords[0] as num).toDouble(),
-                  (coords[1] as num).toDouble(),
-                );
-              }
-            }
-            // --- FIN LÓGICA REIMPLEMENTADA ---
-            print(
-              "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: Closest bus found (Index: $closestUpcomingBusIndex), newHighlightedBusPosition: (${newHighlightedBusPosition?.lng}, ${newHighlightedBusPosition?.lat})",
-            );
           } else {
             print(
-              "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: No relevant upcoming bus found on shape.",
+              "[_MapScreenState_Debug] Bus coordinates list from ETA is null or has incorrect length.",
             );
           }
         } else {
           print(
-            "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: Missing shape or origin stop index for relevance calculation.",
+            "[_MapScreenState_Debug] Closest bus from ETA does not have valid 'location' GeoJSON Point data. Location field: $locationField",
           );
-          // Podríamos tomar el primer bus como opción si no hay shape
-          // if (features.isNotEmpty) { newHighlightedBusPosition = ... primer bus ...; }
         }
+      } else {
+        print(
+          "[_MapScreenState_Debug] No upcoming buses returned by ETA API for line $lineShortNameToFetch, stop $userBoardingStopId.",
+        );
+      }
 
-        final currentHighlightedBus = mapState.highlightedBusPosition;
-        if ((currentHighlightedBus?.lng != newHighlightedBusPosition?.lng ||
-                currentHighlightedBus?.lat != newHighlightedBusPosition?.lat) ||
-            (currentHighlightedBus == null &&
-                newHighlightedBusPosition != null) ||
-            (currentHighlightedBus != null &&
-                newHighlightedBusPosition == null)) {
+      final currentHighlightedBus = mapState.highlightedBusPosition;
+      if ((currentHighlightedBus?.lng != newHighlightedBusPosition?.lng ||
+              currentHighlightedBus?.lat != newHighlightedBusPosition?.lat) ||
+          (currentHighlightedBus == null &&
+              newHighlightedBusPosition != null) ||
+          (currentHighlightedBus != null &&
+              newHighlightedBusPosition == null)) {
+        mapNotifier.state = mapNotifier.state.copyWith(
+          highlightedBusPosition: () => newHighlightedBusPosition,
+        );
+      }
+
+      if (_mapboxService != null) {
+        await _mapboxService!.drawIncomingBusSegment(
+          newHighlightedBusPosition,
+          _currentFullShapeForBusLeg,
+          _originStopIndexOnShape,
+        );
+      }
+
+      final Map<String, dynamic> finalGeoJsonData = {
+        "type": "FeatureCollection",
+        "features": geoJsonFeatures,
+      };
+      final String modifiedGeoJsonString = json.encode(finalGeoJsonData);
+
+      GeoJsonSource? source;
+      bool sourceNeedsCreation = false;
+      try {
+        print(
+          "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: Attempting to get source $REALTIME_BUS_SOURCE_ID",
+        );
+        source =
+            await mapboxMap!.style.getSource(REALTIME_BUS_SOURCE_ID)
+                as GeoJsonSource?;
+        if (source == null) {
           print(
-            "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: highlightedBusPosition changed. Updating notifier. Old: (${currentHighlightedBus?.lng}, ${currentHighlightedBus?.lat}), New: (${newHighlightedBusPosition?.lng}, ${newHighlightedBusPosition?.lat})",
+            "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: Source $REALTIME_BUS_SOURCE_ID is null (needs creation).",
           );
-          mapNotifier.state = mapNotifier.state.copyWith(
-            highlightedBusPosition: () => newHighlightedBusPosition,
-          );
+          sourceNeedsCreation = true;
         } else {
           print(
-            "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: highlightedBusPosition did NOT change significantly. Old: (${currentHighlightedBus?.lng}, ${currentHighlightedBus?.lat}), New: (${newHighlightedBusPosition?.lng}, ${newHighlightedBusPosition?.lat})",
+            "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: Source $REALTIME_BUS_SOURCE_ID exists.",
           );
         }
-
-        if (_mapboxService != null) {
+      } on PlatformException catch (e) {
+        final errorMessage = e.message?.toLowerCase() ?? "";
+        if (errorMessage.contains("is not in style") ||
+            errorMessage.contains("does not exist in style")) {
           print(
-            "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: Calling _mapboxService.drawIncomingBusSegment.",
+            "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: getSource for $REALTIME_BUS_SOURCE_ID failed with 'not in style' PlatformException. Assuming source needs creation. Error: $e",
           );
-          await _mapboxService!.drawIncomingBusSegment(
-            newHighlightedBusPosition,
-            _currentFullShapeForBusLeg,
-            _originStopIndexOnShape,
+          source = null;
+          sourceNeedsCreation = true;
+        } else {
+          print(
+            "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: getSource for $REALTIME_BUS_SOURCE_ID failed with other PlatformException: $e",
           );
+          rethrow; // Propagar otras PlatformExceptions
         }
-
-        final String modifiedGeoJsonString = json.encode(geoJsonData);
-        final sourceExists = await mapboxMap!.style.styleSourceExists(
-          REALTIME_BUS_SOURCE_ID,
+      } catch (e) {
+        print(
+          "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: getSource for $REALTIME_BUS_SOURCE_ID failed with other error: $e",
         );
-        if (!sourceExists) {
+        rethrow; // Propagar otros errores
+      }
+
+      if (sourceNeedsCreation) {
+        try {
           print(
-            "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: Adding source $REALTIME_BUS_SOURCE_ID.",
+            "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: Adding source $REALTIME_BUS_SOURCE_ID with data: $modifiedGeoJsonString",
           );
           await mapboxMap!.style.addSource(
             GeoJsonSource(
@@ -1444,57 +1691,97 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               data: modifiedGeoJsonString,
             ),
           );
-        } else {
           print(
-            "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: Updating source $REALTIME_BUS_SOURCE_ID.",
+            "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: Source $REALTIME_BUS_SOURCE_ID added successfully.",
           );
-          final source =
-              await mapboxMap!.style.getSource(REALTIME_BUS_SOURCE_ID)
-                  as GeoJsonSource?;
-          await source?.updateGeoJSON(modifiedGeoJsonString);
+        } catch (e, s) {
+          print(
+            "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: FAILED to add source $REALTIME_BUS_SOURCE_ID: $e",
+          );
+          print(s);
+          // Si la adición de la fuente falla, no podemos continuar con las capas. Limpiar y retornar.
+          if (mapState.highlightedBusPosition != null) {
+            mapNotifier.state = mapNotifier.state.copyWith(
+              highlightedBusPosition: () => null,
+            );
+          }
+          _mapboxService?.stopTooltipFloatingAnimation();
+          if (_mapboxService != null) {
+            await _mapboxService!.drawIncomingBusSegment(null, null, null);
+          }
+          await _updateRealtimeBusLayers([]);
+          return;
         }
-        print(
-          "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: Calling _updateRealtimeBusLayers.",
-        );
-        await _updateRealtimeBusLayers(features);
-      } else {
-        // No se encontraron buses
-        print(
-          "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: No features (buses) returned from API for $lineShortNameToFetch.",
-        );
-        if (mapState.highlightedBusPosition != null) {
+      } else if (source != null) {
+        try {
           print(
-            "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: Clearing highlightedBusPosition in notifier as no buses found.",
+            "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: Updating source $REALTIME_BUS_SOURCE_ID with data: $modifiedGeoJsonString",
           );
+          await source.updateGeoJSON(modifiedGeoJsonString);
+          print(
+            "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: Source $REALTIME_BUS_SOURCE_ID updated successfully.",
+          );
+        } catch (e, s) {
+          print(
+            "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: FAILED to update source $REALTIME_BUS_SOURCE_ID: $e",
+          );
+          print(s);
+          // Si la actualización falla, podríamos intentar limpiar y retornar.
+          if (mapState.highlightedBusPosition != null) {
+            mapNotifier.state = mapNotifier.state.copyWith(
+              highlightedBusPosition: () => null,
+            );
+          }
+          _mapboxService?.stopTooltipFloatingAnimation();
+          if (_mapboxService != null) {
+            await _mapboxService!.drawIncomingBusSegment(null, null, null);
+          }
+          await _updateRealtimeBusLayers([]);
+          return;
+        }
+      } else {
+        print(
+          "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: Source $REALTIME_BUS_SOURCE_ID is still null after get/add attempts. This should not happen. Aborting further layer ops.",
+        );
+        // Limpiar y retornar si la fuente sigue siendo null por alguna razón imprevista
+        if (mapState.highlightedBusPosition != null) {
           mapNotifier.state = mapNotifier.state.copyWith(
             highlightedBusPosition: () => null,
           );
         }
-        try {
-          print(
-            "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: Attempting to remove bus layers (no buses).",
-          );
-          // ... (lógica existente para remover capas)
-        } catch (_) {}
         _mapboxService?.stopTooltipFloatingAnimation();
         if (_mapboxService != null) {
-          print(
-            "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: Calling _mapboxService.drawIncomingBusSegment with null (no buses).",
-          );
           await _mapboxService!.drawIncomingBusSegment(null, null, null);
         }
+        await _updateRealtimeBusLayers([]);
+        return;
+      }
+
+      await _updateRealtimeBusLayers(geoJsonFeatures);
+
+      if (geoJsonFeatures.isEmpty && newHighlightedBusPosition == null) {
+        if (mapState.highlightedBusPosition != null) {
+          mapNotifier.state = mapNotifier.state.copyWith(
+            highlightedBusPosition: () => null,
+          );
+        }
+        _mapboxService?.stopTooltipFloatingAnimation();
       }
     } catch (e, s) {
       print(
-        "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: Exception: $e",
+        "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: Main try-catch block Exception: $e",
       );
       print(s);
-      if (_mapboxService != null) {
-        print(
-          "[_MapScreenState_Debug] _fetchAndDisplayRealtimeBusLocations: Exception caught, calling _mapboxService.drawIncomingBusSegment with null.",
+      if (mapState.highlightedBusPosition != null) {
+        mapNotifier.state = mapNotifier.state.copyWith(
+          highlightedBusPosition: () => null,
         );
+      }
+      _mapboxService?.stopTooltipFloatingAnimation();
+      if (_mapboxService != null) {
         await _mapboxService!.drawIncomingBusSegment(null, null, null);
       }
+      await _updateRealtimeBusLayers([]);
     }
   }
 
@@ -1790,7 +2077,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         _shapeGeometries.containsKey(shapeIdToSearch)) {
       _currentFullShapeForBusLeg = _shapeGeometries[shapeIdToSearch];
       print(
-        "[_MapScreenState_Debug] _startTrackingBusLine: Found shape for $shapeIdToSearch. Length: ${_currentFullShapeForBusLeg?.length}",
+        "[_MapScreenState_Debug] _startTrackingBusLine: Found shape for ID $shapeIdToSearch. Length: ${_currentFullShapeForBusLeg?.length}", // ADDED LOG
       );
       final LegEndpoint busLegFrom = busLegToTrack.from;
       final LegEndpoint busLegTo = busLegToTrack.to;
@@ -1799,6 +2086,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         final userBoardingStopCoords = Point_dart(
           lat: busLegFrom.lat,
           lng: busLegFrom.lon,
+        );
+        print(
+          "[_MapScreenState_Debug] _startTrackingBusLine: User origin stop coords for shape search: (${userBoardingStopCoords.lat}, ${userBoardingStopCoords.lng})", // ADDED LOG
         );
         _originStopIndexOnShape = findClosestPointIndexOnShape(
           _currentFullShapeForBusLeg!,
@@ -1823,7 +2113,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       }
     } else {
       print(
-        "[_MapScreenState_Debug] _startTrackingBusLine: Shape ID $shapeIdToSearch not found in _shapeGeometries. Keys: ${_shapeGeometries.keys.take(5).join(', ')}...",
+        "[_MapScreenState_Debug] _startTrackingBusLine: Shape ID $shapeIdToSearch not found in _shapeGeometries. ContainsKey check: ${_shapeGeometries.containsKey(shapeIdToSearch)}. Keys loaded: ${_shapeGeometries.keys.length}", // MODIFIED LOG
       );
     }
 
@@ -1844,8 +2134,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           positionsToDraw,
           fullLineSourceId,
           fullLineLayerId,
-          Colors.grey.withOpacity(0.7),
-          3.0,
+          Colors.grey.withOpacity(0.4), // Modificado de 0.7
+          2.0, // Modificado de 3.0
         );
       } catch (e) {
         print(
@@ -1855,7 +2145,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     }
 
     print(
-      "[_MapScreenState_Debug] _startTrackingBusLine: Initiating first _fetchAndDisplayRealtimeBusLocations and starting timer.",
+      "[_MapScreenState_Debug] _startTrackingBusLine: Initiating first _fetchAndDisplayRealtimeBusLocations and starting timer. Origin Index: $_originStopIndexOnShape", // ADDED LOG
     );
     _fetchAndDisplayRealtimeBusLocations();
     _realtimeBusTimer?.cancel();

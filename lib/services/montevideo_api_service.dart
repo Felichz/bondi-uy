@@ -64,6 +64,13 @@ class MontevideoApiService {
     final String apiUrl =
         "$_baseUrl/buses/busstops/$stopId/upcomingbuses?lines=$lineShortName&amountperline=3";
 
+    print(
+      "[BondiUY_Debug_ETA_Service] Llamando a API de ETAs con URL: $apiUrl",
+    );
+    print(
+      "[BondiUY_Debug_ETA_Service]   Parámetros: stopId='$stopId', lineShortName='$lineShortName'",
+    );
+
     try {
       final response = await http.get(
         Uri.parse(apiUrl),
@@ -76,33 +83,57 @@ class MontevideoApiService {
       if (response.statusCode == 200) {
         final List<dynamic> responseData = json.decode(response.body);
         List<Map<String, dynamic>> upcomingBuses = [];
+
+        print(
+          "[BondiUY_Debug_API_RESPONSE_ETAS] Código de estado: ${response.statusCode}",
+        );
+        print("[BondiUY_Debug_API_RESPONSE_ETAS] Headers: ${response.headers}");
+        print("[BondiUY_Debug_API_RESPONSE_ETAS] Body: ${response.body}");
+
         for (var busInfo in responseData) {
           if (busInfo is Map<String, dynamic>) {
-            dynamic etaValue;
+            dynamic etaRawValue;
+            bool isRawValueInSeconds = false;
+
             if (busInfo.containsKey('minutesToArrival')) {
-              etaValue = busInfo['minutesToArrival'];
+              etaRawValue = busInfo['minutesToArrival'];
             } else if (busInfo.containsKey('arrivalMinutes')) {
-              etaValue = busInfo['arrivalMinutes'];
+              etaRawValue = busInfo['arrivalMinutes'];
             } else if (busInfo.containsKey('eta')) {
-              etaValue = busInfo['eta'];
+              etaRawValue = busInfo['eta'];
+              isRawValueInSeconds = true;
             }
 
             int? etaMinutes;
-            if (etaValue is int) {
-              etaMinutes = etaValue;
-            } else if (etaValue is String) {
-              etaMinutes = int.tryParse(etaValue);
-            } else if (etaValue is double) {
-              etaMinutes = etaValue.round();
+            if (etaRawValue is int) {
+              if (isRawValueInSeconds) {
+                etaMinutes = (etaRawValue / 60).round();
+              } else {
+                etaMinutes = etaRawValue;
+              }
+            } else if (etaRawValue is String) {
+              final parsedInt = int.tryParse(etaRawValue);
+              if (parsedInt != null) {
+                if (isRawValueInSeconds) {
+                  etaMinutes = (parsedInt / 60).round();
+                } else {
+                  etaMinutes = parsedInt;
+                }
+              }
+            } else if (etaRawValue is double) {
+              if (isRawValueInSeconds) {
+                etaMinutes = (etaRawValue / 60).round();
+              } else {
+                etaMinutes = etaRawValue.round();
+              }
             }
 
-            if (etaMinutes != null &&
-                ((busInfo['line']?.toString() == lineShortName) ||
-                    (busInfo['lineId']?.toString() == lineShortName))) {
+            if (etaMinutes != null) {
               upcomingBuses.add({
-                'line': busInfo['line']?.toString(),
+                'line': busInfo['line']?.toString() ?? lineShortName,
                 'destination': busInfo['destination']?.toString(),
                 'minutesToArrival': etaMinutes,
+                'location': busInfo['location'],
               });
             }
           }
@@ -197,6 +228,7 @@ class MontevideoApiService {
         print(
           "[BondiUY_Debug] Respuesta recibida de Montevideo API para realtime de buses (línea: $lineShortName)",
         );
+        print("[BondiUY_Debug_API_RESPONSE_REALTIME] Body: ${response.body}");
         return json.decode(response.body) as Map<String, dynamic>;
       } else {
         print(

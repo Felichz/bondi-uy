@@ -53,7 +53,7 @@ class _SearchPanelState extends ConsumerState<SearchPanel> {
   @override
   void initState() {
     super.initState();
-    _isSearchPanelExpanded = widget.initialExpandedState;
+    _isSearchPanelExpanded = false; // Forzar a que inicie colapsado
   }
 
   @override
@@ -89,70 +89,77 @@ class _SearchPanelState extends ConsumerState<SearchPanel> {
 
   // Widget para el panel de búsqueda compacto
   Widget _buildCompactSearchPanelUI() {
-    return Card(
-      margin: const EdgeInsets.fromLTRB(
-        8.0,
-        8.0,
-        8.0,
-        0,
-      ), // margen solo arriba y costados
-      elevation: 3.0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10.0)),
-      child: InkWell(
-        onTap: _toggleSearchPanel, // Usar el método para alternar
-        borderRadius: BorderRadius.circular(10.0),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 10.0),
-          child: Row(
-            children: [
-              Icon(
-                Icons.trip_origin,
-                size: 22,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  widget.origenController.text.isNotEmpty
-                      ? widget.origenController.text
-                      : "Origen",
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
-                  ),
-                  overflow: TextOverflow.ellipsis,
+    return SafeArea(
+      child: Card(
+        margin: const EdgeInsets.fromLTRB(
+          8.0,
+          8.0,
+          8.0,
+          0,
+        ), // margen solo arriba y costados
+        elevation: 3.0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10.0),
+        ),
+        child: InkWell(
+          onTap: _toggleSearchPanel, // Usar el método para alternar
+          borderRadius: BorderRadius.circular(10.0),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 12.0,
+              vertical: 10.0,
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.trip_origin,
+                  size: 22,
+                  color: Theme.of(context).colorScheme.primary,
                 ),
-              ),
-              const SizedBox(width: 8),
-              Icon(Icons.arrow_right_alt, size: 22, color: Colors.grey[700]),
-              const SizedBox(width: 8),
-              Icon(
-                Icons.flag_outlined,
-                size: 22,
-                color: Theme.of(context).colorScheme.secondary,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  widget.destinoController.text.isNotEmpty
-                      ? widget.destinoController.text
-                      : "Destino",
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    widget.origenController.text.isNotEmpty
+                        ? widget.origenController.text
+                        : "Origen",
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
-              const SizedBox(width: 8),
-              IconButton(
-                icon: const Icon(Icons.edit_note_outlined, size: 26),
-                tooltip: "Modificar Viaje",
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
-                onPressed: _toggleSearchPanel, // Usar el método para alternar
-              ),
-            ],
+                const SizedBox(width: 8),
+                Icon(Icons.arrow_right_alt, size: 22, color: Colors.grey[700]),
+                const SizedBox(width: 8),
+                Icon(
+                  Icons.flag_outlined,
+                  size: 22,
+                  color: Theme.of(context).colorScheme.secondary,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    widget.destinoController.text.isNotEmpty
+                        ? widget.destinoController.text
+                        : "Destino",
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: const Icon(Icons.edit_note_outlined, size: 26),
+                  tooltip: "Modificar Viaje",
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  onPressed: _toggleSearchPanel, // Usar el método para alternar
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -161,109 +168,108 @@ class _SearchPanelState extends ConsumerState<SearchPanel> {
 
   // Widget para el panel de búsqueda expandido
   Widget _buildExpandedSearchPanelUI() {
-    return Card(
-      margin: const EdgeInsets.fromLTRB(8.0, 0, 8.0, 8.0),
-      elevation: 3.0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10.0)),
-      child: Container(
-        padding: const EdgeInsets.only(top: 8.0),
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    " Planifica tu Viaje",
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
+    return SafeArea(
+      child: Card(
+        margin: const EdgeInsets.fromLTRB(8.0, 0, 8.0, 8.0),
+        elevation: 3.0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10.0),
+        ),
+        child: Container(
+          padding: const EdgeInsets.only(top: 8.0),
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      " Planifica tu Viaje",
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                  ),
-                  // Solo mostrar la flecha para colapsar si ambos campos tienen texto
-                  // o si se desea que siempre esté visible cuando está expandido.
-                  // Por ahora, se muestra si está expandido y los campos no están vacíos (para permitir colapsar después de buscar)
-                  if (widget.origenController.text.isNotEmpty &&
-                      widget.destinoController.text.isNotEmpty)
                     IconButton(
                       icon: const Icon(Icons.keyboard_arrow_up, size: 28),
                       tooltip: "Colapsar",
                       onPressed:
                           _toggleSearchPanel, // Usar el método para alternar
                     ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8.0, 8.0, 8.0, 4.0),
-              child: _buildTypeAheadField(
-                controller: widget.origenController,
-                focusNode: widget.origenFocusNode,
-                hintText: "Origen",
-                onSelectedCallback: (Point_dart? point) {
-                  widget.onOrigenSelected(point);
-                  if (point != null) {
-                    widget.destinoFocusNode.requestFocus();
-                  }
-                },
-                onClear: widget.onOrigenClear,
-                autoFocus: true,
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8.0, 4.0, 8.0, 8.0),
-              child: _buildTypeAheadField(
-                controller: widget.destinoController,
-                focusNode: widget.destinoFocusNode,
-                hintText: "Destino",
-                onSelectedCallback: (Point_dart? point) {
-                  widget.onDestinoSelected(point);
-                  if (point != null) {
-                    FocusScope.of(context).unfocus();
-                  }
-                },
-                onClear: widget.onDestinoClear,
-                autoFocus: false,
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8.0, top: 4.0),
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 30,
-                    vertical: 12,
-                  ),
+                  ],
                 ),
-                onPressed:
-                    (widget.isCalculatingRoute ||
-                            widget.origenCoordinates == null ||
-                            widget.destinoCoordinates == null)
-                        ? null
-                        : () {
-                          widget.onSearchRoute();
-                          // Considerar si colapsar automáticamente después de buscar
-                          // if (_isSearchPanelExpanded) {
-                          //   _toggleSearchPanel();
-                          // }
-                        },
-                child:
-                    widget.isCalculatingRoute
-                        ? const SizedBox(
-                          height: 20.0,
-                          width: 20.0,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.0,
-                            color: Colors.white,
-                          ),
-                        )
-                        : const Text(
-                          'Buscar Ruta',
-                          style: TextStyle(fontSize: 16),
-                        ),
               ),
-            ),
-          ],
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8.0, 8.0, 8.0, 4.0),
+                child: _buildTypeAheadField(
+                  controller: widget.origenController,
+                  focusNode: widget.origenFocusNode,
+                  hintText: "Origen",
+                  onSelectedCallback: (Point_dart? point) {
+                    widget.onOrigenSelected(point);
+                    if (point != null) {
+                      widget.destinoFocusNode.requestFocus();
+                    }
+                  },
+                  onClear: widget.onOrigenClear,
+                  autoFocus: false,
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8.0, 4.0, 8.0, 8.0),
+                child: _buildTypeAheadField(
+                  controller: widget.destinoController,
+                  focusNode: widget.destinoFocusNode,
+                  hintText: "Destino",
+                  onSelectedCallback: (Point_dart? point) {
+                    widget.onDestinoSelected(point);
+                    if (point != null) {
+                      FocusScope.of(context).unfocus();
+                    }
+                  },
+                  onClear: widget.onDestinoClear,
+                  autoFocus: false,
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8.0, top: 4.0),
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 30,
+                      vertical: 12,
+                    ),
+                  ),
+                  onPressed:
+                      (widget.isCalculatingRoute ||
+                              widget.origenCoordinates == null ||
+                              widget.destinoCoordinates == null)
+                          ? null
+                          : () {
+                            widget.onSearchRoute();
+                            // Considerar si colapsar automáticamente después de buscar
+                            // if (_isSearchPanelExpanded) {
+                            //   _toggleSearchPanel();
+                            // }
+                          },
+                  child:
+                      widget.isCalculatingRoute
+                          ? const SizedBox(
+                            height: 20.0,
+                            width: 20.0,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.0,
+                              color: Colors.white,
+                            ),
+                          )
+                          : const Text(
+                            'Buscar Ruta',
+                            style: TextStyle(fontSize: 16),
+                          ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
