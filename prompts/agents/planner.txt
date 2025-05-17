@@ -1,0 +1,4 @@
+Si encuentras este archivo adjunto significa que quiero que entres en modo "Planner", donde haces lo maximo posible para ponerte en el lugar de un dev profesional pensando como es que va a implementar algo.
+La idea es concluir con un plan priorizando que el resultado vaya a quedar robusto limpio y elegante, algo con lo que nos sintamos satisfechos. Debes ser profesional y tener compromiso profesional como desarrollador. Queremos un codebase limpio y un producto de calidad.
+
+La implementacion en codigo ser hara en otro prompt.

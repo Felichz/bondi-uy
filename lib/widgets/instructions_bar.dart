@@ -26,6 +26,8 @@ class TripInstructions extends StatelessWidget {
   final int? realtimeEtaMinutes; // NUEVO: ETA en tiempo real en minutos
   final String?
   trackedBusLineShortNameForEta; // NUEVO: Nombre corto de la línea para el ETA
+  final bool?
+  isHighlightedBusReal; // NUEVO: Flag para saber si el bus del ETA es real
 
   const TripInstructions({
     Key? key,
@@ -41,6 +43,7 @@ class TripInstructions extends StatelessWidget {
     this.onExpandInstructionsTap, // Añadir al constructor
     this.realtimeEtaMinutes, // NUEVO
     this.trackedBusLineShortNameForEta, // NUEVO
+    this.isHighlightedBusReal, // NUEVO
   }) : super(key: key);
 
   // Método para construir los tiles de la lista de instrucciones (movido de _MapScreenState)
@@ -246,6 +249,7 @@ class TripInstructions extends StatelessWidget {
     Color legIconColor = Colors.grey;
     String legTitle = "";
     String legSubtitle = "";
+    Widget? titleWidget; // Para usar RichText condicionalmente
 
     if (mode == 'WALK') {
       legIconData = Icons.directions_walk;
@@ -279,14 +283,21 @@ class TripInstructions extends StatelessWidget {
           route?.shortName ?? route?.longName ?? 'Bus desconocido';
 
       String currentDurationTextBus;
-      String currentLegLineName = route?.shortName ?? route?.longName ?? '';
+      Color etaTextColor =
+          Theme.of(context).textTheme.titleSmall?.color ??
+          Colors.black; // Color por defecto
 
       if (realtimeEtaMinutes != null &&
-          trackedBusLineShortNameForEta == currentLegLineName &&
-          currentLegLineName.isNotEmpty) {
+          trackedBusLineShortNameForEta == lineName &&
+          lineName.isNotEmpty) {
         currentDurationTextBus = " (~$realtimeEtaMinutes min)"; // Usar ETA real
+        if (isHighlightedBusReal ?? false) {
+          etaTextColor = Colors.green;
+        } else {
+          // Mantener el color por defecto o uno específico para ETA no real si se desea
+          etaTextColor = Colors.orangeAccent; // Por ejemplo
+        }
       } else {
-        // Fallback al cálculo original de durationText basado en leg.duration
         final double durationSecondsBus = leg.duration;
         final durationMinutesBus = (durationSecondsBus / 60).round();
         if (durationMinutesBus > 0) {
@@ -297,8 +308,25 @@ class TripInstructions extends StatelessWidget {
           currentDurationTextBus = "";
         }
       }
-      legTitle = "Tomar bus línea $lineName" + currentDurationTextBus;
+      legTitle = "Tomar bus línea $lineName";
       legSubtitle = "Desde: $fromName";
+
+      titleWidget = RichText(
+        text: TextSpan(
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.bold,
+          ), // Estilo base del título
+          children: <TextSpan>[
+            TextSpan(text: legTitle),
+            if (currentDurationTextBus.isNotEmpty)
+              TextSpan(
+                text: currentDurationTextBus,
+                style: TextStyle(color: etaTextColor),
+              ),
+          ],
+        ),
+        overflow: TextOverflow.ellipsis,
+      );
     }
 
     return Positioned(
@@ -330,57 +358,44 @@ class TripInstructions extends StatelessWidget {
                   disabledColor: Colors.grey.withOpacity(0.5),
                 ),
                 Expanded(
-                  child: GestureDetector(
+                  child: InkWell(
                     onTap:
+                        onExpandInstructionsTap ??
                         () => _showTripInstructionsBottomSheet(
                           context,
                           currentRouteLegs,
                         ),
-                    child: Container(
-                      color: Colors.transparent,
+                    child: Padding(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 4.0,
+                        horizontal: 12.0,
                         vertical: 8.0,
                       ),
                       child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: <Widget>[
-                          Icon(legIconData, color: legIconColor, size: 28),
-                          const SizedBox(width: 8),
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  legTitle,
-                                  style: Theme.of(
-                                    context,
-                                  ).textTheme.titleSmall?.copyWith(
-                                    color:
-                                        Theme.of(context).colorScheme.onSurface,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: <Widget>[
+                                titleWidget ??
+                                    Text(
+                                      // Usar titleWidget si fue creado, sino el Text normal
+                                      legTitle,
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.titleMedium?.copyWith(
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
                                 if (legSubtitle.isNotEmpty)
                                   Padding(
                                     padding: const EdgeInsets.only(top: 2.0),
                                     child: Text(
                                       legSubtitle,
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.bodySmall?.copyWith(
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .onSurface
-                                            .withOpacity(0.7),
-                                      ),
-                                      maxLines:
-                                          mode == 'BUS' || mode == 'TRANSIT'
-                                              ? 2
-                                              : 1,
+                                      style:
+                                          Theme.of(context).textTheme.bodySmall,
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   ),

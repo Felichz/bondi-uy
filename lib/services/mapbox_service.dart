@@ -54,6 +54,11 @@ class MapboxService {
   double _lastTooltipOffset =
       0.0; // Aunque no se use externamente, se mantiene por consistencia con la lógica original
 
+  // >>> AÑADIDO: Variables de estado para el segmento de bus en aproximación
+  bool _incomingBusSegmentSourceExists = false;
+  bool _incomingBusSegmentLayersExist = false;
+  // <<< FIN AÑADIDO
+
   MapboxService(this.mapboxMap);
 
   Future<void> handleStyleLoaded() async {
@@ -838,54 +843,17 @@ class MapboxService {
     int? originStopIndexOnShape,
   ) async {
     print(
-      "[MapboxService_Debug] drawIncomingBusSegment called. BusPos: $highlightedBusPosition, HasShape: ${currentFullShapeForBusLeg != null}, OriginIndex: $originStopIndexOnShape",
+      "[MapboxService_Debug] drawIncomingBusSegment REFACTORED. BusPos: $highlightedBusPosition, HasShape: ${currentFullShapeForBusLeg != null}, OriginIndex: $originStopIndexOnShape",
     );
-    // Definir IDs únicos para la fuente y capa ya están como constantes de clase
-
-    // Limpiar capa/fuente anterior si existen
-    try {
-      bool segmentLayerExists = await mapboxMap.style.styleLayerExists(
-        INCOMING_BUS_SEGMENT_LAYER_ID,
-      );
-      if (segmentLayerExists) {
-        print(
-          "[MapboxService_Debug] drawIncomingBusSegment: Removing existing layer $INCOMING_BUS_SEGMENT_LAYER_ID.",
-        );
-        await mapboxMap.style.removeStyleLayer(INCOMING_BUS_SEGMENT_LAYER_ID);
-      }
-      bool shadowLayerExists = await mapboxMap.style.styleLayerExists(
-        "$INCOMING_BUS_SEGMENT_LAYER_ID-shadow",
-      );
-      if (shadowLayerExists) {
-        print(
-          "[MapboxService_Debug] drawIncomingBusSegment: Removing existing shadow layer.",
-        );
-        await mapboxMap.style.removeStyleLayer(
-          "$INCOMING_BUS_SEGMENT_LAYER_ID-shadow",
-        );
-      }
-      bool sourceExists = await mapboxMap.style.styleSourceExists(
-        INCOMING_BUS_SEGMENT_SOURCE_ID,
-      );
-      if (sourceExists) {
-        print(
-          "[MapboxService_Debug] drawIncomingBusSegment: Removing existing source $INCOMING_BUS_SEGMENT_SOURCE_ID.",
-        );
-        await mapboxMap.style.removeStyleSource(INCOMING_BUS_SEGMENT_SOURCE_ID);
-      }
-    } catch (e) {
-      print(
-        "[MapboxService_Debug] drawIncomingBusSegment: Error during cleanup: $e",
-      );
-      // Ignorar errores durante la limpieza, pero loguearlos
-    }
 
     if (highlightedBusPosition == null ||
         currentFullShapeForBusLeg == null ||
+        currentFullShapeForBusLeg.isEmpty ||
         originStopIndexOnShape == null) {
       print(
-        "[MapboxService_Debug] drawIncomingBusSegment: Missing data. Not drawing segment.",
+        "[MapboxService_Debug] drawIncomingBusSegment: Missing data. Clearing segment.",
       );
+      await clearIncomingBusSegment();
       return;
     }
 
@@ -900,10 +868,12 @@ class MapboxService {
     print(
       "[MapboxService_Debug] drawIncomingBusSegment: Calculated busIndex=$busIndex, originIndex=$originIndex",
     );
+
     if (busIndex == -1) {
       print(
-        "[MapboxService_Debug] drawIncomingBusSegment: Bus not found on shape (busIndex=-1). Not drawing segment.",
+        "[MapboxService_Debug] drawIncomingBusSegment: Bus not found on shape (busIndex=-1). Clearing segment.",
       );
+      await clearIncomingBusSegment();
       return;
     }
 
@@ -912,70 +882,165 @@ class MapboxService {
 
     if (start < 0 || end >= currentFullShapeForBusLeg.length || start > end) {
       print(
-        "[MapboxService_Debug] drawIncomingBusSegment: Invalid segment indices (start=$start, end=$end, shapeLength=${currentFullShapeForBusLeg.length}). Not drawing segment.",
+        "[MapboxService_Debug] drawIncomingBusSegment: Invalid segment indices (start=$start, end=$end, shapeLength=${currentFullShapeForBusLeg.length}). Clearing segment.",
       );
+      await clearIncomingBusSegment();
       return;
     }
 
-    final segment = currentFullShapeForBusLeg.sublist(start, end + 1);
+    final segmentPoints = currentFullShapeForBusLeg.sublist(start, end + 1);
     print(
-      "[MapboxService_Debug] drawIncomingBusSegment: Calculated segment length: ${segment.length}",
+      "[MapboxService_Debug] drawIncomingBusSegment: Calculated segmentPoints length: ${segmentPoints.length}",
     );
-    if (segment.length < 2) {
+
+    if (segmentPoints.length < 2) {
       print(
-        "[MapboxService_Debug] drawIncomingBusSegment: Segment too short (<2). Not drawing.",
+        "[MapboxService_Debug] drawIncomingBusSegment: Segment too short (<2). Clearing segment.",
       );
+      await clearIncomingBusSegment();
       return;
     }
 
-    print(
-      "[MapboxService_Debug] drawIncomingBusSegment: Calling internal drawRouteSegment to draw green line.",
-    );
-    await drawRouteSegment(
-      segment,
-      INCOMING_BUS_SEGMENT_SOURCE_ID,
-      INCOMING_BUS_SEGMENT_LAYER_ID,
-      Colors.green,
-      9999,
-      lineWidth: 6.0,
-      shadowWidth: 8.0,
-    );
+    final Map<String, dynamic> geometry = {
+      'type': 'LineString',
+      'coordinates': segmentPoints.map((p) => [p.lng, p.lat]).toList(),
+    };
+    final Map<String, dynamic> geoJsonFeatureCollection = {
+      "type": "FeatureCollection",
+      "features": [
+        {"type": "Feature", "geometry": geometry, "properties": {}},
+      ],
+    };
+    final String geoJsonDataString = json.encode(geoJsonFeatureCollection);
 
     try {
-      print(
-        "[MapboxService_Debug] drawIncomingBusSegment: Attempting to move segment layers below $ROUTE_MAIN_STOPS_LAYER_ID.",
-      );
-      if (await mapboxMap.style.styleLayerExists(ROUTE_MAIN_STOPS_LAYER_ID)) {
-        if (await mapboxMap.style.styleLayerExists(
-          "$INCOMING_BUS_SEGMENT_LAYER_ID-shadow",
-        )) {
+      if (!_incomingBusSegmentSourceExists) {
+        await mapboxMap.style.addSource(
+          GeoJsonSource(
+            id: INCOMING_BUS_SEGMENT_SOURCE_ID,
+            data: geoJsonDataString,
+          ),
+        );
+        _incomingBusSegmentSourceExists = true;
+        print(
+          "[MapboxService_Debug] drawIncomingBusSegment: Source $INCOMING_BUS_SEGMENT_SOURCE_ID ADDED.",
+        );
+      } else {
+        final source =
+            await mapboxMap.style.getSource(INCOMING_BUS_SEGMENT_SOURCE_ID)
+                as GeoJsonSource?;
+        await source?.updateGeoJSON(geoJsonDataString);
+        print(
+          "[MapboxService_Debug] drawIncomingBusSegment: Source $INCOMING_BUS_SEGMENT_SOURCE_ID UPDATED.",
+        );
+      }
+
+      if (!_incomingBusSegmentLayersExist) {
+        // Add Shadow Layer
+        await mapboxMap.style.addLayer(
+          LineLayer(
+            id: "$INCOMING_BUS_SEGMENT_LAYER_ID-shadow",
+            sourceId: INCOMING_BUS_SEGMENT_SOURCE_ID,
+            lineColor: Colors.black.withOpacity(0.4).value,
+            lineWidth: 8.0, // Original shadowWidth
+            lineOpacity: 0.7,
+            lineJoin: LineJoin.ROUND,
+            lineCap: LineCap.ROUND,
+          ),
+        );
+        // Add Main Segment Layer
+        await mapboxMap.style.addLayer(
+          LineLayer(
+            id: INCOMING_BUS_SEGMENT_LAYER_ID,
+            sourceId: INCOMING_BUS_SEGMENT_SOURCE_ID,
+            lineColor: Colors.green.value,
+            lineWidth: 6.0, // Original lineWidth
+            lineOpacity: 0.9,
+            lineJoin: LineJoin.ROUND,
+            lineCap: LineCap.ROUND,
+          ),
+        );
+        _incomingBusSegmentLayersExist = true;
+        print(
+          "[MapboxService_Debug] drawIncomingBusSegment: Layers for segment ADDED.",
+        );
+
+        // Move layers to correct position (below route stops)
+        if (await mapboxMap.style.styleLayerExists(ROUTE_MAIN_STOPS_LAYER_ID)) {
           await mapboxMap.style.moveStyleLayer(
             "$INCOMING_BUS_SEGMENT_LAYER_ID-shadow",
             LayerPosition(below: ROUTE_MAIN_STOPS_LAYER_ID),
+          );
+          await mapboxMap.style.moveStyleLayer(
+            INCOMING_BUS_SEGMENT_LAYER_ID,
+            LayerPosition(below: ROUTE_MAIN_STOPS_LAYER_ID),
+          );
+          print(
+            "[MapboxService_Debug] drawIncomingBusSegment: Segment layers MOVED below $ROUTE_MAIN_STOPS_LAYER_ID.",
+          );
+        } else {
+          print(
+            "[MapboxService_Debug] drawIncomingBusSegment: Layer $ROUTE_MAIN_STOPS_LAYER_ID not found, segment layers not moved specifically.",
+          );
+        }
+      }
+    } catch (e, s) {
+      print(
+        "[MapboxService_Debug] drawIncomingBusSegment: Error adding/updating source/layers: $e\\n$s",
+      );
+      // En caso de error, intentar limpiar para evitar estado inconsistente
+      await clearIncomingBusSegment();
+    }
+  }
+
+  // >>> AÑADIDO: Nuevo método para limpiar el segmento de bus en aproximación
+  Future<void> clearIncomingBusSegment() async {
+    if (mapboxMap == null) return;
+    print("[MapboxService_Debug] clearIncomingBusSegment called.");
+    try {
+      if (_incomingBusSegmentLayersExist) {
+        if (await mapboxMap.style.styleLayerExists(
+          "$INCOMING_BUS_SEGMENT_LAYER_ID-shadow",
+        )) {
+          await mapboxMap.style.removeStyleLayer(
+            "$INCOMING_BUS_SEGMENT_LAYER_ID-shadow",
+          );
+          print(
+            "[MapboxService_Debug] clearIncomingBusSegment: Shadow layer REMOVED.",
           );
         }
         if (await mapboxMap.style.styleLayerExists(
           INCOMING_BUS_SEGMENT_LAYER_ID,
         )) {
-          await mapboxMap.style.moveStyleLayer(
-            INCOMING_BUS_SEGMENT_LAYER_ID,
-            LayerPosition(below: ROUTE_MAIN_STOPS_LAYER_ID),
+          await mapboxMap.style.removeStyleLayer(INCOMING_BUS_SEGMENT_LAYER_ID);
+          print(
+            "[MapboxService_Debug] clearIncomingBusSegment: Main layer REMOVED.",
           );
         }
-        print(
-          "[MapboxService_Debug] drawIncomingBusSegment: Segment layers moved.",
-        );
-      } else {
-        print(
-          "[MapboxService_Debug] drawIncomingBusSegment: Layer $ROUTE_MAIN_STOPS_LAYER_ID not found, segment layers not moved.",
-        );
+        _incomingBusSegmentLayersExist = false;
       }
-    } catch (e) {
-      print(
-        "[MapboxService_Debug] drawIncomingBusSegment: Error moving segment layers: $e",
-      );
+
+      if (_incomingBusSegmentSourceExists) {
+        if (await mapboxMap.style.styleSourceExists(
+          INCOMING_BUS_SEGMENT_SOURCE_ID,
+        )) {
+          await mapboxMap.style.removeStyleSource(
+            INCOMING_BUS_SEGMENT_SOURCE_ID,
+          );
+          print(
+            "[MapboxService_Debug] clearIncomingBusSegment: Source REMOVED.",
+          );
+        }
+        _incomingBusSegmentSourceExists = false;
+      }
+    } catch (e, s) {
+      print("[MapboxService_Debug] Error in clearIncomingBusSegment: $e\\n$s");
+      // Reset flags incluso si hay error para intentar una recreación limpia la próxima vez
+      _incomingBusSegmentLayersExist = false;
+      _incomingBusSegmentSourceExists = false;
     }
   }
+  // <<< FIN AÑADIDO
 
   // AÑADIDO: Método para hacer zoom y centrar el mapa en la ruta calculada.
   Future<bool> zoomToRouteBounds(List<RouteLeg> legs) async {
@@ -1214,19 +1279,25 @@ class MapboxService {
       final double offsetY =
           baseOffset - amplitude * math.sin(_tooltipFloatPhase);
       _lastTooltipOffset = offsetY;
-      // Actualiza el iconOffset del tooltip layer
-      // mapboxMap está disponible directamente en la clase
+
       try {
-        // Log reducido para evitar spam
-        // print("[MapboxService_Debug] Updating tooltip offset: $offsetY");
-        await mapboxMap.style.setStyleLayerProperty(
+        // Verificar si la capa existe antes de intentar modificarla
+        bool layerExists = await mapboxMap.style.styleLayerExists(
           INCOMING_BUS_TOOLTIP_LAYER_ID,
-          'icon-offset',
-          [0.0, offsetY],
         );
+        if (layerExists) {
+          await mapboxMap.style.setStyleLayerProperty(
+            INCOMING_BUS_TOOLTIP_LAYER_ID,
+            'icon-offset',
+            [0.0, offsetY],
+          );
+        } else {
+          // Log opcional si la capa no existe, podría ser spammy
+          // print("[MapboxService_Debug] Tooltip layer does not exist, cannot update offset. Stopping animation.");
+          // stopTooltipFloatingAnimation(); // Opcional: detener la animación si la capa desaparece
+        }
       } catch (e) {
         print("[MapboxService_Debug] Error updating tooltip offset: $e");
-        // Considerar cancelar timer si hay error persistente?
       }
     });
   }

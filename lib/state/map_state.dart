@@ -6,6 +6,77 @@ import 'package:bondi_uy/models/point_dart.dart'; // Para Point_dart
 import 'package:bondi_uy/models/itinerary.dart'; // Importar Itinerary
 import 'package:bondi_uy/models/route_leg.dart'; // Importar RouteLeg
 
+// Nuevo: Define el objetivo actual del zoom del mapa.
+enum ZoomTargetType {
+  none, // Sin objetivo de zoom específico, el usuario tiene control total o es el estado inicial.
+  initial, // Cámara inicial al cargar el mapa
+  overview, // Zoom para ver la ruta completa.
+  leg, // Zoom a un tramo específico.
+  busAndLegOrigin, // Zoom para ver el bus y el origen del tramo actual.
+  points, // Zoom para encajar un conjunto de puntos.
+  origenSelection, // Zoom al origen cuando se selecciona.
+  destinoSelection, // Zoom al destino cuando se selecciona.
+}
+
+// Nuevo: Contiene los detalles para un objetivo de zoom específico.
+@immutable
+class ZoomTarget {
+  final ZoomTargetType type;
+  final int?
+  legIndex; // Para ZoomTargetType.leg y ZoomTargetType.busAndLegOrigin
+  final List<Position>? points; // Para ZoomTargetType.points
+  final Position?
+  singlePoint; // Para ZoomTargetType.origenSelection o ZoomTargetType.destinoSelection
+
+  const ZoomTarget({
+    required this.type,
+    this.legIndex,
+    this.points,
+    this.singlePoint,
+  });
+
+  static const ZoomTarget none = ZoomTarget(type: ZoomTargetType.none);
+  static const ZoomTarget initial = ZoomTarget(type: ZoomTargetType.initial);
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ZoomTarget &&
+          runtimeType == other.runtimeType &&
+          type == other.type &&
+          legIndex == other.legIndex &&
+          listEquals(points, other.points) &&
+          singlePoint == other.singlePoint;
+
+  @override
+  int get hashCode =>
+      type.hashCode ^
+      legIndex.hashCode ^
+      (points != null ? Object.hashAll(points!) : 0) ^
+      singlePoint.hashCode;
+
+  ZoomTarget copyWith({
+    ZoomTargetType? type,
+    int? legIndex,
+    List<Position>? points,
+    Position? singlePoint,
+  }) {
+    return ZoomTarget(
+      type: type ?? this.type,
+      legIndex: legIndex ?? this.legIndex,
+      points: points ?? this.points,
+      singlePoint: singlePoint ?? this.singlePoint,
+    );
+  }
+}
+
+// Nuevo: Estado de la interacción del usuario con el mapa.
+enum UserMapInteractionState {
+  idle, // El sistema puede controlar el zoom.
+  manualMoveInProgress, // El usuario está moviendo activamente el mapa. El sistema NO debe hacer zoom.
+  manualMoveCooldown, // El usuario acaba de mover el mapa. El sistema NO debe auto-zoom por un corto periodo.
+}
+
 // Usar freezed podría ser una buena mejora aquí para inmutabilidad y copyWith
 @immutable
 class MapState {
@@ -18,12 +89,30 @@ class MapState {
   final bool isInOverviewMode;
   final List<Itinerary> availableItineraries; // Usar List<Itinerary>
   final String? trackedBusLineShortName;
-  final Position? highlightedBusPosition;
+  final Position?
+  highlightedBusPosition; // Posición principal del bus para UI (puede ser simulada o real)
   final int? highlightedBusEtaMinutes;
-  final bool userManuallyMovedMap;
   final String? errorMessage;
   final RouteLeg? legToTrackInRealtime;
-  final bool shouldRecenterMapAfterTimeout;
+  final bool? isHighlightedBusReal;
+
+  // Campos para la simulación de movimiento del bus
+  final Position? simulatedBusPosition; // Posición calculada por la simulación
+  final double?
+  busSpeedMetersPerSecond; // Velocidad calculada para la simulación
+  final DateTime?
+  lastSpeedCalculationTime; // Cuándo se calculó la velocidad por última vez
+  final Position?
+  simulationSegmentOriginPoint; // Desde dónde empezó el segmento actual de simulación
+  final Position?
+  realDebugBusPosition; // Posición real del bus según API (para depuración)
+  final double?
+  maxSimulationTravelDistance; // Máxima distancia a simular antes de nueva data API
+
+  // NUEVOS CAMPOS
+  final ZoomTarget currentZoomTarget;
+  final UserMapInteractionState userMapInteraction;
+  final DateTime? lastManualMoveTimestamp;
 
   const MapState({
     this.origenCoordinates,
@@ -37,10 +126,18 @@ class MapState {
     this.trackedBusLineShortName,
     this.highlightedBusPosition,
     this.highlightedBusEtaMinutes,
-    this.userManuallyMovedMap = false,
     this.errorMessage,
     this.legToTrackInRealtime,
-    this.shouldRecenterMapAfterTimeout = false,
+    this.isHighlightedBusReal,
+    this.simulatedBusPosition,
+    this.busSpeedMetersPerSecond,
+    this.lastSpeedCalculationTime,
+    this.simulationSegmentOriginPoint,
+    this.realDebugBusPosition,
+    this.maxSimulationTravelDistance,
+    this.currentZoomTarget = ZoomTarget.initial, // NUEVO
+    this.userMapInteraction = UserMapInteractionState.idle, // NUEVO
+    this.lastManualMoveTimestamp, // NUEVO
   });
 
   MapState copyWith({
@@ -56,10 +153,19 @@ class MapState {
     ValueGetter<String?>? trackedBusLineShortName,
     ValueGetter<Position?>? highlightedBusPosition,
     ValueGetter<int?>? highlightedBusEtaMinutes,
-    bool? userManuallyMovedMap,
     ValueGetter<String?>? errorMessage,
     ValueGetter<RouteLeg?>? legToTrackInRealtime,
-    bool? shouldRecenterMapAfterTimeout,
+    ValueGetter<Position?>? simulatedBusPosition,
+    ValueGetter<double?>? busSpeedMetersPerSecond,
+    ValueGetter<DateTime?>? lastSpeedCalculationTime,
+    ValueGetter<Position?>? simulationSegmentOriginPoint,
+    ValueGetter<Position?>? realDebugBusPosition,
+    ValueGetter<double?>? maxSimulationTravelDistance,
+    ValueGetter<bool?>? isHighlightedBusReal,
+    // NUEVOS CAMPOS
+    ZoomTarget? currentZoomTarget,
+    UserMapInteractionState? userMapInteraction,
+    ValueGetter<DateTime?>? lastManualMoveTimestamp,
   }) {
     return MapState(
       origenCoordinates:
@@ -90,14 +196,45 @@ class MapState {
           highlightedBusEtaMinutes != null
               ? highlightedBusEtaMinutes()
               : this.highlightedBusEtaMinutes,
-      userManuallyMovedMap: userManuallyMovedMap ?? this.userManuallyMovedMap,
       errorMessage: errorMessage != null ? errorMessage() : this.errorMessage,
       legToTrackInRealtime:
           legToTrackInRealtime != null
               ? legToTrackInRealtime()
               : this.legToTrackInRealtime,
-      shouldRecenterMapAfterTimeout:
-          shouldRecenterMapAfterTimeout ?? this.shouldRecenterMapAfterTimeout,
+      simulatedBusPosition:
+          simulatedBusPosition != null
+              ? simulatedBusPosition()
+              : this.simulatedBusPosition,
+      busSpeedMetersPerSecond:
+          busSpeedMetersPerSecond != null
+              ? busSpeedMetersPerSecond()
+              : this.busSpeedMetersPerSecond,
+      lastSpeedCalculationTime:
+          lastSpeedCalculationTime != null
+              ? lastSpeedCalculationTime()
+              : this.lastSpeedCalculationTime,
+      simulationSegmentOriginPoint:
+          simulationSegmentOriginPoint != null
+              ? simulationSegmentOriginPoint()
+              : this.simulationSegmentOriginPoint,
+      realDebugBusPosition:
+          realDebugBusPosition != null
+              ? realDebugBusPosition()
+              : this.realDebugBusPosition,
+      maxSimulationTravelDistance:
+          maxSimulationTravelDistance != null
+              ? maxSimulationTravelDistance()
+              : this.maxSimulationTravelDistance,
+      isHighlightedBusReal:
+          isHighlightedBusReal != null
+              ? isHighlightedBusReal()
+              : this.isHighlightedBusReal,
+      currentZoomTarget: currentZoomTarget ?? this.currentZoomTarget,
+      userMapInteraction: userMapInteraction ?? this.userMapInteraction,
+      lastManualMoveTimestamp:
+          lastManualMoveTimestamp != null
+              ? lastManualMoveTimestamp()
+              : this.lastManualMoveTimestamp,
     );
   }
 }

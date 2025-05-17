@@ -55,112 +55,105 @@ class MontevideoApiService {
     String stopId,
     String lineShortName,
   ) async {
-    final token = await getApiToken();
-    if (token == null) {
-      print("[BondiUY_Debug_ETA_Service] No se pudo obtener token para ETAs.");
-      throw Exception("Error de autenticación en servicio");
-    }
-
-    final String apiUrl =
-        "$_baseUrl/buses/busstops/$stopId/upcomingbuses?lines=$lineShortName&amountperline=3";
-
     print(
-      "[BondiUY_Debug_ETA_Service] Llamando a API de ETAs con URL: $apiUrl",
+      "[BondiUY_Debug_ETA_Service] fetchUpcomingBusesForStopAndLine: Obteniendo todos los arribos para la parada $stopId y filtrando por línea $lineShortName",
     );
+
+    // Llamar al nuevo método que obtiene todos los arribos para la parada
+    final List<Map<String, dynamic>> allArrivals =
+        await fetchNextArrivalsForStop(stopId);
+
+    // Filtrar por la línea deseada
+    final List<Map<String, dynamic>> filteredArrivals =
+        allArrivals
+            .where((bus) => bus['line']?.toString() == lineShortName)
+            .toList();
+
+    // Aplicar el límite de amountperline (aunque la API original lo hacía, aquí lo replicamos si es necesario)
+    // El nuevo endpoint no tiene amountperline, así que si se quiere un límite, se aplica post-filtro.
+    // Por ahora, devolvemos todos los de la línea. Si se necesita un límite, se puede añadir aquí.
+    // Ejemplo: return filteredArrivals.take(3).toList();
+
     print(
-      "[BondiUY_Debug_ETA_Service]   Parámetros: stopId='$stopId', lineShortName='$lineShortName'",
+      "[BondiUY_Debug_ETA_Service] fetchUpcomingBusesForStopAndLine: Encontrados ${filteredArrivals.length} arribos para línea $lineShortName en parada $stopId.",
+    );
+    return filteredArrivals;
+  }
+
+  // NUEVO MÉTODO usando el endpoint transporteRest/siguientesParada/
+  Future<List<Map<String, dynamic>>> fetchNextArrivalsForStop(
+    String stopId,
+  ) async {
+    final String apiUrl =
+        "https://api.montevideo.gub.uy/transporteRest/siguientesParada/$stopId";
+
+    print(
+      "[BondiUY_Debug_NextArrivals_Service] Llamando a API con URL: $apiUrl",
     );
 
     try {
-      final response = await http.get(
-        Uri.parse(apiUrl),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Accept': 'application/json',
-        },
-      );
+      // Este endpoint parece no requerir token según pruebas directas.
+      // Si falla por autenticación, se deberá añadir la lógica de token aquí.
+      final response = await http.get(Uri.parse(apiUrl));
 
       if (response.statusCode == 200) {
         final List<dynamic> responseData = json.decode(response.body);
         List<Map<String, dynamic>> upcomingBuses = [];
 
         print(
-          "[BondiUY_Debug_API_RESPONSE_ETAS] Código de estado: ${response.statusCode}",
+          "[BondiUY_Debug_API_RESPONSE_NextArrivals] Código de estado: ${response.statusCode} para parada $stopId",
         );
-        print("[BondiUY_Debug_API_RESPONSE_ETAS] Headers: ${response.headers}");
-        print("[BondiUY_Debug_API_RESPONSE_ETAS] Body: ${response.body}");
+        // print("[BondiUY_Debug_API_RESPONSE_NextArrivals] Body: ${response.body}");
 
         for (var busInfo in responseData) {
           if (busInfo is Map<String, dynamic>) {
-            dynamic etaRawValue;
-            bool isRawValueInSeconds = false;
-
-            if (busInfo.containsKey('minutesToArrival')) {
-              etaRawValue = busInfo['minutesToArrival'];
-            } else if (busInfo.containsKey('arrivalMinutes')) {
-              etaRawValue = busInfo['arrivalMinutes'];
-            } else if (busInfo.containsKey('eta')) {
-              etaRawValue = busInfo['eta'];
-              isRawValueInSeconds = true;
-            }
-
-            int? etaMinutes;
-            if (etaRawValue is int) {
-              if (isRawValueInSeconds) {
-                etaMinutes = (etaRawValue / 60).round();
-              } else {
-                etaMinutes = etaRawValue;
-              }
-            } else if (etaRawValue is String) {
-              final parsedInt = int.tryParse(etaRawValue);
-              if (parsedInt != null) {
-                if (isRawValueInSeconds) {
-                  etaMinutes = (parsedInt / 60).round();
-                } else {
-                  etaMinutes = parsedInt;
-                }
-              }
-            } else if (etaRawValue is double) {
-              if (isRawValueInSeconds) {
-                etaMinutes = (etaRawValue / 60).round();
-              } else {
-                etaMinutes = etaRawValue.round();
+            List<dynamic>? coords = busInfo['coordinates'];
+            Map<String, dynamic>? locationGeoJson;
+            if (coords != null && coords.length == 2) {
+              // Asegurarse de que las coordenadas sean double
+              final lon =
+                  coords[0] is num ? (coords[0] as num).toDouble() : null;
+              final lat =
+                  coords[1] is num ? (coords[1] as num).toDouble() : null;
+              if (lon != null && lat != null) {
+                locationGeoJson = {
+                  'type': 'Point',
+                  'coordinates': [lon, lat],
+                };
               }
             }
 
-            if (etaMinutes != null) {
-              upcomingBuses.add({
-                'line': busInfo['line']?.toString() ?? lineShortName,
-                'destination': busInfo['destination']?.toString(),
-                'minutesToArrival': etaMinutes,
-                'location': busInfo['location'],
-              });
-            }
+            upcomingBuses.add({
+              'line': busInfo['linea']?.toString(),
+              'destination': busInfo['destino']?.toString(),
+              'minutesToArrival': busInfo['minutos'],
+              'location':
+                  locationGeoJson, // Puede ser null si no hay coordenadas o no son válidas
+              'isReal': busInfo['real'] ?? false,
+              'idBus': busInfo['idBus'], // Añadir otros campos útiles
+              'variantId':
+                  busInfo['variante'], // 'variante' en el nuevo endpoint
+              'stopNameActual': busInfo['parada_actual'],
+            });
           }
         }
-        upcomingBuses.sort(
-          (a, b) => (a['minutesToArrival'] as int).compareTo(
-            b['minutesToArrival'] as int,
-          ),
-        );
+        // La API ya suele devolver ordenado por minutos.
         return upcomingBuses;
-      } else if (response.statusCode == 401 || response.statusCode == 403) {
-        _apiToken =
-            null; // Invalidar token para reintentar en la próxima llamada a getApiToken()
-        print(
-          "[BondiUY_Debug_ETA_Service] Error de autenticación (${response.statusCode}). Token invalidado.",
-        );
-        throw Exception(
-          "Error API (auth): ${response.statusCode}",
-        ); // Lanzar excepción para que el llamador maneje el reintento si es necesario
       } else {
         print(
-          "[BondiUY_Debug_ETA_Service] Error API obteniendo ETAs (${response.statusCode}): ${response.body}",
+          "[BondiUY_Debug_NextArrivals_Service] Error API (${response.statusCode}) para parada $stopId: ${response.body}",
         );
+        // Si es un error de autenticación común, intentar obtener token y reintentar.
+        // Por ahora, lanzamos la excepción directamente.
+        // if (response.statusCode == 401 || response.statusCode == 403) {
+        //   _apiToken = null; // Invalidar token
+        // }
         throw Exception("Error API: ${response.statusCode}");
       }
     } catch (e) {
-      print("[BondiUY_Debug_ETA_Service] Excepción obteniendo ETAs: $e");
+      print(
+        "[BondiUY_Debug_NextArrivals_Service] Excepción para parada $stopId: $e",
+      );
       throw Exception("Excepción en servicio: $e");
     }
   }

@@ -17,14 +17,8 @@ int findClosestPointIndexOnShape(
 
   for (int i = 0; i < shapePoints.length; i++) {
     final shapePosition = shapePoints[i];
-    final double shapeLat =
-        (shapePosition.lat is num)
-            ? (shapePosition.lat as num).toDouble()
-            : 0.0;
-    final double shapeLng =
-        (shapePosition.lng is num)
-            ? (shapePosition.lng as num).toDouble()
-            : 0.0;
+    final double shapeLat = shapePosition[1] as double;
+    final double shapeLng = shapePosition[0] as double;
 
     final distance = calculateHaversineDistance(
       targetPoint.lat,
@@ -49,10 +43,8 @@ Future<CoordinateBounds?> calculateBoundsForPositions(
   double? minLat, maxLat, minLon, maxLon;
 
   for (var pos in positions) {
-    final lat =
-        pos.lat as double; // ASUMIMOS QUE YA ES DOUBLE O SE CONVIERTE ANTES
-    final lon =
-        pos.lng as double; // ASUMIMOS QUE YA ES DOUBLE O SE CONVIERTE ANTES
+    final lat = pos[1] as double;
+    final lon = pos[0] as double;
 
     if (minLat == null || lat < minLat) minLat = lat;
     if (maxLat == null || lat > maxLat) maxLat = lat;
@@ -193,4 +185,87 @@ Future<CoordinateBounds?> calculateBoundsForRoute(List<RouteLeg> legs) async {
     );
   }
   return null;
+}
+
+// Calcula la distancia total de un segmento de la polilínea (shape).
+// La polilínea es una lista de `Position`.
+// `startIndex` es el índice del punto de inicio en la polilínea.
+// `endIndex` es el índice del punto final en la polilínea.
+double getDistanceAlongPolylineSegment(
+  List<Position> polyline,
+  int startIndex,
+  int endIndex,
+) {
+  if (polyline.length < 2 ||
+      startIndex < 0 ||
+      endIndex >= polyline.length ||
+      startIndex >= endIndex) {
+    return 0.0;
+  }
+
+  double totalDistance = 0.0;
+  for (int i = startIndex; i < endIndex; i++) {
+    totalDistance += calculateHaversineDistance(
+      polyline[i][1] as double,
+      polyline[i][0] as double,
+      polyline[i + 1][1] as double,
+      polyline[i + 1][0] as double,
+    );
+  }
+  return totalDistance;
+}
+
+// Encuentra el punto en la polilínea que está a una distancia dada desde un punto de inicio específico en esa polilínea.
+// `polyline` es la forma completa de la línea de autobús.
+// `startIndexOnPolyline` es el índice en `polyline` desde donde comenzamos a medir la `distanceToTravel`.
+// `distanceToTravel` es la distancia en metros que queremos avanzar a lo largo de la polilínea.
+// Devuelve la `Position` resultante. Si la distancia excede el final de la polilínea, devuelve el último punto.
+Position getPointAtDistanceAlongPolyline(
+  List<Position> polyline,
+  int startIndexOnPolyline,
+  double distanceToTravel,
+) {
+  if (polyline.isEmpty ||
+      startIndexOnPolyline < 0 ||
+      startIndexOnPolyline >= polyline.length) {
+    // Devuelve una posición por defecto o maneja el error como prefieras
+    return polyline.isNotEmpty ? polyline.last : Position(0, 0);
+  }
+
+  if (distanceToTravel <= 0) {
+    return polyline[startIndexOnPolyline];
+  }
+
+  double distanceCovered = 0.0;
+  for (int i = startIndexOnPolyline; i < polyline.length - 1; i++) {
+    final Position p1 = polyline[i];
+    final Position p2 = polyline[i + 1];
+    double segmentDistance = calculateHaversineDistance(
+      p1[1] as double,
+      p1[0] as double,
+      p2[1] as double,
+      p2[0] as double,
+    );
+
+    if (distanceCovered + segmentDistance >= distanceToTravel) {
+      // El punto está en este segmento
+      double remainingDistance = distanceToTravel - distanceCovered;
+      double fraction = remainingDistance / segmentDistance;
+      if (segmentDistance == 0)
+        fraction = 0; // Evitar división por cero si p1 y p2 son iguales
+
+      double lat =
+          (p1[1] as double) +
+          ((p2[1] as double) - (p1[1] as double)) * fraction;
+      double lng =
+          (p1[0] as double) +
+          ((p2[0] as double) - (p1[0] as double)) * fraction;
+      return Position(lng, lat);
+    }
+    distanceCovered += segmentDistance;
+  }
+
+  // Si la distancia a viajar excede la longitud de la polilínea desde el startIndex,
+  // devuelve el último punto de la polilínea.
+  return polyline.last;
 }

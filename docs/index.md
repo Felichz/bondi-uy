@@ -113,6 +113,19 @@ Contiene el código fuente principal de la aplicación, organizado por funcional
       - `fromJson`: Factory constructor robusto para parsear el JSON complejo de un tramo, llamando a los `fromJson` de las clases anidadas y manejando listas (`steps`, `intermediatePlaces`) y valores nulos/faltantes.
       - `listFromJson`: Método estático para convertir una lista de JSON en `List<RouteLeg>`.
 
+### `controllers/` (lib/controllers/)
+
+- **Propósito**: Contiene clases controladoras que extraen y gestionan lógica específica de la UI que antes residía en `_MapScreenState` o en los servicios. Estos controladores son instanciados en `_MapScreenState` y se les pasan las dependencias necesarias (como `MapboxService` o `WidgetRef`).
+- **Contenido**:
+  - `bus_tracking_controller.dart`:
+    - **Responsabilidad**: Gestiona toda la lógica relacionada con el seguimiento en tiempo real de autobuses. Esto incluye iniciar/detener el sondeo de la API para la ubicación de los buses, actualizar la posición del bus en el mapa (delegando el dibujo a `MapboxService`), calcular la distancia y el tiempo estimado de llegada (ETA) del bus al origen del tramo, y simular el movimiento del bus entre actualizaciones. También maneja la lógica para mostrar/ocultar el tooltip de información del bus y su animación.
+  - `map_interaction_controller.dart`:
+    - **Responsabilidad**: Maneja las interacciones directas del usuario con el mapa. Detecta eventos de toque en el mapa para identificar paradas y mostrar información relevante (como líneas de autobús que pasan por la parada, delegando la presentación de la UI a `_MapScreenState` o widgets específicos). También escucha los cambios de cámara y los eventos de inactividad del mapa para informar a `MapNotifier` si la interacción fue iniciada por el usuario (movimiento manual del mapa).
+  - `map_zoom_controller.dart`:
+    - **Responsabilidad**: Administra la lógica de zoom y centrado de la cámara del mapa. Reacciona a los `ZoomTarget` emitidos por `MapNotifier` para ajustar la vista del mapa a diferentes contextos: vista general de una ruta, un tramo específico (considerando la posición del bus si se está rastreando), el origen/destino de la búsqueda, o una vista inicial. Delega las operaciones de cámara a `MapboxService`.
+  - `route_display_controller.dart`:
+    - **Responsabilidad**: Se encarga de la visualización de las rutas planificadas en el mapa. Esto incluye la limpieza de capas de rutas anteriores, iterar sobre los tramos (`RouteLeg`) de un itinerario, decodificar las polilíneas de cada tramo y dibujar los segmentos correspondientes en el mapa (utilizando `MapboxService`). También gestiona la actualización del resaltado visual del tramo seleccionado por el usuario y aplica estilos para la vista general de la ruta.
+
 ### `providers/` (lib/providers/)
 
 - **Propósito**: Define los proveedores de Riverpod para la gestión del estado y la inyección de dependencias.
@@ -125,14 +138,14 @@ Contiene el código fuente principal de la aplicación, organizado por funcional
       - **Métodos Principales**: Contiene la lógica de negocio para interactuar con la UI y los servicios.
         - `setOrigenCoordinates`, `setDestinoCoordinates`: Actualizan las coordenadas en el estado.
         - `clearRouteState`: Resetea el estado relacionado con la ruta actual.
-        - `setUserManuallyMovedMap`: Actualiza flag cuando el usuario mueve el mapa.
+        - `setUserManuallyMovedMap`: Actualiza el flag `userManuallyMovedMap` en el estado. La detección de la interacción manual la realiza `MapInteractionController`.
         - `setSelectedLegIndex`: Actualiza el índice del tramo seleccionado.
         - `setAvailableItineraries`: Guarda los itinerarios encontrados.
         - `processSelectedItinerary`: Procesa el itinerario elegido por el usuario, actualizando los tramos (`currentRouteLegs`) y entrando en modo `overview`.
         - `startDetailedNavigation`: Inicia la vista detallada de instrucciones para el primer tramo.
         - `searchRoute()`: Método asíncrono clave. Llama a `OtpService.planRoute` con las coordenadas de origen/destino y la hora actual. Parsea la respuesta GraphQL, actualiza `availableItineraries` en el estado o maneja errores guardándolos en `errorMessage`.
         - `clearErrorMessage`: Limpia el mensaje de error del estado.
-      - **Gestión Interna**: Puede incluir lógica de debounce (ej. `_debounceTimer`), aunque parte de la gestión de timers (como el de bus en tiempo real) se delega al widget.
+      - **Gestión Interna**: Puede incluir lógica de debounce (ej. `_debounceTimer`). La gestión de timers para el bus en tiempo real es manejada por `BusTrackingController`.
       - `dispose()`: Cancela timers internos.
   - `service_providers.dart`: Define los proveedores (`Provider`) para inyectar las instancias de los servicios en la aplicación.
     - `montevideoApiServiceProvider`: Proveedor para `MontevideoApiService`. Crea una instancia simple.
@@ -150,16 +163,20 @@ Contiene el código fuente principal de la aplicación, organizado por funcional
 - **Propósito**: Contiene los widgets que representan las pantallas completas de la aplicación.
 - **Contenido**:
   - `map_screen.dart`: Define `MapScreen` (`ConsumerStatefulWidget`) y `_MapScreenState`. Es la pantalla principal de la aplicación.
-    - **Propósito**: Define `MapScreen`, la pantalla principal de la aplicación que muestra el mapa interactivo y coordina las interacciones del usuario con la planificación de rutas y la visualización de información del transporte.
+    - **Propósito**: Define `MapScreen`, la pantalla principal que muestra el mapa interactivo. `_MapScreenState` actúa como un orquestador para los diversos controladores de UI y lógica de mapa, e inicializa los componentes visuales principales.
     - **Contenido**:
-      - **`_MapScreenState`**: Clase principal que gestiona el estado y la lógica de la UI del mapa.
-        - **Inicialización**: Configura el controlador del mapa Mapbox (`MapboxMap`), controladores de texto para origen/destino (`_origenController`, `_destinoController`), y nodos de foco. Carga geometrías de las líneas de autobús (`_loadAndParseShapesGeoJson`).
-        - **Gestión del Estado (Riverpod)**: Utiliza `ref.watch` y `ref.read` para interactuar con `MapNotifier` y obtener el estado actual (`MapState`). Usa `ref.listenManual` para reaccionar a cambios específicos del estado, como mostrar opciones de ruta, iniciar navegación detallada o mostrar errores.
-        - **Interacción con `MapboxService`**: Crea una instancia local de `MapboxService` y delega las operaciones directas sobre el mapa (carga de estilo, dibujo de capas, manejo de toques).
-        - **Controladores de Eventos del Mapa**: Implementa callbacks para eventos del mapa (`_onMapCreated`, `_onStyleLoadedListener`, `_handleMapTapEvent`, etc.) que interactúan con `MapboxService` y `MapNotifier`.
-        - **UI Components**: Construye la interfaz usando `MapboxMap` y superponiendo otros widgets como `SearchPanel`, `InstructionsBar`, etc.
-        - **Funcionalidad Específica**: Lógica para mostrar líneas de bus en paradas, gestionar zoom/cámara, controlar rastreo en tiempo real de buses, limpiar capas.
-        - **Limpieza**: En `dispose`, libera recursos (controladores, timers, mapa).
+      - **`_MapScreenState`**: Clase principal que orquesta la UI del mapa y los controladores.
+        - **Inicialización**: Configura el `MapboxMapController` (a través de `_onMapCreated`), inicializa `MapboxService`, y también instancia los controladores especializados: `MapInteractionController`, `MapZoomController`, `RouteDisplayController`, y `BusTrackingController`, pasándoles las dependencias necesarias (como `MapboxService`, `WidgetRef`, o el propio `MapboxMapController` si es preciso). También maneja controladores de texto para origen/destino y nodos de foco. Inicialmente carga geometrías de líneas de autobús (`_loadAndParseShapesGeoJson`).
+        - **Gestión del Estado (Riverpod)**: Utiliza `ref.watch` y `ref.read` para interactuar con `MapNotifier` y obtener `MapState`. Usa `ref.listenManual` para reaccionar a cambios de estado, como mostrar opciones de ruta (usando `showRouteOptionsModal`), mostrar el `TripInstructionsSheet` para la navegación detallada, o presentar errores.
+        - **Interacción con `MapboxService` y Controladores**: Delega las operaciones directas sobre el mapa y la lógica específica a `MapboxService` y a los controladores respectivos.
+        - **Controladores de Eventos del Mapa**: Implementa `_onMapCreated` y `_onStyleLoadedListener`. Otros eventos del mapa (toques, cambios de cámara, inactividad) son delegados a `MapInteractionController`, cuyas instancias de métodos son pasadas como callbacks al `MapWidget` o al `MapboxMap`.
+        - **UI Components**: Construye la interfaz usando `MapWidget` de Mapbox y superponiendo otros widgets como `SearchPanel`, `InstructionsBar` (para la vista colapsada de instrucciones), y maneja la presentación del `TripInstructionsSheet` para las instrucciones detalladas.
+        - **Funcionalidad Específica Delegada**:
+          - La lógica para mostrar información de paradas al tocar el mapa es manejada por `MapInteractionController`.
+          - La gestión del zoom y centrado de la cámara es manejada por `MapZoomController`.
+          - El control del rastreo en tiempo real de buses es manejado por `BusTrackingController`.
+          - La visualización y limpieza de rutas en el mapa es manejada por `RouteDisplayController`.
+        - **Limpieza**: En `dispose`, libera recursos (controladores de texto, nodos de foco, y llama a `dispose` en los controladores instanciados y `MapboxService`).
 
 ### `services/` (lib/services/)
 
@@ -250,15 +267,13 @@ Contiene el código fuente principal de la aplicación, organizado por funcional
         - Formatea y muestra las sugerencias en un `ListView` dentro del overlay.
         - Al seleccionar una sugerencia, actualiza el texto del campo, llama a `onLocationSelected` con el nombre y las coordenadas, y oculta el overlay.
         - Incluye la función `_buildHighlightedText` para resaltar la parte de la consulta dentro del texto de cada sugerencia en la lista, usando `RichText`.
-  - `instructions_bar.dart`: Widget (`ConsumerWidget`) que muestra las instrucciones paso a paso para el itinerario seleccionado. Consume `MapState` para obtener el itinerario y tramo actual. Muestra detalles del tramo, permite navegar entre tramos y puede incluir opciones como ver alternativas o cerrar la vista de instrucciones.
-    - **Propósito**: Mostrar las instrucciones detalladas de un itinerario de viaje, permitiendo al usuario ver los diferentes tramos y navegar entre ellos. Se presenta como una barra colapsada en la parte inferior o como un panel modal (BottomSheet) con la lista completa.
+  - `instructions_bar.dart`: Widget (`ConsumerWidget`) que muestra una barra inferior colapsada con información del tramo actual de un itinerario.
+    - **Propósito**: Mostrar una vista resumida y colapsada del tramo actual del itinerario en la parte inferior de la pantalla. Permite al usuario ver rápidamente el modo de transporte, la descripción del tramo actual y navegar al tramo anterior o siguiente. Al tocar la barra, se expande para mostrar las instrucciones detalladas (manejado por `_MapScreenState` que presenta `TripInstructionsSheet`).
     - **Contenido**:
-      - **Clase `TripInstructions` (StatelessWidget)**:
-        - **Parámetros**: `currentRouteLegs` (List<RouteLeg>), `selectedLegIndex` (int?), `showCollapsedInstructionsBar` (bool), textos de origen/destino, `isInOverviewMode` (bool), y callbacks para selección de tramo, navegación entre tramos y expansión.
-        - **`_buildInstructionListTiles(...)`**: Genera una lista de `ListTile` para cada paso del itinerario (Origen, Tramos, Destino), con formato, iconos y manejo de selección.
-        - **`_showTripInstructionsBottomSheet(...)`**: Muestra un `ModalBottomSheet` con la lista completa de instrucciones (usando `_buildInstructionListTiles`).
-        - **`_buildCollapsedInstructionsBar(...)`**: Construye la UI de la barra inferior que muestra el tramo actual con su icono, descripción, y botones para navegar al tramo anterior/siguiente. Al tocar el área central de esta barra, se muestra el `BottomSheet` con todas las instrucciones.
-        - **`build(...)`**: Retorna la barra de instrucciones colapsada.
+      - **Clase `TripInstructions` (StatelessWidget)**: (Nota: El nombre de la clase interna podría variar o ser genérico si el archivo solo contiene la barra colapsada).
+        - **Parámetros**: `currentRouteLegs` (List<RouteLeg>), `selectedLegIndex` (int?), `showCollapsedInstructionsBar` (bool), `isInOverviewMode` (bool), y callbacks para selección de tramo, navegación entre tramos (anterior/siguiente) y para solicitar la expansión a la vista detallada.
+        - **`_buildCollapsedInstructionsBar(...)`**: Construye la UI de la barra inferior que muestra el tramo actual con su icono, descripción, y botones para navegar al tramo anterior/siguiente.
+        - **`build(...)`**: Retorna la barra de instrucciones colapsada. La lógica para mostrar el `BottomSheet` detallado al tocar esta barra reside en `_MapScreenState`, que llamará a `showModalBottomSheet` con `TripInstructionsSheet`.
   - `route_options_modal.dart`: Modal (`ConsumerWidget`) que muestra los detalles de los tramos de una ruta seleccionada, incluyendo intentos de obtener ETA para tramos de autobús.
     - **Propósito**: Mostrar los detalles de una ruta específica (compuesta por varios tramos `RouteLeg`) en un modal, incluyendo información básica de cada tramo y una sección para mostrar el tiempo estimado de llegada (ETA) para los tramos de autobús.
     - **Contenido**:
@@ -287,3 +302,11 @@ Contiene el código fuente principal de la aplicación, organizado por funcional
         - **`_buildExpandedSearchPanelUI()`**: UI para el estado expandido, muestra campos de texto para origen y destino (usando `_buildTypeAheadField`) y un botón "Buscar Ruta".
         - **`_buildTypeAheadField(...)`**: Construye un campo de texto con funcionalidad de autocompletado usando `flutter_typeahead`. Llama a `GeocodingService` (obtenido vía `ref.read`) para las sugerencias y maneja la selección.
         - **`build(...)`**: Decide qué UI mostrar (compacta o expandida).
+  - `trip_instructions_sheet.dart`: Widget (`ConsumerWidget`) que muestra un `ModalBottomSheet` con la lista detallada de instrucciones para un itinerario de viaje.
+    - **Propósito**: Presentar al usuario la lista completa y detallada de los tramos e instrucciones de un itinerario seleccionado. Se muestra como un panel modal desde la parte inferior de la pantalla.
+    - **Contenido**:
+      - **Clase `TripInstructionsSheet` (ConsumerWidget)**:
+        - **Parámetros**: Recibe la lista de `legs` del itinerario, los textos de origen/destino, y una instancia del `RouteDisplayController`.
+        - **Construcción de UI**: Utiliza `ListView` para mostrar cada tramo (`RouteLeg`) del itinerario, incluyendo origen, destino, y los tramos intermedios. Muestra iconos representativos del modo de transporte, nombres de calles, paradas, y otra información relevante.
+        - **Interacción**: Permite al usuario seleccionar un tramo específico de la lista, lo que actualiza el `selectedLegIndex` en `MapNotifier` y puede desencadenar acciones en `RouteDisplayController` (como resaltar el tramo en el mapa) y `MapZoomController` (para centrar el mapa en el tramo).
+        - **Estado**: Accede al estado global (`MapState` vía `mapNotifierProvider`) para, por ejemplo, resaltar el tramo actualmente seleccionado en la lista.

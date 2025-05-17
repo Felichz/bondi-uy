@@ -1,0 +1,3 @@
+procede a implementar, utiliza las tool que tienes para editar codigo
+
+recuerda que si estas editando un archivo que es muy grande conviene hacer la edicion por partes osea por chunks

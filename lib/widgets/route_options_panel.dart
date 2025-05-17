@@ -234,13 +234,18 @@ void showRouteOptionsModal({
                             final nextBus = etas.first;
                             final minutesToArrival =
                                 nextBus['minutesToArrival'];
+                            final bool isBusReal = nextBus['isReal'] ?? false;
+
                             return Padding(
                               padding: const EdgeInsets.only(top: 4.0),
                               child: Text(
                                 "Próximo bus en ${minutesToArrival} min",
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 12,
-                                  color: Colors.green,
+                                  color:
+                                      isBusReal
+                                          ? Colors.green
+                                          : Colors.orangeAccent,
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),

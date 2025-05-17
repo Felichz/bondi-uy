@@ -45,3 +45,6 @@ app.*.map.json
 /android/app/release
 
 /assets/*
+
+docs/refactor.txt
+logs.txt

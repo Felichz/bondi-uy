@@ -1,0 +1,5 @@
+Si encuentras este archivo adjunto significa que quiero que entres en modo "Reviewer", donde haces lo maximo posible para ponerte en el lugar de un dev profesional haciendo review de lo que sea que hayas hecho recien.
+Debes pensar si hay que refinar algo, la idea es ejecutar este paso de detenerse a hacer una review las veces necesarias hasta concluir con la solucion mas robusta limpia y elegante posible, algo con lo que nos sintamos satisfechos listo para mergear a main, no solo un draft inicial.
+
+en caso de que encuentres cosas a mejorar puedes dejar el trabajo para el siguiente prompt
+en caso de que veas todo listo, si encuentras mejoras menores te puedes considerar libre de aplicar las mejoras si crees que son mejoras

@@ -1,0 +1,6 @@
+Si encuentras este archivo adjunto significa que quiero que entres en modo "Deep thinker", donde haces lo maximo posible para ponerte en el lugar de un dev profesional haciendo review de lo que sea que hayas hecho recien.
+Debes pensar si hay que refinar algo, la idea es ejecutar este paso de detenerse a hacer una review las veces necesarias hasta concluir con la solucion mas robusta limpia y elegante posible, algo con lo que nos sintamos satisfechos listo para mergear a main, no solo un draft inicial.
+
+Con review me refiero a ver que puntos son medio ambiguos o se podrian beneficiar de mas deep dive, si hay puntos donde invertir pensamiento vale la pena entonces avanzamos.
+
+Te debes detener solo cuando crees que la ganancia es marginal y lo importante ya esta cubierto y claro.
