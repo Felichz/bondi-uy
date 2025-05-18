@@ -4,14 +4,12 @@ import 'package:bondi_uy/models/route_leg.dart';
 import 'package:bondi_uy/providers/map_notifier.dart';
 import 'package:bondi_uy/controllers/route_display_controller.dart';
 
-class TripInstructionsSheet extends ConsumerWidget {
+class TripInstructionsSheet extends ConsumerStatefulWidget {
   final List<RouteLeg> legs;
   final String origenControllerText;
   final String destinoControllerText;
   final RouteDisplayController routeDisplayController;
-  // Aunque pasamos los textos, mantenemos los controladores por si la lógica original los usaba de otra forma.
-  // Sin embargo, la lógica actual solo usa .text, así que los textos son suficientes.
-  // Para simplificar, usaremos los textos directamente como se planeó.
+  final Function(int) onLegSelected;
 
   const TripInstructionsSheet({
     super.key,
@@ -19,7 +17,28 @@ class TripInstructionsSheet extends ConsumerWidget {
     required this.origenControllerText,
     required this.destinoControllerText,
     required this.routeDisplayController,
+    required this.onLegSelected,
   });
+
+  @override
+  ConsumerState<TripInstructionsSheet> createState() =>
+      _TripInstructionsSheetState();
+}
+
+class _TripInstructionsSheetState extends ConsumerState<TripInstructionsSheet> {
+  late PageController _pageController;
+
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController();
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
 
   List<Widget> _buildInstructionListTiles(
     BuildContext context, // Necesario para Theme
@@ -30,8 +49,8 @@ class TripInstructionsSheet extends ConsumerWidget {
     List<Widget> instructionTiles = [];
     String origenDisplayName = currentLegs.first.from.name ?? 'Punto de inicio';
     if (origenDisplayName.toLowerCase() == 'origin' &&
-        origenControllerText.isNotEmpty) {
-      origenDisplayName = origenControllerText;
+        widget.origenControllerText.isNotEmpty) {
+      origenDisplayName = widget.origenControllerText;
     }
     instructionTiles.add(
       ListTile(
@@ -66,8 +85,8 @@ class TripInstructionsSheet extends ConsumerWidget {
         String walkDestinationDisplay = toName;
         if (toName.toLowerCase() == 'destination' &&
             i == currentLegs.length - 1 &&
-            destinoControllerText.isNotEmpty) {
-          walkDestinationDisplay = destinoControllerText;
+            widget.destinoControllerText.isNotEmpty) {
+          walkDestinationDisplay = widget.destinoControllerText;
         }
         title =
             "Caminar ${distance}m hacia $walkDestinationDisplay$durationText";
@@ -100,8 +119,8 @@ class TripInstructionsSheet extends ConsumerWidget {
     }
     String destinoDisplayName = currentLegs.last.to.name ?? 'Punto final';
     if (destinoDisplayName.toLowerCase() == 'destination' &&
-        destinoControllerText.isNotEmpty) {
-      destinoDisplayName = destinoControllerText;
+        widget.destinoControllerText.isNotEmpty) {
+      destinoDisplayName = widget.destinoControllerText;
     }
     instructionTiles.add(
       ListTile(
@@ -114,66 +133,66 @@ class TripInstructionsSheet extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final mapState = ref.watch(mapNotifierProvider);
-    final mapNotifier = ref.read(mapNotifierProvider.notifier);
-    // El StatefulBuilder es para actualizar el estado local del bottom sheet (tile seleccionado)
-    // inmediatamente después del onTap, sin esperar a que el estado global se propague si hay demora.
-    return StatefulBuilder(
-      builder: (BuildContext modalContext, StateSetter setModalState) {
-        // Leer el selectedLegIndex actual desde el estado global para el resaltado
-        int? currentSelectedLegIndex = ref.watch(
-          mapNotifierProvider.select((state) => state.selectedLegIndex),
-        );
-
-        final instructionWidgets = _buildInstructionListTiles(
-          modalContext, // Usar el contexto del modal para Theme, etc.
-          legs, // Usar las legs pasadas al widget
-          currentSelectedLegIndex, // Usar el índice del estado global
-          (int tappedLegIndex) {
-            mapNotifier.setSelectedLegIndex(tappedLegIndex);
-            routeDisplayController.updateMapRouteHighlight();
-            // No es necesario llamar a setModalState aquí si el widget se reconstruye por ref.watch
-            // Sin embargo, si hay otros estados locales que StatefulBuilder maneja, se mantendría.
-            // Por ahora, para asegurar la actualización visual inmediata del tile seleccionado:
-            setModalState(() {});
-          },
-        );
-
-        return SafeArea(
-          child: FractionallySizedBox(
-            heightFactor: 0.6,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 8.0),
-                  child: Text(
-                    'Instrucciones de Viaje',
-                    style: Theme.of(modalContext).textTheme.titleLarge
-                        ?.copyWith(fontWeight: FontWeight.bold),
-                  ),
-                ),
-                const Divider(height: 1),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8.0),
-                    child: ListView.separated(
-                      shrinkWrap: true,
-                      itemCount: instructionWidgets.length,
-                      itemBuilder:
-                          (context, index) => instructionWidgets[index],
-                      separatorBuilder:
-                          (context, index) => const SizedBox(height: 4),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
+  Widget build(BuildContext context) {
+    ref.listen<int?>(
+      mapNotifierProvider.select((state) => state.currentLegIndex),
+      (previous, next) {
+        if (next != null &&
+            _pageController.hasClients &&
+            _pageController.page?.round() != next) {
+          _pageController.animateToPage(
+            next,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+          );
+        }
       },
     );
+
+    final initialLegIndex = ref.read(mapNotifierProvider).currentLegIndex;
+    if (initialLegIndex != null) {
+      final instructionWidgets = _buildInstructionListTiles(
+        context,
+        widget.legs,
+        initialLegIndex,
+        widget.onLegSelected,
+      );
+
+      return SafeArea(
+        child: FractionallySizedBox(
+          heightFactor: 0.6,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 8.0),
+                child: Text(
+                  'Instrucciones de Viaje',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                ),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8.0),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: instructionWidgets.length,
+                    itemBuilder: (context, index) => instructionWidgets[index],
+                    separatorBuilder:
+                        (context, index) => const SizedBox(height: 4),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    } else {
+      return const Center(child: CircularProgressIndicator());
+    }
   }
 }

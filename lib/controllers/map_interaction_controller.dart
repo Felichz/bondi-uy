@@ -7,6 +7,7 @@ import '../providers/map_notifier.dart';
 import '../providers/service_providers.dart';
 import '../services/mapbox_service.dart';
 import '../state/map_state.dart'; // Para UserMapInteractionState
+import '../models/bus_arrival_info.dart'; // AÑADIR IMPORTACIÓN
 
 class MapInteractionController {
   final MapboxService mapboxService;
@@ -42,6 +43,29 @@ class MapInteractionController {
     ref.read(mapNotifierProvider.notifier).mapInteractionEnded();
   }
 
+  Future<void> handleMapLongPressEvent(MapContentGestureContext context) async {
+    // Implementar la lógica para el evento de pulsación larga en el mapa.
+    // Por ejemplo, obtener las coordenadas y hacer algo con ellas.
+    final point = context.point;
+    print(
+      "[MapInteractionController_DEBUG] Map long press detected at: Lat=${point.coordinates.lat}, Lng=${point.coordinates.lng}",
+    );
+    // Aquí se podría, por ejemplo, iniciar una geocodificación inversa o permitir al usuario soltar un pin.
+    // Por ahora, solo notificamos que la interacción comenzó y terminó.
+    ref.read(mapNotifierProvider.notifier).mapInteractionStarted();
+    // Lógica de long press...
+    ref.read(mapNotifierProvider.notifier).mapInteractionEnded();
+  }
+
+  void onMapLoadErrorListener(MapLoadingErrorEventData data) {
+    // Este método puede ser llamado desde MapScreen si se necesita una lógica más compleja
+    // que simplemente imprimir el error.
+    print(
+      "[MapInteractionController_ERROR] Map loading error (from controller): Type=${data.type}, Message=${data.message}, SourceID=${data.sourceId}, TileID=${data.tileId}",
+    );
+    // Podrías querer actualizar algún estado o mostrar un mensaje al usuario de forma más elaborada.
+  }
+
   // Método privado para encapsular la lógica de fetch y display del modal
   Future<void> _requestBusLinesForStopModal(
     String stopId,
@@ -52,12 +76,9 @@ class MapInteractionController {
       "[MapInteractionController_Debug] Obteniendo líneas para stopId: $stopId (invocado desde MapInteractionController)...",
     );
     final montevideoApiService = ref.read(montevideoApiServiceProvider);
-    List<Map<String, String>> busLinesData = [];
+    List<Map<String, dynamic>> busLinesData = [];
     String errorMessage = 'No hay información de líneas para esta parada.';
     bool isLoadingLines = true; // Para manejar el estado de carga en el modal
-
-    // El modal se construye aquí, necesitamos una forma de actualizar su estado interno si es Stateful.
-    // Usaremos un StatefulBuilder dentro del showModalBottomSheet.
 
     // Primero, obtenemos los datos de las líneas.
     try {
@@ -79,6 +100,22 @@ class MapInteractionController {
     // if (!mounted) return; // No es aplicable aquí de la misma forma
 
     String? _expandedLineId; // Estado para el panel expandido dentro del modal
+
+    // Método helper para obtener y filtrar arribos para una línea específica en la parada
+    // Esto evita llamar múltiples veces a la red si _getUpcomingBusesForStop fuera inteligente (pero no lo es aún sin cache a nivel de servicio)
+    // Sin embargo, asegura que usamos la nueva interfaz.
+    Future<List<BusArrivalInfo>> _fetchSpecificLineArrivals(
+      String currentStopId,
+      String lineShortNameForFilter,
+    ) async {
+      // montevideoApiService ya está disponible en el scope de _requestBusLinesForStopModal
+      final allArrivals = await montevideoApiService.getUpcomingBusesForStop(
+        currentStopId,
+      );
+      return allArrivals
+          .where((arrival) => arrival.lineShortName == lineShortNameForFilter)
+          .toList();
+    }
 
     showModalBottomSheet(
       context: uiContext, // Usar el BuildContext proporcionado
@@ -119,9 +156,9 @@ class MapInteractionController {
                                 itemBuilder: (context, index) {
                                   final lineInfo = busLinesData[index];
                                   final String currentLineId =
-                                      lineInfo['lineId'] ?? '';
+                                      lineInfo['lineId'] as String? ?? '';
                                   final String currentLineShortName =
-                                      lineInfo['line'] ?? '?';
+                                      lineInfo['line'] as String? ?? '?';
                                   final bool isExpanded =
                                       _expandedLineId == currentLineId;
 
@@ -160,13 +197,12 @@ class MapInteractionController {
                                             vertical: 8.0,
                                           ),
                                           child: FutureBuilder<
-                                            List<Map<String, dynamic>>
+                                            List<BusArrivalInfo>
                                           >(
-                                            future: montevideoApiService
-                                                .fetchUpcomingBusesForStopAndLine(
-                                                  stopId,
-                                                  currentLineShortName,
-                                                ),
+                                            future: _fetchSpecificLineArrivals(
+                                              stopId,
+                                              currentLineShortName,
+                                            ),
                                             builder: (context, snapshot) {
                                               if (snapshot.connectionState ==
                                                   ConnectionState.waiting) {
@@ -185,26 +221,23 @@ class MapInteractionController {
                                                   ),
                                                 );
                                               }
-                                              if (!snapshot.hasData ||
-                                                  snapshot.data!.isEmpty) {
+
+                                              final List<BusArrivalInfo>? etas =
+                                                  snapshot.data;
+
+                                              if (etas == null ||
+                                                  etas.isEmpty) {
                                                 return const Text(
                                                   'No hay próximos arribos para esta línea.',
                                                 );
                                               }
-                                              final etas =
-                                                  snapshot.data!
-                                                      .map(
-                                                        (etaData) =>
-                                                            BusRealtime.fromJson(
-                                                              etaData,
-                                                            ),
-                                                      )
-                                                      .toList();
+
                                               return Column(
                                                 crossAxisAlignment:
                                                     CrossAxisAlignment.start,
                                                 children:
-                                                    etas.map((eta) {
+                                                    etas.map((etaInfo) {
+                                                      // Renombrar para evitar conflicto con variable externa si existiera
                                                       return Padding(
                                                         padding:
                                                             const EdgeInsets.only(
@@ -213,7 +246,8 @@ class MapInteractionController {
                                                               bottom: 4.0,
                                                             ),
                                                         child: Text(
-                                                          '• Hacia ${eta.destination}: ${eta.minutesToArrival} min.',
+                                                          // Acceder a los campos de BusArrivalInfo directamente
+                                                          '• Próximo en ${etaInfo.minutesToArrival} min ${etaInfo.isReal ? "(Real)" : ""}',
                                                           style:
                                                               Theme.of(
                                                                 uiContext,

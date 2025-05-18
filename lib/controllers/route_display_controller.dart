@@ -125,10 +125,12 @@ class RouteDisplayController {
   }
 
   Future<void> updateMapRouteHighlight() async {
-    // No necesitamos mapboxMap directamente aquí si mapboxService lo maneja.
-    // if (mapboxMap == null || mapboxService == null) return;
-    final selectedLegIndex = ref.read(mapNotifierProvider).selectedLegIndex;
-    // Asegurarse que mapboxService está disponible, aunque el constructor lo requiere.
+    // Ya no se pasa selectedLegIndex como parámetro, se lee de MapState
+    final mapState = ref.read(mapNotifierProvider);
+    final selectedLegIndex =
+        mapState.currentLegIndex; // MODIFICADO: usar currentLegIndex
+
+    // Actualizar resaltado visual de los tramos de la ruta
     await mapboxService.updateMapRouteHighlight(selectedLegIndex);
   }
 }

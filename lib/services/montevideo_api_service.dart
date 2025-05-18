@@ -1,241 +1,285 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../constants/api_constants.dart';
+import 'eta_fetcher_service.dart'; // Importar la interfaz
+import '../models/bus_arrival_info.dart'; // Importar el modelo
+import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart'; // Asegurar import para Position
 
-class MontevideoApiService {
-  static const String _baseUrl =
-      "https://api.montevideo.gub.uy/api/transportepublico";
-  static const String _accessTokenUrl =
-      "https://mvdapi-auth.montevideo.gub.uy/auth/realms/pci/protocol/openid-connect/token";
-  static const String _clientId = "93d925e7";
-  static const String _clientSecret = "2ac468b09443250d178653e7707ea9ad";
-
-  String? _apiToken;
+class MontevideoApiService implements ETAFetcherService {
+  // Implementar la interfaz
+  String? _accessToken;
+  DateTime? _tokenExpiration;
 
   Future<String?> getApiToken() async {
-    if (_apiToken != null) return _apiToken;
-    final response = await http.post(
-      Uri.parse(_accessTokenUrl),
-      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-      body: {
-        'client_id': _clientId,
-        'client_secret': _clientSecret,
-        'grant_type': 'client_credentials',
-      },
-    );
-    if (response.statusCode == 200) {
-      final Map<String, dynamic> data = json.decode(response.body);
-      _apiToken = data['access_token'];
-      return _apiToken;
+    if (_accessToken != null &&
+        _tokenExpiration != null &&
+        DateTime.now().isBefore(_tokenExpiration!)) {
+      return _accessToken;
     }
-    return null;
-  }
-
-  Future<List<Map<String, String>>> fetchBusLinesForStop(String stopId) async {
-    final token = await getApiToken();
-    if (token == null) return [];
-    final response = await http.get(
-      Uri.parse("$_baseUrl/buses/busstops/$stopId/lines"),
-      headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'},
-    );
-    if (response.statusCode == 200) {
-      final List<dynamic> data = json.decode(response.body);
-      return data
-          .map(
-            (lineInfo) => {
-              'line': (lineInfo['line'] ?? 'N/A').toString(),
-              'lineId': (lineInfo['lineId'] ?? 'N/A').toString(),
-            },
-          )
-          .toList();
-    }
-    return [];
-  }
-
-  Future<List<Map<String, dynamic>>> fetchUpcomingBusesForStopAndLine(
-    String stopId,
-    String lineShortName,
-  ) async {
-    print(
-      "[BondiUY_Debug_ETA_Service] fetchUpcomingBusesForStopAndLine: Obteniendo todos los arribos para la parada $stopId y filtrando por línea $lineShortName",
-    );
-
-    // Llamar al nuevo método que obtiene todos los arribos para la parada
-    final List<Map<String, dynamic>> allArrivals =
-        await fetchNextArrivalsForStop(stopId);
-
-    // Filtrar por la línea deseada
-    final List<Map<String, dynamic>> filteredArrivals =
-        allArrivals
-            .where((bus) => bus['line']?.toString() == lineShortName)
-            .toList();
-
-    // Aplicar el límite de amountperline (aunque la API original lo hacía, aquí lo replicamos si es necesario)
-    // El nuevo endpoint no tiene amountperline, así que si se quiere un límite, se aplica post-filtro.
-    // Por ahora, devolvemos todos los de la línea. Si se necesita un límite, se puede añadir aquí.
-    // Ejemplo: return filteredArrivals.take(3).toList();
-
-    print(
-      "[BondiUY_Debug_ETA_Service] fetchUpcomingBusesForStopAndLine: Encontrados ${filteredArrivals.length} arribos para línea $lineShortName en parada $stopId.",
-    );
-    return filteredArrivals;
-  }
-
-  // NUEVO MÉTODO usando el endpoint transporteRest/siguientesParada/
-  Future<List<Map<String, dynamic>>> fetchNextArrivalsForStop(
-    String stopId,
-  ) async {
-    final String apiUrl =
-        "https://api.montevideo.gub.uy/transporteRest/siguientesParada/$stopId";
-
-    print(
-      "[BondiUY_Debug_NextArrivals_Service] Llamando a API con URL: $apiUrl",
-    );
 
     try {
-      // Este endpoint parece no requerir token según pruebas directas.
-      // Si falla por autenticación, se deberá añadir la lógica de token aquí.
-      final response = await http.get(Uri.parse(apiUrl));
-
-      if (response.statusCode == 200) {
-        final List<dynamic> responseData = json.decode(response.body);
-        List<Map<String, dynamic>> upcomingBuses = [];
-
-        print(
-          "[BondiUY_Debug_API_RESPONSE_NextArrivals] Código de estado: ${response.statusCode} para parada $stopId",
-        );
-        // print("[BondiUY_Debug_API_RESPONSE_NextArrivals] Body: ${response.body}");
-
-        for (var busInfo in responseData) {
-          if (busInfo is Map<String, dynamic>) {
-            List<dynamic>? coords = busInfo['coordinates'];
-            Map<String, dynamic>? locationGeoJson;
-            if (coords != null && coords.length == 2) {
-              // Asegurarse de que las coordenadas sean double
-              final lon =
-                  coords[0] is num ? (coords[0] as num).toDouble() : null;
-              final lat =
-                  coords[1] is num ? (coords[1] as num).toDouble() : null;
-              if (lon != null && lat != null) {
-                locationGeoJson = {
-                  'type': 'Point',
-                  'coordinates': [lon, lat],
-                };
-              }
-            }
-
-            upcomingBuses.add({
-              'line': busInfo['linea']?.toString(),
-              'destination': busInfo['destino']?.toString(),
-              'minutesToArrival': busInfo['minutos'],
-              'location':
-                  locationGeoJson, // Puede ser null si no hay coordenadas o no son válidas
-              'isReal': busInfo['real'] ?? false,
-              'idBus': busInfo['idBus'], // Añadir otros campos útiles
-              'variantId':
-                  busInfo['variante'], // 'variante' en el nuevo endpoint
-              'stopNameActual': busInfo['parada_actual'],
-            });
-          }
-        }
-        // La API ya suele devolver ordenado por minutos.
-        return upcomingBuses;
-      } else {
-        print(
-          "[BondiUY_Debug_NextArrivals_Service] Error API (${response.statusCode}) para parada $stopId: ${response.body}",
-        );
-        // Si es un error de autenticación común, intentar obtener token y reintentar.
-        // Por ahora, lanzamos la excepción directamente.
-        // if (response.statusCode == 401 || response.statusCode == 403) {
-        //   _apiToken = null; // Invalidar token
-        // }
-        throw Exception("Error API: ${response.statusCode}");
-      }
-    } catch (e) {
-      print(
-        "[BondiUY_Debug_NextArrivals_Service] Excepción para parada $stopId: $e",
-      );
-      throw Exception("Excepción en servicio: $e");
-    }
-  }
-
-  Future<Map<String, dynamic>> fetchRealtimeBusLocations(
-    String lineShortName,
-  ) async {
-    String? token = await getApiToken();
-    if (token == null) {
-      print(
-        "[BondiUY_Debug_Realtime_Service] No se pudo obtener token inicial para buses en tiempo real.",
-      );
-      throw Exception(
-        "Error de autenticación en servicio para buses en tiempo real",
-      );
-    }
-
-    final String apiUrl = "$_baseUrl/buses?lines=$lineShortName&format=geojson";
-
-    print(
-      "[BondiUY_Debug] Iniciando request a Montevideo API para realtime de buses (línea: $lineShortName)",
-    );
-
-    try {
-      http.Response response = await http.get(
-        Uri.parse(apiUrl),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Accept': 'application/json',
+      final response = await http.post(
+        Uri.parse(ACCESS_TOKEN_URL),
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: {
+          'client_id': CLIENT_ID,
+          'client_secret': CLIENT_SECRET,
+          'grant_type': 'client_credentials',
         },
       );
 
-      if (response.statusCode == 401 || response.statusCode == 403) {
-        print(
-          "[BondiUY_Debug_Realtime_Service] Error de autenticación (${response.statusCode}). Forzando renovación de token y reintentando...",
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        _accessToken = data['access_token'];
+        // Guardar la expiración restando unos minutos por seguridad
+        _tokenExpiration = DateTime.now().add(
+          Duration(seconds: (data['expires_in'] as int) - 120),
         );
-        _apiToken = null; // Invalidar token cacheado
-        token = await getApiToken(); // Obtener nuevo token
+        return _accessToken;
+      } else {
+        print(
+          "[MontevideoApiService_ERROR] Failed to get API token: ${response.statusCode} ${response.body}",
+        );
+        return null;
+      }
+    } catch (e) {
+      print("[MontevideoApiService_ERROR] Exception getting API token: $e");
+      return null;
+    }
+  }
 
-        if (token != null) {
-          print(
-            "[BondiUY_Debug_Realtime_Service] Reintentando con nuevo token...",
+  Future<List<Map<String, dynamic>>> fetchBusLinesForStop(String stopId) async {
+    final token = await getApiToken();
+    if (token == null) return [];
+
+    final url = Uri.parse('$BASE_URL/busservice/lines/$stopId');
+    try {
+      final response = await http.get(
+        url,
+        headers: {'Authorization': 'Bearer $token'},
+      );
+
+      if (response.statusCode == 200) {
+        return List<Map<String, dynamic>>.from(json.decode(response.body));
+      } else if (response.statusCode == 401 || response.statusCode == 403) {
+        _accessToken = null; // Invalidar token
+        final newToken = await getApiToken();
+        if (newToken != null) {
+          final retryResponse = await http.get(
+            url,
+            headers: {'Authorization': 'Bearer $newToken'},
           );
-          print(
-            "[BondiUY_Debug] Iniciando REINTENTO request a Montevideo API para realtime de buses (línea: $lineShortName)",
-          );
-          response = await http.get(
-            Uri.parse(apiUrl),
-            headers: {
-              'Authorization': 'Bearer $token',
-              'Accept': 'application/json',
-            },
-          );
-        } else {
-          print(
-            "[BondiUY_Debug_Realtime_Service] No se pudo obtener nuevo token para reintento.",
-          );
-          throw Exception(
-            "No se pudo obtener nuevo token para reintento en servicio",
-          );
+          if (retryResponse.statusCode == 200) {
+            return List<Map<String, dynamic>>.from(
+              json.decode(retryResponse.body),
+            );
+          } else {
+            print(
+              "[MontevideoApiService_ERROR] Failed to fetch bus lines for stop $stopId after retry: ${retryResponse.statusCode} ${retryResponse.body}",
+            );
+          }
+        }
+      } else {
+        print(
+          "[MontevideoApiService_ERROR] Failed to fetch bus lines for stop $stopId: ${response.statusCode} ${response.body}",
+        );
+      }
+      return [];
+    } catch (e) {
+      print(
+        "[MontevideoApiService_ERROR] Exception fetching bus lines for stop $stopId: $e",
+      );
+      return [];
+    }
+  }
+
+  // Implementación del método de la interfaz ETAFetcherService
+  @override
+  Future<List<BusArrivalInfo>> getUpcomingBusesForStop(String stopId) async {
+    // Llama al nuevo método que obtiene todos los arribos para la parada
+    final List<Map<String, dynamic>> rawArrivalData =
+        await _fetchArrivalsForStop(stopId);
+
+    if (rawArrivalData.isEmpty) {
+      // Esto puede ocurrir si la API devuelve un array vacío (200 OK pero sin arribos)
+      // o si _fetchArrivalsForStop devuelve [] por un error.
+      print(
+        "[MontevideoApiService_INFO] No arrival data received for stop $stopId from _fetchArrivalsForStop.",
+      );
+      return [];
+    }
+
+    return rawArrivalData.map((arrivalMap) {
+      final minutes = arrivalMap['minutos'];
+      final isReal = arrivalMap['real'] as bool? ?? false;
+      // El campo 'linea' viene en cada objeto del array JSON
+      final line = arrivalMap['linea'] as String? ?? 'N/A';
+
+      Position? busPosition;
+      final coordinatesData = arrivalMap['coordinates'];
+      if (coordinatesData is List) {
+        final coords = coordinatesData; // Ya es una lista
+        if (coords.length == 2 && coords[0] is num && coords[1] is num) {
+          // Asegurarse de que las coordenadas no sean (0,0) o nulas si eso indica ausencia
+          if ((coords[0] as num) != 0.0 || (coords[1] as num) != 0.0) {
+            // JSON es [longitud, latitud]. Mapbox Position(longitude, latitude).
+            busPosition = Position(
+              (coords[0] as num).toDouble(), // Longitud (X)
+              (coords[1] as num).toDouble(), // Latitud (Y)
+            );
+          }
+        }
+      } else if (coordinatesData is Map<String, dynamic>) {
+        // Manejo del formato anterior por si acaso (si existiera y fuera diferente)
+        final locationData = coordinatesData;
+        if (locationData['type'] == 'Point' &&
+            locationData['coordinates'] is List) {
+          final coordsAnterior = locationData['coordinates'] as List<dynamic>;
+          if (coordsAnterior.length == 2 &&
+              coordsAnterior[0] is num &&
+              coordsAnterior[1] is num) {
+            if ((coordsAnterior[0] as num) != 0.0 ||
+                (coordsAnterior[1] as num) != 0.0) {
+              // Asumiendo el mismo orden [lon, lat] para este formato si se diera el caso
+              busPosition = Position(
+                (coordsAnterior[0] as num).toDouble(), // Longitud (X)
+                (coordsAnterior[1] as num).toDouble(), // Latitud (Y)
+              );
+            }
+          }
         }
       }
 
+      return BusArrivalInfo(
+        minutesToArrival:
+            minutes is int
+                ? minutes
+                : (minutes is double ? minutes.round() : 0),
+        isReal: isReal,
+        lineShortName: line,
+        position: busPosition,
+      );
+    }).toList();
+  }
+
+  // Nuevo método privado para llamar al endpoint /siguientesParada/{stopId}
+  Future<List<Map<String, dynamic>>> _fetchArrivalsForStop(
+    String stopId,
+  ) async {
+    final token = await getApiToken();
+    if (token == null) return [];
+
+    // Usar el endpoint correcto directamente, ya que es una excepción a BASE_URL
+    final url = Uri.parse(
+      'https://api.montevideo.gub.uy/transporteRest/siguientesParada/$stopId',
+    );
+    print(
+      "[MontevideoApiService_DEBUG] Fetching all arrivals for stop $stopId from $url",
+    );
+
+    try {
+      final response = await http.get(
+        url,
+        headers: {'Authorization': 'Bearer $token'},
+      );
+
       if (response.statusCode == 200) {
+        // El cuerpo de la respuesta es directamente un array JSON
+        final decodedBody = json.decode(response.body);
+        if (decodedBody is List) {
+          return List<Map<String, dynamic>>.from(decodedBody);
+        } else {
+          print(
+            "[MontevideoApiService_ERROR] Unexpected response format for stop $stopId. Expected List, got ${decodedBody.runtimeType}. Body: ${response.body}",
+          );
+          return [];
+        }
+      } else if (response.statusCode == 401 || response.statusCode == 403) {
+        _accessToken = null; // Invalidar token
         print(
-          "[BondiUY_Debug] Respuesta recibida de Montevideo API para realtime de buses (línea: $lineShortName)",
+          "[MontevideoApiService_WARN] Token expired or invalid for stop $stopId. Retrying...",
         );
-        print("[BondiUY_Debug_API_RESPONSE_REALTIME] Body: ${response.body}");
-        return json.decode(response.body) as Map<String, dynamic>;
+        final newToken = await getApiToken();
+        if (newToken != null) {
+          final retryResponse = await http.get(
+            url,
+            headers: {'Authorization': 'Bearer $newToken'},
+          );
+          if (retryResponse.statusCode == 200) {
+            final decodedRetryBody = json.decode(retryResponse.body);
+            if (decodedRetryBody is List) {
+              return List<Map<String, dynamic>>.from(decodedRetryBody);
+            } else {
+              print(
+                "[MontevideoApiService_ERROR] Unexpected response format for stop $stopId after retry. Expected List, got ${decodedRetryBody.runtimeType}. Body: ${retryResponse.body}",
+              );
+              return [];
+            }
+          } else {
+            print(
+              "[MontevideoApiService_ERROR] Failed to fetch arrivals for stop $stopId after retry: ${retryResponse.statusCode} ${retryResponse.body}",
+            );
+          }
+        }
       } else {
+        // Manejar otros errores, como 404 (si la parada no existe) o 429 (rate limit)
         print(
-          "[BondiUY_Debug_Realtime_Service] Error API obteniendo buses (${response.statusCode}): ${response.body}",
-        );
-        throw Exception(
-          "Error API al obtener buses en tiempo real: ${response.statusCode}",
+          "[MontevideoApiService_ERROR] Failed to fetch arrivals for stop $stopId: ${response.statusCode} ${response.body}",
         );
       }
+      return [];
     } catch (e) {
-      print("[BondiUY_Debug_Realtime_Service] Excepción obteniendo buses: $e");
-      throw Exception(
-        "Excepción en servicio al obtener buses en tiempo real: $e",
+      print(
+        "[MontevideoApiService_ERROR] Exception fetching arrivals for stop $stopId: $e",
       );
+      return [];
+    }
+  }
+
+  Future<Map<String, dynamic>?> fetchRealtimeBusLocations(
+    String lineShortName,
+  ) async {
+    final token = await getApiToken();
+    if (token == null) return null;
+
+    final url = Uri.parse(
+      '$BASE_URL/busservice/realtimelocations/$lineShortName',
+    );
+    try {
+      final response = await http.get(
+        url,
+        headers: {'Authorization': 'Bearer $token'},
+      );
+
+      if (response.statusCode == 200) {
+        return Map<String, dynamic>.from(json.decode(response.body));
+      } else if (response.statusCode == 401 || response.statusCode == 403) {
+        _accessToken = null; // Invalidar token
+        final newToken = await getApiToken();
+        if (newToken != null) {
+          final retryResponse = await http.get(
+            url,
+            headers: {'Authorization': 'Bearer $newToken'},
+          );
+          if (retryResponse.statusCode == 200) {
+            return Map<String, dynamic>.from(json.decode(retryResponse.body));
+          } else {
+            print(
+              "[MontevideoApiService_ERROR] Failed to fetch realtime bus locations for line $lineShortName after retry: ${retryResponse.statusCode} ${retryResponse.body}",
+            );
+          }
+        }
+      } else {
+        print(
+          "[MontevideoApiService_ERROR] Failed to fetch realtime bus locations for line $lineShortName: ${response.statusCode} ${response.body}",
+        );
+      }
+      return null;
+    } catch (e) {
+      print(
+        "[MontevideoApiService_ERROR] Exception fetching realtime bus locations for line $lineShortName: $e",
+      );
+      return null;
     }
   }
 }

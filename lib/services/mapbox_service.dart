@@ -7,9 +7,12 @@ import 'dart:convert'; // Necesario para json.encode
 import '../utils/geometry_utils.dart';
 import '../models/point_dart.dart'; // Necesario para Point_dart en drawIncomingBusSegment
 import '../models/route_leg.dart'; // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< IMPORTAR ROUTELEG
+import '../models/itinerary.dart'; // AÑADIDO: Para los métodos stub
+import '../models/leg_mode_constants.dart'; // AÑADIDO: Para constantes de modo en drawRoute
 import 'dart:math' as math;
 import 'package:flutter_polyline_points/flutter_polyline_points.dart'; // AÑADIDO PARA PointLatLng EN UTILS
 import 'dart:async'; // AÑADIDO PARA TIMER
+import '../models/bus_arrival_info.dart'; // Añadir esta línea
 
 // Constantes que podrían ser movidas/referenciadas desde otro lugar en el futuro
 // const String STOPS_SOURCE_ID = "stops-source"; // Movida adentro de la clase
@@ -20,6 +23,16 @@ class MapboxService {
   static const String STOPS_SOURCE_ID = "stops-source";
   static const String STOPS_LAYER_ID = "stops-layer";
   static const String REALTIME_BUS_ICON_ID = "realtime-bus-icon";
+
+  // Constantes para el marcador del bus en tiempo real y el segmento verde
+  static const String REALTIME_BUS_MARKER_SOURCE_ID =
+      "realtime-bus-marker-source";
+  static const String REALTIME_BUS_MARKER_LAYER_ID =
+      "realtime-bus-marker-layer";
+  static const String REALTIME_BUS_GREEN_SEGMENT_SOURCE_ID =
+      "realtime-bus-green-segment-source";
+  static const String REALTIME_BUS_GREEN_SEGMENT_LAYER_ID =
+      "realtime-bus-green-segment-layer";
 
   // AÑADIDO: Constantes para capas/fuentes de ruta específicas, movidas de _MapScreenState
   static const String ROUTE_STOPS_SOURCE_ID = "route-stops-source";
@@ -60,6 +73,179 @@ class MapboxService {
   // <<< FIN AÑADIDO
 
   MapboxService(this.mapboxMap);
+
+  // STUB IMPLEMENTATIONS - TO BE COMPLETED
+  Future<void> clearRoute() async {
+    print("[MapboxService_STUB] clearRoute called");
+    // TODO: Implementar la lógica para limpiar la ruta del mapa
+  }
+
+  Future<void> clearHighlightedStop() async {
+    // print("[MapboxService_STUB] clearHighlightedStop called");
+    // TODO: Implementar la lógica para limpiar la parada resaltada
+    print(
+      "[MapboxService_INFO] clearHighlightedStop called - No specific map highlight to clear at this moment.",
+    );
+    // TODO: Implement if a map-specific stop highlighting mechanism (e.g., a dedicated layer for a single tapped stop) is added in the future.
+  }
+
+  Future<void> toggleGeneralStopsVisibility(bool visible) async {
+    print(
+      "[MapboxService_STUB] toggleGeneralStopsVisibility called with: $visible",
+    );
+    // TODO: Implementar la lógica para mostrar/ocultar paradas generales
+  }
+
+  Future<void> drawRoute(Itinerary itinerary, {bool isOverview = false}) async {
+    // print("[MapboxService_STUB] drawRoute called for Itinerary. Legs: ${itinerary.legs.length}, isOverview: $isOverview");
+    // TODO: Implementar la lógica para dibujar la ruta en el mapa
+
+    if (itinerary.legs.isEmpty) {
+      print(
+        "[MapboxService_DEBUG] drawRoute: No legs in itinerary. Nothing to draw.",
+      );
+      return;
+    }
+
+    // Limpieza previa es responsabilidad de quien llama (MapNotifier)
+
+    for (int legIndex = 0; legIndex < itinerary.legs.length; legIndex++) {
+      final leg = itinerary.legs[legIndex];
+
+      // Determinar propiedades visuales
+      Color legColor;
+      List<double>? lineDasharrayValue;
+      double lineWidthValue;
+
+      final String modeUpperCase = leg.mode.toUpperCase();
+
+      if (modeUpperCase == LegModeConstants.walk) {
+        legColor = Colors.blueAccent;
+        lineDasharrayValue = [2.0, 2.0];
+        lineWidthValue = 3.0;
+      } else if (modeUpperCase == LegModeConstants.bus ||
+          modeUpperCase == LegModeConstants.transit) {
+        // TODO: TECH_DEBT - Obtener el color real de la ruta desde el Itinerary/ProcessedItinerary.
+        // Actualmente leg.route no tiene gtfsRouteColor. Usamos un color por defecto.
+        legColor = Colors.deepOrangeAccent;
+        lineDasharrayValue = null; // Línea sólida
+        lineWidthValue = 4.0;
+      } else if (modeUpperCase == LegModeConstants.wait ||
+          leg.legGeometry == null ||
+          leg.legGeometry!.points.isEmpty) {
+        // No dibujar tramos de espera o tramos sin geometría
+        print(
+          "[MapboxService_DEBUG] drawRoute: Skipping leg $legIndex (mode: ${leg.mode}, no geometry or wait leg).",
+        );
+        continue;
+      } else {
+        // Modo desconocido, usar un color genérico
+        print(
+          "[MapboxService_WARN] drawRoute: Unknown leg mode '${leg.mode}' for leg $legIndex. Using default style.",
+        );
+        legColor = Colors.deepPurple;
+        lineDasharrayValue = null;
+        lineWidthValue = 4.0;
+      }
+
+      List<Position> legPositions = [];
+      try {
+        // Decodificar la geometría del tramo
+        // Es crucial que PolylinePoints().decodePolyline() devuelva List<PointLatLng>
+        // y que estos se conviertan correctamente a List<Position> de Mapbox.
+        List<PointLatLng> decodedPoints = PolylinePoints().decodePolyline(
+          leg.legGeometry!.points,
+        );
+        legPositions =
+            decodedPoints
+                .map((point) => Position(point.longitude, point.latitude))
+                .toList();
+      } catch (e) {
+        print(
+          "[MapboxService_ERROR] drawRoute: Failed to decode leg geometry for leg $legIndex: $e",
+        );
+        continue; // Saltar este tramo si la geometría es inválida
+      }
+
+      if (legPositions.length < 2) {
+        print(
+          "[MapboxService_DEBUG] drawRoute: Not enough points in leg $legIndex after decoding. Skipping.",
+        );
+        continue;
+      }
+
+      // IDs de Capa/Fuente
+      final String sourceId = "route-leg-$legIndex-source";
+      final String layerId = "route-leg-$legIndex-layer";
+
+      // Dibujar Segmento
+      await drawRouteSegment(
+        legPositions,
+        sourceId,
+        layerId,
+        legColor,
+        legIndex, // Pasar el legIndex real
+        lineWidth: lineWidthValue,
+        // shadowWidth se maneja por defecto en drawRouteSegment
+        lineDasharray: lineDasharrayValue,
+      );
+    }
+
+    await displayRelevantStops(itinerary.legs);
+
+    if (isOverview) {
+      await applyOverviewRouteStyle();
+      await zoomToRouteBounds(itinerary.legs);
+    }
+    print("[MapboxService_DEBUG] drawRoute completed. Overview: $isOverview");
+  }
+
+  Future<void> highlightLeg(Itinerary itinerary, int legIndex) async {
+    // print("[MapboxService_STUB] highlightLeg called for Itinerary leg: $legIndex");
+    // TODO: Implementar la lógica para resaltar un tramo específico de la ruta
+
+    if (itinerary.legs.isEmpty ||
+        legIndex < 0 ||
+        legIndex >= itinerary.legs.length) {
+      print(
+        "[MapboxService_DEBUG] highlightLeg: Invalid itinerary or legIndex. Itinerary legs: ${itinerary.legs.length}, legIndex: $legIndex",
+      );
+      return;
+    }
+
+    // _legLayerIds se actualiza en drawRouteSegment, que es llamado por drawRoute.
+    // Si _legLayerIds está vacío aquí, significa que la ruta no se dibujó o falló.
+    if (_legLayerIds.isEmpty && itinerary.legs.isNotEmpty) {
+      print(
+        "[MapboxService_WARN] highlightLeg: _legLayerIds is empty, but itinerary has legs. Route might not have been drawn correctly.",
+      );
+      // Aún así, intentaremos llamar a updateMapRouteHighlight, ya que podría no hacer nada si no hay capas.
+    }
+
+    await updateMapRouteHighlight(legIndex);
+    print("[MapboxService_DEBUG] highlightLeg completed for leg $legIndex.");
+  }
+  // END STUB IMPLEMENTATIONS
+
+  // Helper para convertir color de String (ej. "RRGGBB" o "#RRGGBB") a Color
+  // Retorna un color por defecto si el parseo falla.
+  static Color _parseColorString(String? colorString, Color defaultColor) {
+    if (colorString == null || colorString.isEmpty) {
+      return defaultColor;
+    }
+    String hexColor = colorString.toUpperCase().replaceAll("#", "");
+    if (hexColor.length == 6) {
+      hexColor = "FF$hexColor"; // Añadir alfa si no está presente
+    }
+    if (hexColor.length == 8) {
+      try {
+        return Color(int.parse(hexColor, radix: 16));
+      } catch (e) {
+        // Silenciosamente retorna el color por defecto si hay error de parseo
+      }
+    }
+    return defaultColor;
+  }
 
   Future<void> handleStyleLoaded() async {
     print("[MapboxService_Debug] Estilo cargado.");
@@ -286,6 +472,7 @@ class MapboxService {
     int legIndex, {
     double lineWidth = 4.0,
     double shadowWidth = 6.0,
+    List<double>? lineDasharray,
   }) async {
     if (positions.length < 2) return;
 
@@ -349,6 +536,7 @@ class MapboxService {
             lineOpacity: 0.9,
             lineJoin: LineJoin.ROUND,
             lineCap: LineCap.ROUND,
+            lineDasharray: lineDasharray,
           ),
         );
         await _printLayerOrder();
@@ -1408,5 +1596,243 @@ class MapboxService {
 
   Future<void> drawRouteLegs(List<RouteLeg> legs, int? selectedLegIndex) async {
     // ... existing code ...
+  }
+
+  // Método de utilidad para eliminar una capa y su fuente
+  Future<void> removeLayerAndSource({
+    required String layerId,
+    required String sourceId,
+  }) async {
+    try {
+      if (await mapboxMap.style.styleLayerExists(layerId)) {
+        await mapboxMap.style.removeStyleLayer(layerId);
+        print("[MapboxService_Debug] Capa $layerId eliminada.");
+      }
+    } catch (e) {
+      print("[MapboxService_Warn] No se pudo remover la capa $layerId: $e");
+    }
+    try {
+      if (await mapboxMap.style.styleSourceExists(sourceId)) {
+        await mapboxMap.style.removeStyleSource(sourceId);
+        print("[MapboxService_Debug] Fuente $sourceId eliminada.");
+      }
+    } catch (e) {
+      print("[MapboxService_Warn] No se pudo remover la fuente $sourceId: $e");
+    }
+  }
+
+  Future<void> updateRealtimeBusMarkerAndSegment(
+    BusArrivalInfo etaInfo,
+    List<Position>?
+    fullBusLineShape, // Shape completo de la línea de bus actual (puede ser null)
+    int?
+    upcomingStopIndexOnShape, // Índice de la parada de subida en el fullBusLineShape (puede ser null)
+  ) async {
+    print(
+      "[MapboxService_Debug] updateRealtimeBusMarkerAndSegment (Optimizado) llamado. Bus: ${etaInfo.lineShortName}, Pos: ${etaInfo.position}",
+    );
+
+    // --- Manejo del Marcador del Bus ---
+    if (etaInfo.position == null) {
+      // Si no hay posición, asegurarse de que el marcador y el segmento estén limpios.
+      print(
+        "[MapboxService_Debug] Posición del bus en etaInfo es null. Limpiando marcador y segmento.",
+      );
+      await removeLayerAndSource(
+        layerId: REALTIME_BUS_MARKER_LAYER_ID,
+        sourceId: REALTIME_BUS_MARKER_SOURCE_ID,
+      );
+      await removeLayerAndSource(
+        layerId: REALTIME_BUS_GREEN_SEGMENT_LAYER_ID,
+        sourceId: REALTIME_BUS_GREEN_SEGMENT_SOURCE_ID,
+      );
+      return;
+    }
+
+    final busPosition = etaInfo.position!;
+    final busFeature = {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [busPosition.lng, busPosition.lat],
+      },
+      "properties": {
+        "line_short_name": etaInfo.lineShortName,
+        "is_real": etaInfo.isReal,
+      },
+    };
+    final busSourceData = {
+      "type": "FeatureCollection",
+      "features": [busFeature],
+    };
+    final busSourceDataString = json.encode(busSourceData);
+
+    try {
+      bool sourceExists = await mapboxMap.style.styleSourceExists(
+        REALTIME_BUS_MARKER_SOURCE_ID,
+      );
+      if (sourceExists) {
+        final source =
+            await mapboxMap.style.getSource(REALTIME_BUS_MARKER_SOURCE_ID)
+                as GeoJsonSource?;
+        await source?.updateGeoJSON(busSourceDataString);
+        print("[MapboxService_Debug] Fuente del marcador de bus actualizada.");
+      } else {
+        await mapboxMap.style.addSource(
+          GeoJsonSource(
+            id: REALTIME_BUS_MARKER_SOURCE_ID,
+            data: busSourceDataString,
+          ),
+        );
+        print("[MapboxService_Debug] Fuente del marcador de bus creada.");
+        // Si la fuente no existía, la capa tampoco debería existir, así que la creamos.
+        if (!await mapboxMap.style.styleLayerExists(
+          REALTIME_BUS_MARKER_LAYER_ID,
+        )) {
+          await mapboxMap.style.addLayer(
+            SymbolLayer(
+              id: REALTIME_BUS_MARKER_LAYER_ID,
+              sourceId: REALTIME_BUS_MARKER_SOURCE_ID,
+              iconImage: REALTIME_BUS_ICON_ID,
+              iconSize: 0.7,
+              iconAllowOverlap: true,
+              iconIgnorePlacement: true,
+            ),
+          );
+          print("[MapboxService_Debug] Capa del marcador de bus creada.");
+        }
+      }
+    } catch (e) {
+      print(
+        "[MapboxService_Error] Error al actualizar/crear marcador de bus: $e",
+      );
+    }
+
+    // --- Manejo del Segmento Verde ---
+    bool shouldDrawGreenSegment =
+        fullBusLineShape != null &&
+        fullBusLineShape.isNotEmpty &&
+        upcomingStopIndexOnShape != null &&
+        upcomingStopIndexOnShape >= 0 &&
+        upcomingStopIndexOnShape < fullBusLineShape.length;
+
+    if (!shouldDrawGreenSegment) {
+      print(
+        "[MapboxService_Debug] Datos insuficientes para segmento verde o bus no rastreable. Limpiando segmento verde si existe.",
+      );
+      await removeLayerAndSource(
+        layerId: REALTIME_BUS_GREEN_SEGMENT_LAYER_ID,
+        sourceId: REALTIME_BUS_GREEN_SEGMENT_SOURCE_ID,
+      );
+      return; // Salir si no podemos dibujar el segmento verde
+    }
+
+    int busIndexOnShape = findClosestPointIndexOnShape(
+      fullBusLineShape!, // Sabemos que no es null por shouldDrawGreenSegment
+      Point_dart(
+        lat: busPosition.lat.toDouble(),
+        lng: busPosition.lng.toDouble(),
+      ),
+    );
+
+    if (busIndexOnShape != -1 && busIndexOnShape < upcomingStopIndexOnShape!) {
+      // Sabemos que no es null
+      List<Position> segmentPoints = fullBusLineShape.sublist(
+        busIndexOnShape,
+        upcomingStopIndexOnShape + 1,
+      );
+
+      if (segmentPoints.length >= 2) {
+        final segmentGeoJsonPayload = {
+          "type": "FeatureCollection",
+          "features": [
+            {
+              "type": "Feature",
+              "geometry": {
+                "type": "LineString",
+                "coordinates":
+                    segmentPoints.map((p) => [p.lng, p.lat]).toList(),
+              },
+            },
+          ],
+        };
+        final segmentSourceDataString = json.encode(segmentGeoJsonPayload);
+
+        try {
+          bool greenSourceExists = await mapboxMap.style.styleSourceExists(
+            REALTIME_BUS_GREEN_SEGMENT_SOURCE_ID,
+          );
+          if (greenSourceExists) {
+            final source =
+                await mapboxMap.style.getSource(
+                      REALTIME_BUS_GREEN_SEGMENT_SOURCE_ID,
+                    )
+                    as GeoJsonSource?;
+            await source?.updateGeoJSON(segmentSourceDataString);
+            print(
+              "[MapboxService_Debug] Fuente del segmento verde actualizada.",
+            );
+          } else {
+            await mapboxMap.style.addSource(
+              GeoJsonSource(
+                id: REALTIME_BUS_GREEN_SEGMENT_SOURCE_ID,
+                data: segmentSourceDataString,
+              ),
+            );
+            print("[MapboxService_Debug] Fuente del segmento verde creada.");
+            if (!await mapboxMap.style.styleLayerExists(
+              REALTIME_BUS_GREEN_SEGMENT_LAYER_ID,
+            )) {
+              await mapboxMap.style.addLayer(
+                LineLayer(
+                  id: REALTIME_BUS_GREEN_SEGMENT_LAYER_ID,
+                  sourceId: REALTIME_BUS_GREEN_SEGMENT_SOURCE_ID,
+                  lineColor: Colors.green.value,
+                  lineWidth: 5.0,
+                  lineOpacity: 0.8,
+                  lineJoin: LineJoin.ROUND,
+                  lineCap: LineCap.ROUND,
+                ),
+              );
+              print("[MapboxService_Debug] Capa del segmento verde creada.");
+            }
+          }
+        } catch (e) {
+          print(
+            "[MapboxService_Error] Error al actualizar/crear segmento verde: $e",
+          );
+        }
+      } else {
+        print(
+          "[MapboxService_Debug] No hay suficientes puntos para el segmento verde (${segmentPoints.length}). Limpiando si existe.",
+        );
+        await removeLayerAndSource(
+          layerId: REALTIME_BUS_GREEN_SEGMENT_LAYER_ID,
+          sourceId: REALTIME_BUS_GREEN_SEGMENT_SOURCE_ID,
+        );
+      }
+    } else {
+      print(
+        "[MapboxService_Debug] El bus no está antes de la parada o índices inválidos. Limpiando segmento verde si existe. busIndex: $busIndexOnShape, stopIndex: $upcomingStopIndexOnShape",
+      );
+      await removeLayerAndSource(
+        layerId: REALTIME_BUS_GREEN_SEGMENT_LAYER_ID,
+        sourceId: REALTIME_BUS_GREEN_SEGMENT_SOURCE_ID,
+      );
+    }
+  }
+
+  Future<void> clearRealtimeBusMarkerAndSegment() async {
+    print("[MapboxService_Debug] clearRealtimeBusMarkerAndSegment llamado.");
+    // Limpiar marcador del bus
+    await removeLayerAndSource(
+      layerId: REALTIME_BUS_MARKER_LAYER_ID,
+      sourceId: REALTIME_BUS_MARKER_SOURCE_ID,
+    );
+    // Limpiar segmento verde
+    await removeLayerAndSource(
+      layerId: REALTIME_BUS_GREEN_SEGMENT_LAYER_ID,
+      sourceId: REALTIME_BUS_GREEN_SEGMENT_SOURCE_ID,
+    );
   }
 }

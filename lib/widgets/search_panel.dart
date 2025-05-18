@@ -19,11 +19,15 @@ class SearchPanel extends ConsumerStatefulWidget {
   final GeocodingService geocodingService;
   final bool isCalculatingRoute;
   final VoidCallback onSearchRoute;
-  final Function(Point_dart?) onOrigenSelected; // Usar Point_dart
-  final Function(Point_dart?) onDestinoSelected; // Usar Point_dart
+  final Function(Point_dart?, String?)
+  onOrigenSelected; // MODIFICADO: Añadido String? para la dirección
+  final Function(Point_dart?, String?)
+  onDestinoSelected; // MODIFICADO: Añadido String? para la dirección
   final bool initialExpandedState;
   final VoidCallback onOrigenClear;
   final VoidCallback onDestinoClear;
+  final VoidCallback? onSwap; // AÑADIDO
+  final ValueChanged<bool>? onToggleExpansion; // AÑADIDO
 
   const SearchPanel({
     Key? key,
@@ -41,6 +45,8 @@ class SearchPanel extends ConsumerStatefulWidget {
     this.initialExpandedState = false, // Por defecto no expandido
     required this.onOrigenClear,
     required this.onDestinoClear,
+    this.onSwap, // AÑADIDO
+    this.onToggleExpansion, // AÑADIDO
   }) : super(key: key);
 
   @override
@@ -53,29 +59,24 @@ class _SearchPanelState extends ConsumerState<SearchPanel> {
   @override
   void initState() {
     super.initState();
-    _isSearchPanelExpanded = false; // Forzar a que inicie colapsado
-  }
-
-  @override
-  void didUpdateWidget(SearchPanel oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // Si la propiedad que indica si debe estar expandido cambió...
-    if (widget.initialExpandedState != oldWidget.initialExpandedState) {
-      // ... y el widget todavía está montado...
-      if (mounted) {
-        // ... actualizar el estado interno para que coincida.
-        setState(() {
-          _isSearchPanelExpanded = widget.initialExpandedState;
-        });
-      }
-    }
+    _isSearchPanelExpanded = widget.initialExpandedState;
+    // Ya no es necesario el addPostFrameCallback si establecemos directamente.
+    // WidgetsBinding.instance.addPostFrameCallback((_) {
+    //   if (mounted) {
+    //     setState(() {
+    //       _isSearchPanelExpanded = widget.initialExpandedState;
+    //     });
+    //   }
+    // });
   }
 
   // Método para alternar la expansión
   void _toggleSearchPanel() {
+    final newExpandedState = !_isSearchPanelExpanded;
     setState(() {
-      _isSearchPanelExpanded = !_isSearchPanelExpanded;
+      _isSearchPanelExpanded = newExpandedState;
     });
+    widget.onToggleExpansion?.call(newExpandedState);
   }
 
   // Widget para decidir qué panel de búsqueda mostrar
@@ -93,16 +94,17 @@ class _SearchPanelState extends ConsumerState<SearchPanel> {
       child: Card(
         margin: const EdgeInsets.fromLTRB(
           8.0,
-          8.0,
+          8.0, // Dejar margen superior para que no se pegue al status bar si es el primer elemento
           8.0,
           0,
-        ), // margen solo arriba y costados
+        ),
         elevation: 3.0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(10.0),
         ),
         child: InkWell(
-          onTap: _toggleSearchPanel, // Usar el método para alternar
+          onTap:
+              _toggleSearchPanel, // MODIFICADO: Llama a _toggleSearchPanel que ahora invoca el callback
           borderRadius: BorderRadius.circular(10.0),
           child: Padding(
             padding: const EdgeInsets.symmetric(
@@ -130,7 +132,22 @@ class _SearchPanelState extends ConsumerState<SearchPanel> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                Icon(Icons.arrow_right_alt, size: 22, color: Colors.grey[700]),
+                // Icon(Icons.arrow_right_alt, size: 22, color: Colors.grey[700]), // Reemplazado por swap
+                // const SizedBox(width: 8),
+                if (widget.onSwap != null) // AÑADIDO: Botón de Swap
+                  IconButton(
+                    icon: const Icon(Icons.swap_horiz, size: 22),
+                    tooltip: "Intercambiar Origen/Destino",
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: () {
+                      widget.onSwap?.call();
+                    },
+                  )
+                else // Mantener el espacio si no hay onSwap para no desalinear
+                  const SizedBox(
+                    width: 22 + 16,
+                  ), // Ancho aproximado del IconButton + padding
                 const SizedBox(width: 8),
                 Icon(
                   Icons.flag_outlined,
@@ -156,7 +173,7 @@ class _SearchPanelState extends ConsumerState<SearchPanel> {
                   tooltip: "Modificar Viaje",
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
-                  onPressed: _toggleSearchPanel, // Usar el método para alternar
+                  onPressed: _toggleSearchPanel, // MODIFICADO
                 ),
               ],
             ),
@@ -193,26 +210,47 @@ class _SearchPanelState extends ConsumerState<SearchPanel> {
                     IconButton(
                       icon: const Icon(Icons.keyboard_arrow_up, size: 28),
                       tooltip: "Colapsar",
-                      onPressed:
-                          _toggleSearchPanel, // Usar el método para alternar
+                      onPressed: _toggleSearchPanel, // MODIFICADO
                     ),
                   ],
                 ),
               ),
+              // Fila para Origen y botón de Swap
               Padding(
                 padding: const EdgeInsets.fromLTRB(8.0, 8.0, 8.0, 4.0),
-                child: _buildTypeAheadField(
-                  controller: widget.origenController,
-                  focusNode: widget.origenFocusNode,
-                  hintText: "Origen",
-                  onSelectedCallback: (Point_dart? point) {
-                    widget.onOrigenSelected(point);
-                    if (point != null) {
-                      widget.destinoFocusNode.requestFocus();
-                    }
-                  },
-                  onClear: widget.onOrigenClear,
-                  autoFocus: false,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _buildTypeAheadField(
+                        controller: widget.origenController,
+                        focusNode: widget.origenFocusNode,
+                        hintText: "Origen",
+                        onSelectedCallback: (
+                          Point_dart? point,
+                          String? addressName,
+                        ) {
+                          // MODIFICADO
+                          widget.onOrigenSelected(point, addressName);
+                          if (point != null) {
+                            widget.destinoFocusNode.requestFocus();
+                          }
+                        },
+                        onClear: widget.onOrigenClear,
+                        autoFocus: false, // No autoFocus al expandir
+                      ),
+                    ),
+                    if (widget.onSwap != null) // AÑADIDO: Botón de Swap
+                      IconButton(
+                        icon: const Icon(
+                          Icons.swap_vert,
+                          size: 28,
+                        ), // Icono vertical para campos apilados
+                        tooltip: "Intercambiar Origen/Destino",
+                        onPressed: () {
+                          widget.onSwap?.call();
+                        },
+                      ),
+                  ],
                 ),
               ),
               Padding(
@@ -221,10 +259,13 @@ class _SearchPanelState extends ConsumerState<SearchPanel> {
                   controller: widget.destinoController,
                   focusNode: widget.destinoFocusNode,
                   hintText: "Destino",
-                  onSelectedCallback: (Point_dart? point) {
-                    widget.onDestinoSelected(point);
+                  onSelectedCallback: (Point_dart? point, String? addressName) {
+                    // MODIFICADO
+                    widget.onDestinoSelected(point, addressName);
                     if (point != null) {
-                      FocusScope.of(context).unfocus();
+                      FocusScope.of(
+                        context,
+                      ).unfocus(); // Quitar foco para cerrar teclado
                     }
                   },
                   onClear: widget.onDestinoClear,
@@ -247,10 +288,9 @@ class _SearchPanelState extends ConsumerState<SearchPanel> {
                           ? null
                           : () {
                             widget.onSearchRoute();
-                            // Considerar si colapsar automáticamente después de buscar
-                            // if (_isSearchPanelExpanded) {
-                            //   _toggleSearchPanel();
-                            // }
+                            if (_isSearchPanelExpanded) {
+                              _toggleSearchPanel();
+                            }
                           },
                   child:
                       widget.isCalculatingRoute
@@ -285,7 +325,8 @@ class _SearchPanelState extends ConsumerState<SearchPanel> {
     required TextEditingController controller,
     required FocusNode focusNode,
     required String hintText,
-    required Function(Point_dart?) onSelectedCallback,
+    required Function(Point_dart?, String?)
+    onSelectedCallback, // MODIFICADO: Añadido String?
     required VoidCallback onClear,
     required bool autoFocus,
   }) {
@@ -336,7 +377,7 @@ class _SearchPanelState extends ConsumerState<SearchPanel> {
         if (coordinates != null && coordinates.length == 2) {
           point = Point_dart(lat: coordinates[1], lng: coordinates[0]);
         }
-        onSelectedCallback(point);
+        onSelectedCallback(point, label); // MODIFICADO: Pasar label
       },
     );
   }

@@ -4,6 +4,9 @@ import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import '../services/mapbox_service.dart';
 import '../state/map_state.dart'; // Para ZoomTarget y MapState
 import '../providers/map_notifier.dart'; // Para leer MapState
+import '../models/route_leg.dart'; // AÑADIDO: Para el tipo RouteLeg
+import 'dart:async';
+import 'package:bondi_uy/models/leg_mode_constants.dart'; // Añadir esta línea
 
 // Podríamos mover _initialCameraOptions aquí si es puramente de zoom inicial.
 // Por ahora, lo mantenemos en MapScreen y lo pasamos si es necesario,
@@ -13,15 +16,11 @@ class MapZoomController {
   final MapboxMap mapboxMap;
   final MapboxService mapboxService;
   final WidgetRef ref; // Para acceder a MapState
+  Timer? _zoomDebounceTimer;
 
-  // Constantes que podrían ser necesarias para el zoom, o pasadas como parámetros
+  // Cámara inicial por defecto si no hay otra definida en MapState
   static final CameraOptions initialCameraOptions = CameraOptions(
-    center: Point(
-      coordinates: Position(
-        -56.164532, // Longitud de Montevideo
-        -34.901112, // Latitud de Montevideo
-      ),
-    ),
+    center: Point(coordinates: Position(-56.164532, -34.901112)), // Montevideo
     zoom: 12.0,
   );
 
@@ -31,126 +30,117 @@ class MapZoomController {
     required this.ref,
   });
 
-  void handleZoomTarget(ZoomTarget zoomTarget) {
-    // La lógica del switch irá aquí
-    print("[MapZoomController_DEBUG] Handling zoom target: ${zoomTarget.type}");
+  void handleZoomTarget(ZoomTargetType zoomTargetType) {
+    _debounceZoom(() {
+      print(
+        "[MapZoomController_DEBUG] Debounced zoom. Target: $zoomTargetType",
+      );
+      _performZoom(zoomTargetType);
+    });
+  }
+
+  void _debounceZoom(VoidCallback zoomAction) {
+    _zoomDebounceTimer?.cancel();
+    _zoomDebounceTimer = Timer(const Duration(milliseconds: 300), zoomAction);
+  }
+
+  Future<void> _performZoom(ZoomTargetType zoomTargetType) async {
     final mapState = ref.read(mapNotifierProvider);
 
-    switch (zoomTarget.type) {
+    // No hacer zoom automático si el usuario está interactuando o en cooldown
+    if (mapState.userMapInteraction != UserMapInteractionState.idle) {
+      print(
+        "[MapZoomController_DEBUG] User is interacting with the map. Auto-zoom skipped. Interaction state: ${mapState.userMapInteraction}",
+      );
+      return;
+    }
+
+    switch (zoomTargetType) {
       case ZoomTargetType.initial:
-        print("[MapZoomController_DEBUG] Zooming to initial camera options.");
-        mapboxMap.flyTo(
-          initialCameraOptions, // Usar la constante local o una pasada
+        await mapboxMap.flyTo(
+          initialCameraOptions,
           MapAnimationOptions(duration: 1000),
         );
         break;
-      case ZoomTargetType.overview:
-        if (mapState.currentRouteLegs.isNotEmpty) {
-          print("[MapZoomController_DEBUG] Zooming to route overview.");
-          mapboxService.zoomToRouteBounds(mapState.currentRouteLegs);
+      case ZoomTargetType.origenSelection:
+        if (mapState.origin != null) {
+          await mapboxService.zoomToFitPositions([
+            mapState.origin!,
+          ], const EdgeInsets.all(100));
         }
         break;
-      case ZoomTargetType.leg:
-        if (zoomTarget.legIndex != null &&
-            mapState.currentRouteLegs.isNotEmpty) {
-          print(
-            "[MapZoomController_DEBUG] Zooming to leg ${zoomTarget.legIndex}.",
-          );
-          _zoomToLeg(
-            zoomTarget.legIndex!,
-            mapState, // Pasar mapState para acceder a highlightedBusPosition si es necesario
-          );
-        }
-        break;
-      case ZoomTargetType.busAndLegOrigin:
-        if (zoomTarget.legIndex != null &&
-            mapState.currentRouteLegs.isNotEmpty) {
-          print(
-            "[MapZoomController_DEBUG] Zooming to bus and leg origin for leg ${zoomTarget.legIndex}.",
-          );
-          _zoomToLeg(
-            zoomTarget.legIndex!,
-            mapState, // Pasar mapState para acceder a highlightedBusPosition
-          );
+      case ZoomTargetType.destinationSelection:
+        if (mapState.destination != null) {
+          await mapboxService.zoomToFitPositions([
+            mapState.destination!,
+          ], const EdgeInsets.all(100));
         }
         break;
       case ZoomTargetType.points:
-        if (zoomTarget.points != null && zoomTarget.points!.isNotEmpty) {
-          print(
-            "[MapZoomController_DEBUG] Zooming to fit points: ${zoomTarget.points}.",
-          );
-          mapboxService.zoomToFitPositions(
-            zoomTarget.points!,
-            const EdgeInsets.all(70.0), // Considerar hacer esto configurable
-          );
+        if (mapState.origin != null && mapState.destination != null) {
+          await mapboxService.zoomToFitPositions([
+            mapState.origin!,
+            mapState.destination!,
+          ], const EdgeInsets.symmetric(vertical: 120, horizontal: 60));
         }
         break;
-      case ZoomTargetType.origenSelection:
-      case ZoomTargetType.destinoSelection:
-        if (zoomTarget.singlePoint != null) {
-          print(
-            "[MapZoomController_DEBUG] Zooming to single point: ${zoomTarget.singlePoint}.",
-          );
-          mapboxMap.flyTo(
-            CameraOptions(
-              center: Point(coordinates: zoomTarget.singlePoint!),
-              zoom: 15.0, // Considerar hacer esto configurable
-              padding: MbxEdgeInsets(
-                top: 100.0,
-                bottom: 100.0,
-                left: 50.0,
-                right: 50.0,
-              ), // Considerar hacer esto configurable
-            ),
-            MapAnimationOptions(duration: 1200), // Configurable
-          );
+      case ZoomTargetType.overview:
+        final legs = mapState.representativeItinerary?.legs ?? [];
+        if (legs.isNotEmpty) {
+          await mapboxService.zoomToRouteBounds(legs);
+        }
+        break;
+      case ZoomTargetType.leg:
+        final legs = mapState.representativeItinerary?.legs ?? [];
+        final legIndex = mapState.currentLegIndex;
+        if (legs.isNotEmpty && legIndex != null) {
+          final leg = legs[legIndex];
+          if (leg.mode == LegModeConstants.bus &&
+              mapState.realtimeTrackingAvailable) {
+            // Si es un tramo de bus y el seguimiento en tiempo real está disponible, pasamos la posición del bus.
+            await _zoomToLeg(legs, legIndex, mapState.realDebugBusPosition);
+          } else {
+            await _zoomToLeg(legs, legIndex, null);
+          }
         }
         break;
       case ZoomTargetType.none:
         print(
-          "[MapZoomController_DEBUG] Zoom target is none. No specific zoom action.",
+          "[MapZoomController_DEBUG] ZoomTargetType.none: No specific zoom action taken.",
+        );
+        break;
+      default:
+        print(
+          "[MapZoomController_WARN] Unhandled ZoomTargetType: $zoomTargetType",
         );
         break;
     }
   }
 
-  // Método _zoomToLeg adaptado de _MapScreenState
-  Future<void> _zoomToLeg(int legIndex, MapState mapState) async {
-    print(
-      "[MapZoomController_DEBUG] _zoomToLeg llamado para el tramo: $legIndex",
-    );
+  Future<void> _zoomToLeg(
+    List<RouteLeg> legs,
+    int legIndex,
+    Position? busToInclude,
+  ) async {
+    final bool isInstructionsCollapsed =
+        !ref.read(mapNotifierProvider).showInstructionsPanel;
 
-    if (legIndex < 0 || legIndex >= mapState.currentRouteLegs.length) {
-      print("[MapZoomController_DEBUG] _zoomToLeg: Invalid legIndex.");
+    if (legIndex < 0 || legIndex >= legs.length) {
+      print(
+        "[MapZoomController_ERROR] _zoomToLeg: Invalid legIndex $legIndex for ${legs.length} legs.",
+      );
       return;
     }
 
-    Position? busPositionToInclude;
-    // Accedemos a mapState.currentZoomTarget de forma segura
-    final currentZoomTarget = mapState.currentZoomTarget;
-    if (currentZoomTarget.type == ZoomTargetType.busAndLegOrigin &&
-        currentZoomTarget.legIndex == legIndex) {
-      busPositionToInclude = mapState.highlightedBusPosition;
-    }
-
-    try {
-      await mapboxService.zoomToLeg(
-        mapState.currentRouteLegs,
-        legIndex,
-        busPositionToInclude,
-        mapState.showCollapsedInstructionsBar,
-      );
-    } catch (e) {
-      print(
-        "[MapZoomController_DEBUG] _zoomToLeg: Exception calling mapboxService.zoomToLeg: $e",
-      );
-    }
+    await mapboxService.zoomToLeg(
+      legs,
+      legIndex,
+      busToInclude,
+      isInstructionsCollapsed,
+    );
   }
 
   void dispose() {
-    // Aquí deberías cancelar Timers, StreamSubscriptions o cualquier otro recurso
-    // que el MapZoomController pueda estar utilizando.
-    // Ejemplo: _myTimer?.cancel();
-    print("[MapZoomController_DEBUG] dispose called.");
+    _zoomDebounceTimer?.cancel();
   }
 }

@@ -1,4 +1,5 @@
 import 'route_leg.dart';
+import 'leg_mode_constants.dart';
 
 class Itinerary {
   final int startTime;
@@ -10,6 +11,24 @@ class Itinerary {
     required this.endTime,
     required this.legs,
   });
+
+  // Getter para la duración total en segundos
+  int get duration {
+    return (endTime - startTime) ~/ 1000; // Convertir de ms a s
+  }
+
+  // Getter para el tiempo total de caminata en segundos
+  int get walkTime {
+    int totalWalkTimeSeconds = 0;
+    for (var leg in legs) {
+      if (leg.mode == LegModeConstants.walk) {
+        // Usar LegModeConstants.walk
+        totalWalkTimeSeconds +=
+            leg.duration.toInt(); // Asumiendo que leg.duration es en segundos
+      }
+    }
+    return totalWalkTimeSeconds;
+  }
 
   factory Itinerary.fromJson(Map<String, dynamic> json) {
     return Itinerary(

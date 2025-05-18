@@ -1,6 +1,13 @@
 import 'package:flutter/material.dart';
-import '../models/itinerary.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../models/processed_itinerary.dart';
+import '../models/consolidated_itinerary.dart';
+import '../models/consolidated_itinerary_leg.dart';
 import '../models/route_leg.dart';
+import '../models/leg_mode_constants.dart';
+import '../providers/map_notifier.dart';
+import '../state/map_state.dart';
+import '../models/itinerary_warning.dart';
 
 // Helper function (réplica de _getStringValue de main.dart para uso local)
 String? _getStringValueLocal(dynamic value) {
@@ -11,13 +18,7 @@ String? _getStringValueLocal(dynamic value) {
 
 void showRouteOptionsModal({
   required BuildContext context,
-  required List<Itinerary> availableItineraries,
-  required Future<List<Map<String, dynamic>>> Function(
-    String stopId,
-    String lineShortName,
-  )
-  fetchUpcomingBuses,
-  required void Function(Itinerary selectedItinerary)
+  required void Function(ConsolidatedItinerary selectedItinerary)
   processAndDisplaySelectedItinerary,
 }) {
   // La llamada a _stopTrackingBusLine() se hace en el llamador (_MapScreenState)
@@ -30,267 +31,347 @@ void showRouteOptionsModal({
       borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
     ),
     builder: (BuildContext bc) {
-      return SafeArea(
-        child: FractionallySizedBox(
-          heightFactor: 0.5, // Ajustar altura según sea necesario
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Padding(
+      // Usamos un Consumer para acceder a Riverpod
+      return Consumer(
+        builder: (context, ref, child) {
+          final mapState = ref.watch(mapNotifierProvider);
+          final mapNotifier = ref.read(mapNotifierProvider.notifier);
+
+          if (mapState.planningStatus == PlanningStatus.loading) {
+            return const Center(child: CircularProgressIndicator());
+          } else if (mapState.planningStatus == PlanningStatus.error) {
+            return Center(
+              child: Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Text(
-                  'Elige tu Ruta (${availableItineraries.length} opciones)',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                  "No se pudieron cargar las opciones de ruta. Intente nuevamente.",
+                  textAlign: TextAlign.center,
                 ),
               ),
-              const Divider(height: 1),
-              Expanded(
-                child: ListView.separated(
-                  itemCount: availableItineraries.length,
-                  itemBuilder: (context, index) {
-                    final Itinerary itinerary = availableItineraries[index];
-                    final List<RouteLeg> legs = itinerary.legs;
-                    final int startTime = itinerary.startTime;
-                    final int endTime = itinerary.endTime;
-                    final durationMs = endTime - startTime;
-                    final durationMinutes = (durationMs / (1000 * 60)).round();
+            );
+          } else if (mapState.consolidatedItineraries.isEmpty &&
+              mapState.planningStatus == PlanningStatus.success) {
+            return const Center(
+              child: Padding(
+                padding: EdgeInsets.all(16.0),
+                child: Text('No se encontraron rutas.'),
+              ),
+            );
+          }
 
-                    List<Widget> modeIcons = [];
-                    RouteLeg? firstBusLeg;
-                    String? firstBusLegLineName;
-                    String? firstBusLegFromStopId;
+          final consolidatedItineraries = mapState.consolidatedItineraries;
 
-                    print(
-                      "[RouteOptionsPanel_Debug] Procesando Opción ${index + 1} para itinerario con startTime: ${itinerary.startTime}",
-                    );
-
-                    for (RouteLeg leg in legs) {
-                      String mode = leg.mode.toUpperCase();
-                      IconData iconData = Icons.help_outline;
-                      Color iconColor = Colors.grey;
-                      String? shortName = leg.route?.shortName;
-
-                      if (mode == 'WALK') {
-                        iconData = Icons.directions_walk;
-                        iconColor = Colors.blueAccent;
-                      } else if (mode == 'BUS' || mode == 'TRANSIT') {
-                        iconData = Icons.directions_bus;
-                        iconColor = Colors.deepOrangeAccent;
-                        if (firstBusLeg == null) {
-                          firstBusLeg = leg;
-                          firstBusLegLineName = leg.route?.shortName;
-                          print(
-                            "[RouteOptionsPanel_Debug] Primer tramo de bus encontrado: Linea=${firstBusLegLineName}",
-                          );
-                          print(
-                            "[RouteOptionsPanel_Debug]   Leg.from: name='${leg.from.name}', stopId='${leg.from.stopId}', stopGtfsId='${leg.from.stopGtfsId}'",
-                          );
-
-                          if (leg.from.stopId != null) {
-                            firstBusLegFromStopId = _getStringValueLocal(
-                              leg.from.stopId,
-                            );
-                            print(
-                              "[RouteOptionsPanel_Debug]     Usando stopId de leg.from.stopId: ${firstBusLegFromStopId}",
-                            );
-                          } else if (leg.from.stopGtfsId != null) {
-                            firstBusLegFromStopId = _getStringValueLocal(
-                              leg.from.stopGtfsId,
-                            );
-                            print(
-                              "[RouteOptionsPanel_Debug]     Usando stopId de leg.from.stopGtfsId: ${firstBusLegFromStopId}",
-                            );
-                          } else {
-                            print(
-                              "[RouteOptionsPanel_Debug]     No se encontró stopId en leg.from.stopId ni en leg.from.stopGtfsId. firstBusLegFromStopId sigue siendo null.",
-                            );
-                          }
-                        }
-                      }
-
-                      List<Widget> legWidgets = [
-                        Icon(iconData, color: iconColor, size: 20),
-                      ];
-                      if (shortName != null && shortName.isNotEmpty) {
-                        legWidgets.add(const SizedBox(width: 2));
-                        legWidgets.add(
-                          Text(
-                            shortName,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        );
-                      }
-                      modeIcons.add(
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 2.0),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: legWidgets,
-                          ),
-                        ),
-                      );
-                    }
-
-                    List<Widget> interspersedModeIcons = [];
-                    for (int i = 0; i < modeIcons.length; i++) {
-                      interspersedModeIcons.add(modeIcons[i]);
-                      if (i < modeIcons.length - 1) {
-                        interspersedModeIcons.add(
-                          const Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 3.0),
-                            child: Icon(
-                              Icons.arrow_forward_ios,
-                              size: 10,
-                              color: Colors.grey,
-                            ),
-                          ),
-                        );
-                      }
-                    }
-
-                    Widget titleWidget = Text(
-                      "Opción ${index + 1}: ${durationMinutes} min",
-                    );
-                    Widget subtitleWidget = SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(children: interspersedModeIcons),
-                    );
-
-                    Widget? etaWidget;
-                    if (firstBusLeg != null &&
-                        firstBusLegFromStopId != null &&
-                        firstBusLegLineName != null) {
-                      // MODIFICACIÓN: Extraer solo la parte numérica del stopId si contiene ":"
-                      String finalStopIdForApi = firstBusLegFromStopId!;
-                      if (finalStopIdForApi.contains(':')) {
-                        final parts = finalStopIdForApi.split(':');
-                        if (parts.length > 1) {
-                          finalStopIdForApi = parts.last;
-                          print(
-                            "[RouteOptionsPanel_Debug] ID de parada normalizado para API: ${parts.last} (original: ${firstBusLegFromStopId})",
-                          );
-                        } else {
-                          print(
-                            "[RouteOptionsPanel_Debug] ID de parada contiene ':' pero no se pudo splitear: ${firstBusLegFromStopId}",
-                          );
-                          // Considerar si en este caso no se debe llamar a la API o si se usa el ID original
-                        }
-                      }
-
-                      etaWidget = FutureBuilder<List<Map<String, dynamic>>>(
-                        future: fetchUpcomingBuses(
-                          finalStopIdForApi, // Usar el ID normalizado
-                          firstBusLegLineName!,
-                        ),
-                        builder: (context, snapshot) {
-                          print(
-                            "[RouteOptionsPanel_Debug] FutureBuilder para ${firstBusLegLineName} (parada ${finalStopIdForApi} / original: ${firstBusLegFromStopId}):",
-                          );
-                          print(
-                            "[RouteOptionsPanel_Debug]   ConnectionState: ${snapshot.connectionState}",
-                          );
-                          if (snapshot.hasError) {
-                            print(
-                              "[RouteOptionsPanel_Debug]   Error: ${snapshot.error}",
-                            );
-                          }
-                          if (snapshot.hasData) {
-                            print(
-                              "[RouteOptionsPanel_Debug]   Data: ${snapshot.data}",
-                            );
-                          }
-
-                          if (snapshot.connectionState ==
-                              ConnectionState.waiting) {
-                            return const Padding(
-                              padding: EdgeInsets.only(top: 4.0),
-                              child: Text(
-                                "Obteniendo ETA...",
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey,
-                                ),
-                              ),
-                            );
-                          } else if (snapshot.hasError) {
-                            return const Padding(
-                              padding: EdgeInsets.only(top: 4.0),
-                              child: Text(
-                                "No se pudo obtener ETA",
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.redAccent,
-                                ),
-                              ),
-                            );
-                          } else if (snapshot.hasData &&
-                              snapshot.data!.isNotEmpty) {
-                            final etas = snapshot.data!;
-                            final nextBus = etas.first;
-                            final minutesToArrival =
-                                nextBus['minutesToArrival'];
-                            final bool isBusReal = nextBus['isReal'] ?? false;
-
-                            return Padding(
-                              padding: const EdgeInsets.only(top: 4.0),
-                              child: Text(
-                                "Próximo bus en ${minutesToArrival} min",
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color:
-                                      isBusReal
-                                          ? Colors.green
-                                          : Colors.orangeAccent,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            );
-                          } else {
-                            return const Padding(
-                              padding: EdgeInsets.only(top: 4.0),
-                              child: Text(
-                                "No hay buses próximos",
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.orangeAccent,
-                                ),
-                              ),
-                            );
-                          }
-                        },
-                      );
-                    }
-
-                    return ListTile(
-                      title: titleWidget,
-                      subtitle: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          subtitleWidget,
-                          if (etaWidget != null) etaWidget,
-                        ],
+          return SafeArea(
+            child: FractionallySizedBox(
+              heightFactor: 0.5, // Ajustar altura según sea necesario
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Text(
+                      mapState.planningStatus == PlanningStatus.success
+                          ? 'Elige tu Ruta (${consolidatedItineraries.length} opciones)'
+                          : 'Opciones de Ruta',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
                       ),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () {
-                        Navigator.pop(context);
-                        processAndDisplaySelectedItinerary(itinerary);
-                      },
-                    );
-                  },
-                  separatorBuilder:
-                      (context, index) =>
-                          const Divider(indent: 16, endIndent: 16),
-                ),
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  Expanded(
+                    child: _buildContent(
+                      context,
+                      mapState.planningStatus,
+                      consolidatedItineraries,
+                      processAndDisplaySelectedItinerary,
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
-        ),
+            ),
+          );
+        },
       );
     },
   );
+}
+
+// Widget helper para construir el contenido principal del modal
+Widget _buildContent(
+  BuildContext context,
+  PlanningStatus planningStatus,
+  List<ConsolidatedItinerary> consolidatedItineraries,
+  void Function(ConsolidatedItinerary selectedItinerary)
+  processAndDisplaySelectedItinerary,
+) {
+  switch (planningStatus) {
+    case PlanningStatus.loading:
+      return const Center(child: CircularProgressIndicator());
+    case PlanningStatus.error:
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Text(
+            "No se pudieron cargar las opciones de ruta. Intente nuevamente.",
+            textAlign: TextAlign.center,
+          ),
+        ),
+      );
+    case PlanningStatus.success:
+      if (consolidatedItineraries.isEmpty) {
+        return const Center(
+          child: Padding(
+            padding: EdgeInsets.all(16.0),
+            child: Text('No se encontraron rutas.'),
+          ),
+        );
+      }
+      return ListView.separated(
+        itemCount: consolidatedItineraries.length,
+        itemBuilder: (context, index) {
+          final ConsolidatedItinerary consolidatedItinerary =
+              consolidatedItineraries[index];
+
+          // Extraer información del ConsolidatedItinerary
+          final durationMinutes =
+              consolidatedItinerary.estimatedTotalDuration.inMinutes;
+          final totalWalkDurationMinutes =
+              (consolidatedItinerary.totalWalkDuration.inSeconds / 60).round();
+          final firstBusWaitDurationMinutes =
+              consolidatedItinerary.firstBusWaitDuration.inMinutes;
+
+          List<Widget> modeIcons = [];
+          for (ConsolidatedItineraryLeg leg in consolidatedItinerary.legs) {
+            String legModeUpper = leg.mode.toUpperCase();
+            IconData iconData = Icons.help_outline;
+            Color iconColor = Colors.grey;
+            List<Widget> legDetailWidgets = [];
+
+            if (legModeUpper == LegModeConstants.walk) {
+              iconData = Icons.directions_walk;
+              iconColor = Colors.blueAccent;
+              legDetailWidgets.add(Icon(iconData, color: iconColor, size: 20));
+            } else if (legModeUpper == LegModeConstants.bus) {
+              iconData = Icons.directions_bus;
+              iconColor = Colors.deepOrangeAccent;
+              legDetailWidgets.add(Icon(iconData, color: iconColor, size: 20));
+              legDetailWidgets.add(const SizedBox(width: 4));
+
+              if (leg.isConsolidatedBusLeg &&
+                  leg.alternativeLineShortNames!.isNotEmpty) {
+                String linesText = leg.alternativeLineShortNames!.join(' / ');
+                legDetailWidgets.add(
+                  Text(
+                    linesText,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                );
+              } else if (leg.representativeRoute?.shortName != null) {
+                legDetailWidgets.add(
+                  Text(
+                    leg.representativeRoute!.shortName!,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                );
+              }
+            } else {
+              legDetailWidgets.add(Icon(iconData, color: iconColor, size: 20));
+            }
+
+            modeIcons.add(
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2.0),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: legDetailWidgets,
+                ),
+              ),
+            );
+          }
+
+          List<Widget> interspersedModeIcons = [];
+          for (int i = 0; i < modeIcons.length; i++) {
+            interspersedModeIcons.add(modeIcons[i]);
+            if (i < modeIcons.length - 1) {
+              interspersedModeIcons.add(
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 3.0),
+                  child: Icon(
+                    Icons.arrow_forward_ios,
+                    size: 10,
+                    color: Colors.grey,
+                  ),
+                ),
+              );
+            }
+          }
+
+          Widget titleWidget = Text(
+            "Opción ${index + 1}: ${durationMinutes} min",
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color:
+                  consolidatedItinerary.canReachFirstBus
+                      ? null
+                      : Colors.orange.shade700,
+            ),
+          );
+
+          Widget subtitleWidget = SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(children: interspersedModeIcons),
+          );
+
+          List<Widget> additionalInfo = [];
+
+          // Mostrar todos los ETAs alternativos si existen
+          if (consolidatedItinerary.alternativeFirstBusETAs.isNotEmpty) {
+            String etasString = consolidatedItinerary.alternativeFirstBusETAs
+                .map((eta) {
+                  String realOrProg = eta.isReal ? "(R)" : "(P)";
+                  return "${eta.lineShortName}: ${eta.minutesToArrival}m ${realOrProg}";
+                })
+                .join(", ");
+
+            additionalInfo.add(
+              Padding(
+                padding: const EdgeInsets.only(bottom: 2.0),
+                child: Text(
+                  "Buses: $etasString",
+                  style: TextStyle(
+                    fontSize: 12,
+                    color:
+                        Colors
+                            .green
+                            .shade800, // Un color general para la lista de ETAs
+                  ),
+                ),
+              ),
+            );
+          } else if (consolidatedItinerary.representativeFirstBusETAInfo !=
+              null) {
+            // Fallback al ETA representativo si no hay lista de alternativas (ej. para NO_BUS_LEG)
+            final etaInfo =
+                consolidatedItinerary.representativeFirstBusETAInfo!;
+            additionalInfo.add(
+              Padding(
+                padding: const EdgeInsets.only(bottom: 2.0),
+                child: Text(
+                  etaInfo.isReal
+                      ? 'Bus: ${etaInfo.lineShortName}: ${etaInfo.minutesToArrival} min (Real)'
+                      : 'Bus: ${etaInfo.lineShortName}: ${etaInfo.minutesToArrival} min (Prog.)',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: etaInfo.isReal ? Colors.green : Colors.black54,
+                  ),
+                ),
+              ),
+            );
+          } else if (firstBusWaitDurationMinutes > 0 &&
+              consolidatedItinerary.legs.any(
+                (leg) => leg.mode == LegModeConstants.bus,
+              )) {
+            // Solo mostrar espera programada si realmente hay un tramo de bus
+            additionalInfo.add(
+              Text(
+                'Espera bus: ${firstBusWaitDurationMinutes} min (Prog.)',
+                style: const TextStyle(fontSize: 12, color: Colors.black54),
+              ),
+            );
+          }
+
+          additionalInfo.add(
+            Text(
+              'Caminata total: ${totalWalkDurationMinutes} min',
+              style: const TextStyle(fontSize: 12, color: Colors.black54),
+            ),
+          );
+
+          if (!consolidatedItinerary.canReachFirstBus) {
+            additionalInfo.add(
+              const Text(
+                'Quizás no llegues al primer bus.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.orange,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            );
+          }
+
+          for (var warning in consolidatedItinerary.warnings) {
+            if (warning == ItineraryWarningType.NO_REALTIME_ETA_AVAILABLE &&
+                consolidatedItinerary.representativeFirstBusETAInfo == null) {
+              continue;
+            }
+            if (warning == ItineraryWarningType.WALK_TIME_EXCEEDS_ETA &&
+                !consolidatedItinerary.canReachFirstBus) {}
+
+            additionalInfo.add(
+              Text(
+                _getWarningMessage(warning),
+                style: const TextStyle(fontSize: 12, color: Colors.amber),
+              ),
+            );
+          }
+
+          return ListTile(
+            title: titleWidget,
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                subtitleWidget,
+                const SizedBox(height: 4),
+                ...additionalInfo,
+              ],
+            ),
+            isThreeLine: additionalInfo.length > 1,
+            onTap: () {
+              processAndDisplaySelectedItinerary(consolidatedItinerary);
+            },
+          );
+        },
+        separatorBuilder: (context, index) => const Divider(),
+      );
+    default: // idle o cualquier otro estado no manejado explícitamente
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(16.0),
+          child: Text('Selecciona origen y destino para ver rutas.'),
+        ),
+      );
+  }
+}
+
+String _getWarningMessage(ItineraryWarningType warning) {
+  switch (warning) {
+    case ItineraryWarningType.WALK_TIME_EXCEEDS_ETA:
+      return 'Advertencia: Es posible que no llegues al primer bus a tiempo.';
+    case ItineraryWarningType.NO_REALTIME_ETA_AVAILABLE:
+      return 'Info: ETA del bus es programado, no en tiempo real.';
+    case ItineraryWarningType.NO_BUS_ETA_FOUND:
+      return 'Info: No se encontró ETA para el bus especificado.';
+    case ItineraryWarningType.ETA_API_ERROR:
+      return 'Error: No se pudo consultar el ETA del bus.';
+    case ItineraryWarningType.ETA_LOOKUP_SKIPPED_LIMIT_REACHED:
+      return 'Info: ETA no consultado para este bus (límite alcanzado).';
+    case ItineraryWarningType.FIRST_LEG_TOO_SHORT_FOR_REALTIME:
+      return 'Info: Tramo de bus muy corto para ETA útil.';
+    case ItineraryWarningType.LONG_WALK:
+      return 'Info: Considera que la caminata total es larga.';
+    case ItineraryWarningType.LONG_WAIT:
+      return 'Info: Considera que la espera total es larga.';
+    case ItineraryWarningType.UNKNOWN_OTP_ERROR:
+      return 'Error: Problema al planificar la ruta.';
+    default:
+      return 'Advertencia sobre el itinerario.';
+  }
 }
