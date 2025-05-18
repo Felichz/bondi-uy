@@ -62,6 +62,7 @@ class MapState {
   final double? maxSimulationTravelDistance;
   final bool realtimeTrackingAvailable;
   final bool realtimeTrackingAttempted;
+  final bool isPerformingProgrammaticZoom;
 
   MapState({
     this.origin,
@@ -90,6 +91,7 @@ class MapState {
     this.maxSimulationTravelDistance,
     this.realtimeTrackingAvailable = false,
     this.realtimeTrackingAttempted = false,
+    this.isPerformingProgrammaticZoom = false,
   });
 
   MapState copyWith({
@@ -136,6 +138,7 @@ class MapState {
     bool clearMaxSimulationTravelDistance = false,
     bool? realtimeTrackingAvailable,
     bool? realtimeTrackingAttempted,
+    bool? isPerformingProgrammaticZoom,
   }) {
     return MapState(
       origin: clearOrigin ? null : origin ?? this.origin,
@@ -210,6 +213,8 @@ class MapState {
           realtimeTrackingAvailable ?? this.realtimeTrackingAvailable,
       realtimeTrackingAttempted:
           realtimeTrackingAttempted ?? this.realtimeTrackingAttempted,
+      isPerformingProgrammaticZoom:
+          isPerformingProgrammaticZoom ?? this.isPerformingProgrammaticZoom,
     );
   }
 
@@ -243,7 +248,8 @@ class MapState {
         other.simulationSegmentOriginPoint == simulationSegmentOriginPoint &&
         other.maxSimulationTravelDistance == maxSimulationTravelDistance &&
         other.realtimeTrackingAvailable == realtimeTrackingAvailable &&
-        other.realtimeTrackingAttempted == realtimeTrackingAttempted;
+        other.realtimeTrackingAttempted == realtimeTrackingAttempted &&
+        other.isPerformingProgrammaticZoom == isPerformingProgrammaticZoom;
   }
 
   @override
@@ -273,6 +279,7 @@ class MapState {
         simulationSegmentOriginPoint.hashCode ^
         maxSimulationTravelDistance.hashCode ^
         realtimeTrackingAvailable.hashCode ^
-        realtimeTrackingAttempted.hashCode;
+        realtimeTrackingAttempted.hashCode ^
+        isPerformingProgrammaticZoom.hashCode;
   }
 }

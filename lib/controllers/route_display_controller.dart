@@ -74,16 +74,21 @@ class RouteDisplayController {
                 .map((p) => Position(p.longitude, p.latitude))
                 .toList();
         Color legColor;
-        double lineWidth = 4.0;
+        double lineWidthValue = 4.0;
         double shadowWidth = 6.0;
+        List<double>? lineDasharrayValue;
         if (mode == 'WALK') {
           legColor = Colors.blueAccent;
         } else if (mode == 'BUS' || mode == 'TRANSIT') {
+          // TODO: TECH_DEBT - Obtener el color real de la ruta desde el Itinerary/ProcessedItinerary.
+          // Actualmente leg.route no tiene gtfsRouteColor. Usamos un color por defecto.
           legColor = Colors.deepOrangeAccent;
-          lineWidth = 5.0;
-          shadowWidth = 7.0;
+          lineDasharrayValue = null; // Línea sólida
+          lineWidthValue = 4.0;
         } else {
           legColor = Colors.grey;
+          lineDasharrayValue = null;
+          lineWidthValue = 4.0;
         }
         await mapboxService.drawRouteSegment(
           positions,
@@ -91,8 +96,9 @@ class RouteDisplayController {
           "${RouteDisplayController.OTP_ROUTE_LAYER_PREFIX}$i",
           legColor,
           i,
-          lineWidth: lineWidth,
+          lineWidth: lineWidthValue,
           shadowWidth: shadowWidth,
+          lineDasharray: lineDasharrayValue,
         );
       }
     }
@@ -124,13 +130,21 @@ class RouteDisplayController {
     await mapboxService.applyOverviewRouteStyle();
   }
 
+  // AÑADIDO: Método updateMapRouteHighlight movido y adaptado desde _MapScreenState
   Future<void> updateMapRouteHighlight() async {
-    // Ya no se pasa selectedLegIndex como parámetro, se lee de MapState
+    // MODIFICADO: No usar el parámetro, leer directamente del estado
     final mapState = ref.read(mapNotifierProvider);
-    final selectedLegIndex =
-        mapState.currentLegIndex; // MODIFICADO: usar currentLegIndex
+    final currentSelectedLegIndex = mapState.currentLegIndex;
 
-    // Actualizar resaltado visual de los tramos de la ruta
-    await mapboxService.updateMapRouteHighlight(selectedLegIndex);
+    print(
+      "[RouteDisplayController_Debug] updateMapRouteHighlight called. Reading selectedLegIndex from state: $currentSelectedLegIndex",
+    );
+    if (currentSelectedLegIndex == null)
+      return; // No hay capas de tramos para actualizar
+
+    print(
+      "[RouteDisplayController_Debug] Calling mapboxService.updateMapRouteHighlight with selectedLegIndex from state: $currentSelectedLegIndex",
+    );
+    await mapboxService.updateMapRouteHighlight(currentSelectedLegIndex);
   }
 }

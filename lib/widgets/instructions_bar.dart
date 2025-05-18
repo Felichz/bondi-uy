@@ -224,9 +224,16 @@ class TripInstructions extends StatelessWidget {
   Widget _buildCollapsedInstructionsBar(BuildContext context) {
     if (!showCollapsedInstructionsBar ||
         currentRouteLegs.isEmpty ||
-        isInOverviewMode || // No mostrar en modo vista general
-        selectedLegIndex == null ||
+        isInOverviewMode) {
+      // No mostrar en modo vista general
+      return const SizedBox.shrink();
+    }
+
+    if (selectedLegIndex == null ||
         selectedLegIndex! >= currentRouteLegs.length) {
+      print(
+        "[TripInstructions_Debug] selectedLegIndex es nulo o fuera de rango, no se puede mostrar la barra colapsada.",
+      );
       return const SizedBox.shrink();
     }
 
@@ -329,95 +336,85 @@ class TripInstructions extends StatelessWidget {
       );
     }
 
-    return Positioned(
-      bottom: 10,
-      left: 10,
-      right: 10,
-      child: GestureDetector(
-        onTap:
-            () => _showTripInstructionsBottomSheet(context, currentRouteLegs),
-        child: Material(
-          elevation: 6.0,
-          borderRadius: BorderRadius.circular(12.0),
-          child: Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 16.0,
-              vertical: 12.0,
-            ),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface,
-              borderRadius: BorderRadius.circular(12.0),
-            ),
-            child: Row(
-              children: <Widget>[
-                IconButton(
-                  icon: Icon(Icons.chevron_left, size: 30),
-                  onPressed:
-                      (selectedLegIndex! > 0) ? onNavigateToPreviousLeg : null,
-                  color: Theme.of(context).colorScheme.primary,
-                  disabledColor: Colors.grey.withOpacity(0.5),
-                ),
-                Expanded(
-                  child: InkWell(
-                    onTap:
-                        onExpandInstructionsTap ??
-                        () => _showTripInstructionsBottomSheet(
-                          context,
-                          currentRouteLegs,
-                        ),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12.0,
-                        vertical: 8.0,
+    return GestureDetector(
+      onTap: () => _showTripInstructionsBottomSheet(context, currentRouteLegs),
+      child: Material(
+        elevation: 6.0,
+        borderRadius: BorderRadius.circular(12.0),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(12.0),
+          ),
+          child: Row(
+            children: <Widget>[
+              IconButton(
+                icon: Icon(Icons.chevron_left, size: 30),
+                onPressed:
+                    (selectedLegIndex! > 0) ? onNavigateToPreviousLeg : null,
+                color: Theme.of(context).colorScheme.primary,
+                disabledColor: Colors.grey.withOpacity(0.5),
+              ),
+              Expanded(
+                child: InkWell(
+                  onTap:
+                      onExpandInstructionsTap ??
+                      () => _showTripInstructionsBottomSheet(
+                        context,
+                        currentRouteLegs,
                       ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: <Widget>[
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: <Widget>[
-                                titleWidget ??
-                                    Text(
-                                      // Usar titleWidget si fue creado, sino el Text normal
-                                      legTitle,
-                                      style: Theme.of(
-                                        context,
-                                      ).textTheme.titleMedium?.copyWith(
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                if (legSubtitle.isNotEmpty)
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 2.0),
-                                    child: Text(
-                                      legSubtitle,
-                                      style:
-                                          Theme.of(context).textTheme.bodySmall,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12.0,
+                      vertical: 8.0,
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: <Widget>[
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: <Widget>[
+                              titleWidget ??
+                                  Text(
+                                    // Usar titleWidget si fue creado, sino el Text normal
+                                    legTitle,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleMedium
+                                        ?.copyWith(fontWeight: FontWeight.bold),
+                                    overflow: TextOverflow.ellipsis,
                                   ),
-                              ],
-                            ),
+                              if (legSubtitle.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 2.0),
+                                  child: Text(
+                                    legSubtitle,
+                                    style:
+                                        Theme.of(context).textTheme.bodySmall,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                            ],
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
-                IconButton(
-                  icon: Icon(Icons.chevron_right, size: 30),
-                  onPressed:
-                      (selectedLegIndex! < currentRouteLegs.length - 1)
-                          ? onNavigateToNextLeg
-                          : null,
-                  color: Theme.of(context).colorScheme.primary,
-                  disabledColor: Colors.grey.withOpacity(0.5),
-                ),
-              ],
-            ),
+              ),
+              IconButton(
+                icon: Icon(Icons.chevron_right, size: 30),
+                onPressed:
+                    (selectedLegIndex! < currentRouteLegs.length - 1)
+                        ? onNavigateToNextLeg
+                        : null,
+                color: Theme.of(context).colorScheme.primary,
+                disabledColor: Colors.grey.withOpacity(0.5),
+              ),
+            ],
           ),
         ),
       ),

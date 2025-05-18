@@ -191,11 +191,19 @@ class BusTrackingController {
       print(
         "[BusTrackingController_Debug] ETA en tiempo real con posición disponible. Mostrando bus.",
       );
-      await _mapboxService.updateRealtimeBusMarkerAndSegment(
-        etaInfo,
-        _currentFullShapeForBusLeg,
-        _originStopIndexOnShape,
-      );
+      await _mapboxService.updateRealtimeBusMarkerAndSegment(etaInfo);
+      // AÑADIDO: Dibujar el segmento verde si hay datos completos
+      if (_currentFullShapeForBusLeg != null &&
+          _originStopIndexOnShape != null) {
+        await _mapboxService.drawIncomingBusSegment(
+          etaInfo.position, // La posición del bus
+          _currentFullShapeForBusLeg, // El shape completo de la línea
+          _originStopIndexOnShape, // El índice de la parada de origen
+        );
+      } else {
+        // Si no hay datos para dibujar el segmento, asegurar que se limpie si existía
+        await _mapboxService.clearIncomingBusSegment();
+      }
 
       _realtimeBusTimer?.cancel();
       _realtimeBusTimer = Timer.periodic(const Duration(seconds: 10), (
@@ -252,11 +260,19 @@ class BusTrackingController {
                 .read(mapNotifierProvider.notifier)
                 .updateRepresentativeETA(newEtaInfo);
 
-            await _mapboxService.updateRealtimeBusMarkerAndSegment(
-              newEtaInfo,
-              _currentFullShapeForBusLeg,
-              _originStopIndexOnShape,
-            );
+            await _mapboxService.updateRealtimeBusMarkerAndSegment(newEtaInfo);
+            // AÑADIDO: Dibujar el segmento verde si hay datos completos actualizados
+            if (_currentFullShapeForBusLeg != null &&
+                _originStopIndexOnShape != null) {
+              await _mapboxService.drawIncomingBusSegment(
+                newEtaInfo.position, // La posición actualizada del bus
+                _currentFullShapeForBusLeg,
+                _originStopIndexOnShape,
+              );
+            } else {
+              // Si no hay datos para dibujar el segmento, asegurar que se limpie si existía
+              await _mapboxService.clearIncomingBusSegment();
+            }
           } else {
             print(
               "[BusTrackingController_Timer] No se encontró ETA actualizado en tiempo real para la línea $_currentTrackingLineShortName en la parada $_currentTrackingStopId, o no tiene posición. Deteniendo seguimiento.",
@@ -266,7 +282,7 @@ class BusTrackingController {
             // Notificar a MapNotifier que el seguimiento falló o ya no está disponible
             _ref
                 .read(mapNotifierProvider.notifier)
-                .updateRealtimeTrackingStatus(false, true);
+                .updateRealtimeTrackingStatus(false);
           }
         } catch (e, s) {
           print(
@@ -276,7 +292,7 @@ class BusTrackingController {
           stopTrackingBusLine();
           _ref
               .read(mapNotifierProvider.notifier)
-              .updateRealtimeTrackingStatus(false, true);
+              .updateRealtimeTrackingStatus(false);
         } finally {
           // _ref.read(mapNotifierProvider.notifier).setRealtimeUpdateInProgress(false);
         }
@@ -296,6 +312,8 @@ class BusTrackingController {
         "[BusTrackingController_Debug] Sin ETA en tiempo real con posición. Limpiando marcador de bus.",
       );
       await _mapboxService.clearRealtimeBusMarkerAndSegment();
+      // AÑADIDO: Asegurar que el segmento verde también se limpie en este caso
+      await _mapboxService.clearIncomingBusSegment();
     }
   }
 
@@ -311,6 +329,9 @@ class BusTrackingController {
     _currentTrackingLineShortName = null;
 
     await _mapboxService.clearRealtimeBusMarkerAndSegment();
+
+    // AÑADIDO: Asegurar que el segmento verde también se limpie al detener el seguimiento
+    await _mapboxService.clearIncomingBusSegment();
 
     if (_currentFullLineShapeId != null) {
       await _mapboxService.removeLayerAndSource(

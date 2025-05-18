@@ -70,6 +70,19 @@ class _SearchPanelState extends ConsumerState<SearchPanel> {
     // });
   }
 
+  // Añadir didUpdateWidget para reaccionar a cambios en las propiedades del widget
+  @override
+  void didUpdateWidget(covariant SearchPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Si el estado de expansión inicial cambia en el widget padre,
+    // actualiza el estado interno del SearchPanel.
+    if (widget.initialExpandedState != oldWidget.initialExpandedState) {
+      setState(() {
+        _isSearchPanelExpanded = widget.initialExpandedState;
+      });
+    }
+  }
+
   // Método para alternar la expansión
   void _toggleSearchPanel() {
     final newExpandedState = !_isSearchPanelExpanded;
@@ -288,9 +301,6 @@ class _SearchPanelState extends ConsumerState<SearchPanel> {
                           ? null
                           : () {
                             widget.onSearchRoute();
-                            if (_isSearchPanelExpanded) {
-                              _toggleSearchPanel();
-                            }
                           },
                   child:
                       widget.isCalculatingRoute
@@ -317,6 +327,9 @@ class _SearchPanelState extends ConsumerState<SearchPanel> {
 
   @override
   Widget build(BuildContext context) {
+    print(
+      "[SearchPanel_DEBUG] Build called. isCalculatingRoute: ${widget.isCalculatingRoute}",
+    ); // Print en build
     return _buildTopSearchPanel(); // Este método ahora decide qué UI mostrar
   }
 

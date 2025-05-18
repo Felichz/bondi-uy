@@ -183,3 +183,57 @@ Fecha Identificada: 2024-07-28 (Inicio de la sección)
 - **Impacto Potencial:** Es crucial que los consumidores de `BusArrivalInfo.position` (ej. `BusTrackingController`, UI) manejen correctamente esta nulidad.
 - **Acción Sugerida:** Asegurar mediante revisión de código, comentarios y posiblemente aserciones, que los consumidores de `BusArrivalInfo.position` están preparados para manejar valores nulos. Esto indica que la ubicación en tiempo real no está disponible para ese arribo específico, incluso si el campo `isReal` es verdadero (ya que `isReal` podría referirse solo a la predicción de tiempo).
 - **Estado:** Pendiente (Prioridad: Baja).
+
+## Visualización de Iconos y Capas en Mapbox (MapboxService)
+
+Fecha Identificada: 2024-07-30
+
+### 12. Consistencia de Tamaños de Icono en Mapbox
+
+- **Descripción:** Los tamaños de los iconos (ej. bus, tooltip) se definen en dos lugares:
+  1.  Al cargar la imagen con `mapboxMap.style.addStyleImage` (ej. `MbxImage(width: 256, height: 256)`). Este es el tamaño base de la imagen en el sprite del estilo.
+  2.  Al aplicar el icono a una capa `SymbolLayer` usando la propiedad `iconSize` (ej. `iconSize: 0.9`). Este es un multiplicador del tamaño base.
+- **Impacto Potencial:** Puede ser confuso determinar el tamaño visual final del icono en el mapa. Diferentes iconos podrían tener tamaños base distintos, requiriendo diferentes multiplicadores `iconSize` para aparecer visualmente consistentes o con el tamaño deseado.
+- **Acción Sugerida:**
+  - Revisar todos los iconos personalizados (`bus-icon`, `realtime-bus-icon`, `incoming-bus`, `incoming-bus-tooltip`).
+  - Estandarizar sus dimensiones base en los archivos PNG originales si es posible, o al menos documentar claramente los tamaños base usados en `addStyleImage`.
+  - Ajustar los multiplicadores `iconSize` en las capas de Mapbox para asegurar que los tamaños visuales sean los deseados y consistentes entre sí.
+- **Estado:** Pendiente (Prioridad: Baja).
+
+### 13. Refactorización de `_MapScreenState` para Mejorar Separación de Preocupaciones
+
+- **Fecha Identificada:** 2024-07-31 (Durante revisión de solución de carga de botón)
+- **Descripción:** El widget `_MapScreenState` (en `lib/screens/map_screen.dart`) ha crecido considerablemente y maneja una amplia gama de responsabilidades: inicialización y configuración del mapa, gestión de múltiples controladores (zoom, tracking de buses, display de rutas, interacción con el mapa), escucha y reacción a diversos cambios de estado de Riverpod (estado de planificación, objetivo de zoom, estado de tracking en tiempo real), gestión de estados de UI locales (expansión del panel de búsqueda, estado de carga del botón de búsqueda mediante `ValueNotifier`), y la presentación de modales y SnackBars.
+- **Impacto Potencial:** Un widget tan grande y con tantas responsabilidades puede volverse difícil de leer, mantener, probar y razonar sobre su comportamiento. Aumenta el riesgo de efectos secundarios no deseados al modificar una parte del código.
+- **Acción Sugerida:**
+  - Evaluar la posibilidad de descomponer `_MapScreenState` en varios sub-widgets más pequeños y especializados, o extraer parte de su lógica a clases de ayuda dedicadas o controladores de UI más enfocados.
+  - Por ejemplo, la lógica que reacciona a los cambios en `planningStatus` y que es responsable de mostrar el modal `RouteOptionsModal` (incluyendo la gestión de `_isSearchButtonLoading`) podría encapsularse.
+  - Del mismo modo, la inicialización y gestión de los diversos controladores del mapa podría agruparse o delegarse.
+- **Beneficio Esperado:** Mejor legibilidad, mayor cohesión, menor acoplamiento, y facilitación de las pruebas unitarias y de widgets.
+- **Estado:** Pendiente (Prioridad: Media, a considerar para futuras refactorizaciones).
+
+### 14. Estrategia para Estados de UI Transitorios y Locales en `_MapScreenState`
+
+- **Fecha Identificada:** 2024-07-31 (Durante revisión de solución de carga de botón)
+- **Descripción:** Actualmente, estados de UI como `_isSearchButtonLoading` (para el botón de búsqueda) y `isSearchPanelExpanded` (para la expansión del panel de búsqueda) se gestionan mediante `ValueNotifier`s locales directamente en `_MapScreenState`.
+- **Impacto Potencial:** Si bien `ValueNotifier` es una solución ligera y efectiva para estados estrictamente locales de un widget, a medida que una pantalla o widget se vuelve más complejo, la proliferación de múltiples `ValueNotifier`s puede dificultar el seguimiento del flujo de estado general. Además, si estos estados necesitaran ser leídos o modificados por widgets no descendientes directos, la propagación se volvería manual y engorrosa.
+- **Acción Sugerida:**
+  - Para los estados actuales, la solución con `ValueNotifier` es aceptable y pragmática.
+  - Sin embargo, como parte de una revisión de arquitectura más amplia o si la complejidad de la gestión de estos estados aumenta, considerar si sería beneficioso integrarlos de manera más formal en el sistema de gestión de estado principal (Riverpod). Esto podría implicar crear pequeños `StateNotifier`s dedicados para estos aspectos de la UI si su lógica se vuelve más compleja o si necesitan interactuar de manera más desacoplada con otros servicios o estados.
+  - Otra alternativa podría ser la creación de controladores de UI específicos que encapsulen tanto el estado como la lógica asociada a ciertos componentes de la UI.
+- **Beneficio Esperado:** Una estrategia de gestión de estado más unificada y escalable, potencialmente simplificando el razonamiento sobre el estado de la UI y facilitando las pruebas.
+- **Estado:** Pendiente (Prioridad: Baja/Media, para consideración futura y si la complejidad aumenta).
+
+## Deuda Técnica Identificada (Gestión de Estado de Carga de UI - 2024-07-31)
+
+### Problema con la Gestión del Estado de Carga del Botón "Buscar Ruta"
+
+- **Fecha Identificada:** 2024-07-31
+- **Descripción Original:** Inicialmente, el estado de carga del botón "Buscar Ruta" en `SearchPanel` se basaba directamente en `mapState.planningStatus == PlanningStatus.loading`. Esto provocaba que el indicador de carga desapareciera prematuramente, antes de que las opciones de ruta se mostraran visualmente al usuario (en el modal `RouteOptionsPanel`). La planificación (`planningStatus`) podía pasar a `success` mientras aún se realizaban operaciones asíncronas en la UI (como limpiar capas del mapa) antes de mostrar el modal.
+- **Impacto Potencial Original:** Experiencia de usuario confusa, donde el botón dejaba de indicar carga visualmente, pero la UI aún no presentaba los resultados o estaba en transición.
+- **Resolución (2024-07-31):**
+  - Se introdujo un `ValueNotifier<bool> _isSearchButtonLoading` local en `_MapScreenState`.
+  - Este notificador se establece a `true` cuando el usuario presiona "Buscar Ruta".
+  - Se establece a `false` explícitamente _justo antes_ de que se llame a `showRouteOptionsModal(...)` (tras operaciones asíncronas como `clearPreviousRouteLayers`) o si la planificación falla o no devuelve resultados.
+  - El `SearchPanel` ahora utiliza el valor de este `ValueNotifier` para su propiedad `isCalculatingRoute`.
+- **Estado:** Resuelto. El comportamiento del botón de carga ahora se alinea con la aparición del modal de opciones.

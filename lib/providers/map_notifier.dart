@@ -14,6 +14,7 @@ import 'package:bondi_uy/providers/service_providers.dart';
 import 'package:bondi_uy/controllers/bus_tracking_controller.dart'; // Necesario para los parámetros de método
 import 'package:bondi_uy/models/point_dart.dart';
 import 'package:bondi_uy/models/bus_arrival_info.dart'; // Asegurar importación
+import 'package:bondi_uy/controllers/route_display_controller.dart';
 
 // Riverpod provider para el MapNotifier
 final mapNotifierProvider = StateNotifierProvider<MapNotifier, MapState>((ref) {
@@ -34,18 +35,29 @@ class MapNotifier extends StateNotifier<MapState> {
     if (state.userMapInteraction !=
         UserMapInteractionState.manualMoveInProgress) {
       print(
-        "[MapNotifier_DEBUG] mapInteractionStarted: Setting state to manualMoveInProgress",
+        "[MapNotifier_DEBUG] mapInteractionStarted: Setting state to manualMoveInProgress (from ${state.userMapInteraction})",
       );
       state = state.copyWith(
         userMapInteraction: UserMapInteractionState.manualMoveInProgress,
+      );
+    } else {
+      print(
+        "[MapNotifier_DEBUG] mapInteractionStarted: State already manualMoveInProgress. No change.",
       );
     }
   }
 
   void mapInteractionEnded() {
+    if (state.isPerformingProgrammaticZoom) {
+      print(
+        "[MapNotifier_DEBUG] mapInteractionEnded: Programmatic zoom active. Skipping setting state to manualMoveCooldown.",
+      );
+      return;
+    }
+
     _manualMoveCooldownTimer?.cancel();
     print(
-      "[MapNotifier_DEBUG] mapInteractionEnded: Setting state to manualMoveCooldown and starting timer",
+      "[MapNotifier_DEBUG] mapInteractionEnded: Setting state to manualMoveCooldown and starting timer (from ${state.userMapInteraction})",
     );
     state = state.copyWith(
       userMapInteraction: UserMapInteractionState.manualMoveCooldown,
@@ -58,28 +70,49 @@ class MapNotifier extends StateNotifier<MapState> {
         state = state.copyWith(
           userMapInteraction: UserMapInteractionState.idle,
         );
-        _triggerAutoZoomLogic();
+        reEvaluateAutoZoom();
+      } else {
+        print(
+          "[MapNotifier_DEBUG] Cooldown ended. State changed during cooldown (${state.userMapInteraction}). Not setting to idle.",
+        );
       }
     });
   }
 
-  void _triggerAutoZoomLogic() {
-    print("[MapNotifier_DEBUG] _triggerAutoZoomLogic called.");
+  void reEvaluateAutoZoom() {
+    print(
+      "[MapNotifier_DEBUG] reEvaluateAutoZoom called. Current state: ${state.userMapInteraction}, Target: ${state.currentZoomTarget}, Programmatic Zoom: ${state.isPerformingProgrammaticZoom}",
+    );
+    if (state.isPerformingProgrammaticZoom) {
+      print(
+        "[MapNotifier_DEBUG] reEvaluateAutoZoom: Programmatic zoom is active. Skipping auto zoom logic.",
+      );
+      return;
+    }
+
     if (state.userMapInteraction == UserMapInteractionState.idle) {
       if (state.selectedConsolidatedItinerary != null) {
         if (state.currentLegIndex != null &&
             state.currentDisplayMode == MapDisplayMode.legTracking) {
-          print("[MapNotifier_DEBUG] AutoZoom: Leg selected, target: leg");
+          print(
+            "[MapNotifier_DEBUG] AutoZoom: Leg selected, target: leg. Setting currentZoomTarget.",
+          );
           state = state.copyWith(currentZoomTarget: ZoomTargetType.leg);
         } else if (state.currentDisplayMode == MapDisplayMode.routeOverview) {
           print(
-            "[MapNotifier_DEBUG] AutoZoom: Route overview, target: overview",
+            "[MapNotifier_DEBUG] AutoZoom: Route overview, target: overview. Setting currentZoomTarget.",
           );
           state = state.copyWith(currentZoomTarget: ZoomTargetType.overview);
         } else {
           if (state.currentLegIndex != null) {
+            print(
+              "[MapNotifier_DEBUG] AutoZoom: Itinerary selected, leg index set, not tracking. Target: leg. Setting currentZoomTarget.",
+            );
             state = state.copyWith(currentZoomTarget: ZoomTargetType.leg);
           } else {
+            print(
+              "[MapNotifier_DEBUG] AutoZoom: Itinerary selected, no leg index set. Target: overview. Setting currentZoomTarget.",
+            );
             state = state.copyWith(currentZoomTarget: ZoomTargetType.overview);
           }
         }
@@ -87,36 +120,47 @@ class MapNotifier extends StateNotifier<MapState> {
         if (state.currentDisplayMode != MapDisplayMode.blank &&
             state.currentZoomTarget != ZoomTargetType.points) {
           print(
-            "[MapNotifier_DEBUG] AutoZoom: Origin and Destino set, target: points",
+            "[MapNotifier_DEBUG] AutoZoom: Origin and Destino set, target: points. Setting currentZoomTarget.",
           );
           state = state.copyWith(currentZoomTarget: ZoomTargetType.points);
+        } else {
+          print(
+            "[MapNotifier_DEBUG] AutoZoom: Origin and Destino set, but current state/target doesn't require points zoom. No change.",
+          );
         }
       } else if (state.origin != null) {
-        // No hacer zoom a origenSelection automáticamente aquí para evitar zoom al escribir/seleccionar.
-        // Este tipo de zoom debería ser más explícito.
-        // print(
-        //   "[MapNotifier_DEBUG] AutoZoom: Origin set, target: origenSelection",
-        // );
-        // state = state.copyWith(
-        //   currentZoomTarget: ZoomTargetType.origenSelection,
-        // );
+        print(
+          "[MapNotifier_DEBUG] AutoZoom: Origin set, but no auto-zoom target for origin selection.",
+        );
       } else if (state.destination != null) {
-        // No hacer zoom a destinationSelection automáticamente aquí.
-        // print(
-        //   "[MapNotifier_DEBUG] AutoZoom: Destino set, target: destinationSelection",
-        // );
-        // state = state.copyWith(
-        //   currentZoomTarget: ZoomTargetType.destinationSelection,
-        // );
+        print(
+          "[MapNotifier_DEBUG] AutoZoom: Destination set, but no auto-zoom target for destination selection.",
+        );
       } else {
         print(
-          "[MapNotifier_DEBUG] AutoZoom: No specific state, target: initial",
+          "[MapNotifier_DEBUG] AutoZoom: No specific state, target: initial. Setting currentZoomTarget.",
         );
         state = state.copyWith(currentZoomTarget: ZoomTargetType.initial);
       }
     } else {
       print(
-        "[MapNotifier_DEBUG] _triggerAutoZoomLogic: User is interacting (state: ${state.userMapInteraction}), no auto zoom.",
+        "[MapNotifier_DEBUG] reEvaluateAutoZoom: User is interacting (state: ${state.userMapInteraction}), no auto zoom. Skipping.",
+      );
+    }
+  }
+
+  void setIsPerformingProgrammaticZoom(bool isPerforming) {
+    print(
+      "[MapNotifier_DEBUG] setIsPerformingProgrammaticZoom called with: $isPerforming. Current state: ${state.isPerformingProgrammaticZoom}",
+    );
+    if (state.isPerformingProgrammaticZoom != isPerforming) {
+      state = state.copyWith(isPerformingProgrammaticZoom: isPerforming);
+      print(
+        "[MapNotifier_DEBUG] setIsPerformingProgrammaticZoom: State updated to $isPerforming.",
+      );
+    } else {
+      print(
+        "[MapNotifier_DEBUG] setIsPerformingProgrammaticZoom: State already $isPerforming. No change.",
       );
     }
   }
@@ -148,7 +192,7 @@ class MapNotifier extends StateNotifier<MapState> {
         preserveOriginAndDestination: state.destination != null,
       );
     }
-    _triggerAutoZoomLogic();
+    reEvaluateAutoZoom();
   }
 
   void setDestination(
@@ -177,7 +221,7 @@ class MapNotifier extends StateNotifier<MapState> {
         preserveOriginAndDestination: state.origin != null,
       );
     }
-    _triggerAutoZoomLogic();
+    reEvaluateAutoZoom();
   }
 
   void clearOrigin(
@@ -199,7 +243,7 @@ class MapNotifier extends StateNotifier<MapState> {
     if (state.destination == null) {
       clearRouteState(mapboxService, busTrackingController);
     }
-    _triggerAutoZoomLogic();
+    reEvaluateAutoZoom();
   }
 
   void clearDestination(
@@ -221,7 +265,7 @@ class MapNotifier extends StateNotifier<MapState> {
     if (state.origin == null) {
       clearRouteState(mapboxService, busTrackingController);
     }
-    _triggerAutoZoomLogic();
+    reEvaluateAutoZoom();
   }
 
   void swapOriginAndDestination(
@@ -401,293 +445,198 @@ class MapNotifier extends StateNotifier<MapState> {
         realtimeTrackingAttempted: false,
       );
     }
-    _triggerAutoZoomLogic();
+    reEvaluateAutoZoom();
   }
 
-  void clearRouteState(
+  Future<void> processSelectedItinerary(
+    ConsolidatedItinerary consolidatedItinerary,
     MapboxService mapboxService,
-    BusTrackingController busTrackingController, {
-    bool preserveOriginAndDestination = false,
-  }) {
-    print("[MapNotifier_DEBUG] clearRouteState llamado.");
-
-    mapboxService.clearRoute();
-    mapboxService.clearHighlightedStop();
-    mapboxService.toggleGeneralStopsVisibility(true);
-    busTrackingController.stopTrackingBusLine();
-
-    state = state.copyWith(
-      consolidatedItineraries: [],
-      clearSelectedConsolidatedItinerary: true,
-      clearRepresentativeItinerary: true,
-      clearRepresentativeFirstBusETAInfo: true,
-      planningStatus: PlanningStatus.idle,
-      clearCurrentLegIndex: true,
-      showInstructionsPanel: false,
-      clearTrackedBusLineShortName: true,
-      currentDisplayMode:
-          (preserveOriginAndDestination &&
-                  state.origin != null &&
-                  state.destination != null)
-              ? MapDisplayMode.routeOverview
-              : MapDisplayMode.blank,
-      currentZoomTarget:
-          (preserveOriginAndDestination &&
-                  state.origin != null &&
-                  state.destination != null)
-              ? ZoomTargetType.points
-              : ZoomTargetType.initial,
-      realtimeTrackingAvailable: false,
-      realtimeTrackingAttempted: false,
-    );
-
-    if (!preserveOriginAndDestination) {
-      state = state.copyWith(
-        clearOrigin: true,
-        clearDestination: true,
-        clearOriginAddress: true,
-        clearDestinationAddress: true,
-      );
-    }
+    BusTrackingController busTrackingController,
+    RouteDisplayController routeDisplayController,
+  ) async {
     print(
-      "[MapNotifier_DEBUG] clearRouteState: Estado final: displayMode=${state.currentDisplayMode}, zoomTarget=${state.currentZoomTarget}",
+      "[MapNotifier_DEBUG] processSelectedItinerary called with ConsolidatedItinerary ID: ${consolidatedItinerary.id}",
     );
-    _triggerAutoZoomLogic();
-  }
 
-  void processSelectedItinerary(
-    ConsolidatedItinerary selectedItinerary,
-    MapboxService mapboxService,
-    BusTrackingController? busTrackingController,
-  ) {
-    print(
-      "[MapNotifier_DEBUG] processSelectedItinerary called with ConsolidatedItinerary ID: ${selectedItinerary.id}",
-    );
-    final Itinerary? itinerary =
-        selectedItinerary
+    final representativeItinerary =
+        consolidatedItinerary
             .representativeProcessedItinerary
-            ?.originalOtpItinerary;
+            .originalOtpItinerary;
 
-    if (itinerary == null) {
-      print(
-        "[MapNotifier_ERROR] Itinerario representativo es nulo en ConsolidatedItinerary.",
-      );
+    // Dibujar la nueva ruta
+    bool routeDrawn = await routeDisplayController
+        .processAndDisplaySelectedItineraryUI(representativeItinerary.legs);
+
+    if (!routeDrawn) {
+      print("[MapNotifier_ERROR] Error al dibujar la ruta seleccionada.");
       state = state.copyWith(planningStatus: PlanningStatus.error);
       return;
     }
 
-    mapboxService.drawRoute(itinerary, isOverview: true);
+    bool realtimeAvailableForFirstLeg = false;
+    bool realtimeAttemptedForFirstLeg = false;
+    BusArrivalInfo? representativeETAForFirstLeg =
+        consolidatedItinerary.representativeFirstBusETAInfo;
+    RouteLeg? actualFirstRouteLegForTracking;
 
-    final BusArrivalInfo? representativeETA =
-        selectedItinerary.representativeFirstBusETAInfo;
-
-    // Encuentra el primer ConsolidatedItineraryLeg de tipo BUS
-    ConsolidatedItineraryLeg? firstConsolidatedBusLeg;
-    try {
-      firstConsolidatedBusLeg = selectedItinerary.legs.firstWhere(
-        (leg) => leg.mode == LegModeConstants.bus,
+    if (representativeItinerary.legs.isNotEmpty) {
+      final firstLeg = representativeItinerary.legs.firstWhere(
+        (leg) => leg.mode.toUpperCase() == LegModeConstants.bus.toUpperCase(),
+        orElse: () => representativeItinerary.legs.first,
       );
-    } catch (e) {
-      firstConsolidatedBusLeg = null; // No se encontró o la lista estaba vacía
+      actualFirstRouteLegForTracking = firstLeg;
+      if (firstLeg.mode.toUpperCase() == LegModeConstants.bus.toUpperCase() &&
+          representativeETAForFirstLeg != null) {
+        realtimeAvailableForFirstLeg =
+            representativeETAForFirstLeg.isReal &&
+            representativeETAForFirstLeg.position != null;
+        realtimeAttemptedForFirstLeg = true;
+      } else if (firstLeg.mode.toUpperCase() ==
+          LegModeConstants.bus.toUpperCase()) {
+        realtimeAttemptedForFirstLeg = true;
+      }
     }
 
-    // De ese tramo consolidado, obtén el primer RouteLeg original (si existe)
-    final RouteLeg? actualFirstRouteLegForTracking =
-        firstConsolidatedBusLeg?.originalBusLegs.isNotEmpty == true
-            ? firstConsolidatedBusLeg!.originalBusLegs.first
-            : null;
-
     state = state.copyWith(
-      selectedConsolidatedItinerary: selectedItinerary,
-      representativeItinerary: itinerary,
-      representativeFirstBusETAInfo: representativeETA,
-      currentDisplayMode: MapDisplayMode.routeOverview,
-      currentZoomTarget: ZoomTargetType.overview,
-      showInstructionsPanel: false,
-      clearCurrentLegIndex: true,
-      realtimeTrackingAvailable: representativeETA?.isReal ?? false,
-      realtimeTrackingAttempted: true,
+      selectedConsolidatedItinerary: consolidatedItinerary,
+      representativeItinerary: representativeItinerary,
+      currentDisplayMode: MapDisplayMode.routeStaticWithInstructions,
+      currentLegIndex: 0,
+      currentZoomTarget: ZoomTargetType.leg,
+      showInstructionsPanel: true,
+      realtimeTrackingAvailable: realtimeAvailableForFirstLeg,
+      realtimeTrackingAttempted: realtimeAttemptedForFirstLeg,
       clearTrackedBusLineShortName: true,
+      representativeFirstBusETAInfo: representativeETAForFirstLeg,
     );
+
+    await routeDisplayController.updateMapRouteHighlight();
+
     print(
       "[MapNotifier_DEBUG] processSelectedItinerary: Updated state. TrackedLineName: ${state.trackedBusLineShortName}, ZoomTarget: ${state.currentZoomTarget}, RealtimeAvailable: ${state.realtimeTrackingAvailable}, RealtimeAttempted: ${state.realtimeTrackingAttempted}, RepETA: ${state.representativeFirstBusETAInfo?.minutesToArrival} min, Real: ${state.representativeFirstBusETAInfo?.isReal}",
     );
 
-    if (busTrackingController == null) {
+    await busTrackingController.stopTrackingBusLine();
+
+    if (state.realtimeTrackingAvailable &&
+        actualFirstRouteLegForTracking != null &&
+        representativeETAForFirstLeg != null) {
       print(
-        "[MapNotifier_DEBUG_TRACKING] processSelectedItinerary: busTrackingController is NULL. Cannot start/stop tracking.",
+        "[MapNotifier_DEBUG_TRACKING] processSelectedItinerary: Realtime available. Starting tracking for leg: ${actualFirstRouteLegForTracking.from.name} -> ${actualFirstRouteLegForTracking.to.name}, Line: ${representativeETAForFirstLeg.lineShortName}, ETA: ${representativeETAForFirstLeg.minutesToArrival} min",
       );
+      await busTrackingController.startTrackingBusLine(
+        actualFirstRouteLegForTracking,
+        representativeETAForFirstLeg,
+      );
+      state = state.copyWith(currentDisplayMode: MapDisplayMode.legTracking);
     } else {
       print(
-        "[MapNotifier_DEBUG_TRACKING] processSelectedItinerary: busTrackingController is available. Stopping previous tracking (if any).",
+        "[MapNotifier_DEBUG_TRACKING] processSelectedItinerary: Realtime NOT available or missing critical data to start tracking.",
       );
-      busTrackingController.stopTrackingBusLine();
-
-      // Condición más explícita para iniciar el seguimiento
-      if (state.realtimeTrackingAvailable &&
-          actualFirstRouteLegForTracking != null && // USA EL RouteLeg OBTENIDO
-          representativeETA != null &&
-          representativeETA.isReal &&
-          representativeETA.position != null) {
-        // Asegurarse que hay posición
+      print(
+        "[MapNotifier_DEBUG_TRACKING]   - state.realtimeTrackingAvailable: ${state.realtimeTrackingAvailable}",
+      );
+      print(
+        "[MapNotifier_DEBUG_TRACKING]   - actualFirstRouteLegForTracking is null: ${actualFirstRouteLegForTracking == null}",
+      );
+      if (actualFirstRouteLegForTracking != null) {
         print(
-          "[MapNotifier_DEBUG_TRACKING] processSelectedItinerary: Realtime available. Attempting to start tracking. FirstBusLeg from: ${actualFirstRouteLegForTracking.from.name} to ${actualFirstRouteLegForTracking.to.name}, Line: ${representativeETA.lineShortName}, ETA: ${representativeETA.minutesToArrival} mins, Real: ${representativeETA.isReal}, Pos: ${representativeETA.position?.toJson()}",
+          "[MapNotifier_DEBUG_TRACKING]     - actualFirstRouteLegForTracking from: ${actualFirstRouteLegForTracking.from.name} to ${actualFirstRouteLegForTracking.to.name}",
         );
-        busTrackingController.startTrackingBusLine(
-          actualFirstRouteLegForTracking, // USA EL RouteLeg OBTENIDO
-          representativeETA,
-        );
-      } else {
-        print(
-          "[MapNotifier_DEBUG_TRACKING] processSelectedItinerary: Realtime NOT available or missing critical data to start tracking.",
-        );
-        print(
-          "[MapNotifier_DEBUG_TRACKING]   - state.realtimeTrackingAvailable: ${state.realtimeTrackingAvailable}",
-        );
-        print(
-          "[MapNotifier_DEBUG_TRACKING]   - actualFirstRouteLegForTracking is null: ${actualFirstRouteLegForTracking == null}",
-        );
-        if (actualFirstRouteLegForTracking != null) {
-          print(
-            "[MapNotifier_DEBUG_TRACKING]     - actualFirstRouteLegForTracking from: ${actualFirstRouteLegForTracking.from.name} to ${actualFirstRouteLegForTracking.to.name}",
-          );
-        }
-        print(
-          "[MapNotifier_DEBUG_TRACKING]   - representativeETA is null: ${representativeETA == null}",
-        );
-        if (representativeETA != null) {
-          print(
-            "[MapNotifier_DEBUG_TRACKING]     - representativeETA.isReal: ${representativeETA.isReal}",
-          );
-          print(
-            "[MapNotifier_DEBUG_TRACKING]     - representativeETA.lineShortName: ${representativeETA.lineShortName}",
-          );
-          print(
-            "[MapNotifier_DEBUG_TRACKING]     - representativeETA.minutesToArrival: ${representativeETA.minutesToArrival}",
-          );
-          print(
-            "[MapNotifier_DEBUG_TRACKING]     - representativeETA.position: ${representativeETA.position?.toJson()}",
-          );
-        }
       }
+      print(
+        "[MapNotifier_DEBUG_TRACKING]   - representativeETA is null: ${representativeETAForFirstLeg == null}",
+      );
     }
-
-    _triggerAutoZoomLogic();
+    reEvaluateAutoZoom();
   }
 
-  // --- Interacción con Tramos de la Ruta (Legs) ---
+  // --- Gestión de la selección de tramos ---
   void setSelectedLegIndex(
     int index,
     MapboxService mapboxService,
-    BusTrackingController busTrackingController, {
-    bool isFromTap = false,
-  }) {
+    RouteDisplayController routeDisplayController,
+  ) async {
     if (state.representativeItinerary == null ||
         index < 0 ||
         index >= state.representativeItinerary!.legs.length) {
       return;
     }
 
-    final currentLeg = state.representativeItinerary!.legs[index];
+    final selectedLeg = state.representativeItinerary!.legs[index];
+    bool isBusLeg =
+        selectedLeg.mode.toUpperCase() == LegModeConstants.bus.toUpperCase();
 
-    if (isFromTap &&
-        state.currentDisplayMode == MapDisplayMode.routeOverview &&
-        currentLeg.mode == LegModeConstants.bus) {
-      switchToLegTracking(index, mapboxService, busTrackingController);
-    } else {
-      mapboxService.highlightLeg(state.representativeItinerary!, index);
-      state = state.copyWith(
-        currentLegIndex: index,
-        currentZoomTarget: ZoomTargetType.leg,
-      );
-      if (state.currentDisplayMode != MapDisplayMode.legTracking &&
-          state.currentDisplayMode !=
-              MapDisplayMode.routeStaticWithInstructions) {}
-      _triggerAutoZoomLogic();
-    }
+    print(
+      "[MapNotifier_DEBUG] setSelectedLegIndex: Highlighting leg $index. Forcing map to IDLE before setting zoom target.",
+    );
+
+    forceMapIdleAndZoomTo(ZoomTargetType.none);
+
+    state = state.copyWith(
+      currentLegIndex: index,
+      currentDisplayMode:
+          isBusLeg && state.realtimeTrackingAvailable
+              ? MapDisplayMode.legTracking
+              : MapDisplayMode.routeStaticWithInstructions,
+      currentZoomTarget: ZoomTargetType.leg,
+      showInstructionsPanel: true,
+    );
+
+    await routeDisplayController.updateMapRouteHighlight();
+
+    reEvaluateAutoZoom();
+  }
+
+  // --- Cambio de modo de visualización ---
+  void switchToOverview(MapboxService mapboxService) {
+    // ... existing code ...
   }
 
   void switchToLegTracking(
-    int legIndex,
     MapboxService mapboxService,
     BusTrackingController busTrackingController,
-  ) {
-    print(
-      "[MapNotifier_DEBUG] switchToLegTracking llamado para el índice: $legIndex",
-    );
-    if (state.representativeItinerary == null ||
-        legIndex < 0 ||
-        legIndex >= state.representativeItinerary!.legs.length) {
-      print(
-        "[MapNotifier_ERROR] switchToLegTracking: Itinerario no seleccionado o índice fuera de rango.",
-      );
-      return;
-    }
-
-    final leg = state.representativeItinerary!.legs[legIndex];
-
-    mapboxService.highlightLeg(state.representativeItinerary!, legIndex);
-
-    if (leg.mode == LegModeConstants.bus && leg.route != null) {
-      if (state.realtimeTrackingAttempted && !state.realtimeTrackingAvailable) {
-        print(
-          "[MapNotifier_INFO] switchToLegTracking: Seguimiento en tiempo real NO disponible para este tramo de bus (previamente intentado y fallido).",
-        );
-        busTrackingController.stopTrackingBusLine();
-        state = state.copyWith(
-          currentLegIndex: legIndex,
-          currentDisplayMode: MapDisplayMode.routeStaticWithInstructions,
-          showInstructionsPanel: true,
-          currentZoomTarget: ZoomTargetType.leg,
-          clearTrackedBusLineShortName: true,
-        );
-        _triggerAutoZoomLogic();
-        return;
-      }
-
-      print(
-        "[MapNotifier_INFO] switchToLegTracking: Intentando iniciar seguimiento para tramo de bus.",
-      );
-      busTrackingController.startTrackingBusLine(
-        leg,
-        state.representativeFirstBusETAInfo,
-      );
-
+    RouteDisplayController routeDisplayController,
+  ) async {
+    if (state.currentLegIndex != null &&
+        state.selectedConsolidatedItinerary != null &&
+        state.representativeItinerary != null) {
+      // ... existing code ...
       state = state.copyWith(
-        currentLegIndex: legIndex,
         currentDisplayMode: MapDisplayMode.legTracking,
         currentZoomTarget: ZoomTargetType.leg,
-        showInstructionsPanel: true,
       );
-    } else {
-      print(
-        "[MapNotifier_INFO] switchToLegTracking: Tramo no es de bus. Deteniendo seguimiento y mostrando como estático.",
-      );
-      busTrackingController.stopTrackingBusLine();
-      state = state.copyWith(
-        currentLegIndex: legIndex,
-        currentDisplayMode: MapDisplayMode.routeStaticWithInstructions,
-        currentZoomTarget: ZoomTargetType.leg,
-        showInstructionsPanel: true,
-        clearTrackedBusLineShortName: true,
-        realtimeTrackingAvailable: false,
-        realtimeTrackingAttempted: true,
-      );
+      await routeDisplayController.updateMapRouteHighlight();
+
+      final currentLeg =
+          state.representativeItinerary!.legs[state.currentLegIndex!];
+      // ... existing code ...
     }
-    _triggerAutoZoomLogic();
   }
 
-  // --- Gestión de Seguimiento en Tiempo Real (Actualizado por BusTrackingController) ---
-  void updateRealtimeTrackingStatus(bool available, bool attempted) {
-    if (state.realtimeTrackingAvailable != available ||
-        state.realtimeTrackingAttempted != attempted) {
+  void updateRealtimeTrackingStatus(bool isTracking) {
+    print(
+      "[MapNotifier_DEBUG_TRACKING] updateRealtimeTrackingStatus called with isTracking: $isTracking",
+    );
+    if (!isTracking && state.currentDisplayMode == MapDisplayMode.legTracking) {
+      // Si el seguimiento se detiene (ej. el bus llegó o se perdió la señal),
+      // volvemos al modo de instrucciones estáticas para el tramo actual.
       state = state.copyWith(
-        realtimeTrackingAvailable: available,
-        realtimeTrackingAttempted: attempted,
+        currentDisplayMode: MapDisplayMode.routeStaticWithInstructions,
+        realtimeTrackingAvailable: false, // Marcar como no disponible ahora
+        // No necesariamente limpiamos el trackedBusLineShortName aquí,
+        // podría ser útil mantenerlo visible hasta que se seleccione otro tramo/ruta.
+        // clearTrackedBusLineShortName: true,
       );
-      print(
-        "[MapNotifier_DEBUG] updateRealtimeTrackingStatus: available=$available, attempted=$attempted",
-      );
+      // No necesitamos llamar a updateMapRouteHighlight aquí si el índice no cambió.
+    } else if (isTracking &&
+        state.currentDisplayMode != MapDisplayMode.legTracking) {
+      // Si el seguimiento comienza y no estábamos en modo legTracking, cambiamos.
+      state = state.copyWith(currentDisplayMode: MapDisplayMode.legTracking);
+    }
+    // Si el seguimiento se detiene, realtimeTrackingAvailable debe ser false.
+    if (!isTracking) {
+      state = state.copyWith(realtimeTrackingAvailable: false);
     }
   }
 
@@ -753,15 +702,18 @@ class MapNotifier extends StateNotifier<MapState> {
     ZoomTargetType target, {
     CameraOptions? cameraOptions,
   }) {
-    mapInteractionEnded();
-    _manualMoveCooldownTimer?.cancel();
+    print(
+      "[MapNotifier_DEBUG] forceMapIdleAndZoomTo called with target: $target. Current state: ${state.userMapInteraction}, Programmatic Zoom: ${state.isPerformingProgrammaticZoom}",
+    );
+    setIsPerformingProgrammaticZoom(true);
+
     state = state.copyWith(
       userMapInteraction: UserMapInteractionState.idle,
       currentZoomTarget: target,
       currentCameraOptions: cameraOptions ?? state.currentCameraOptions,
     );
     print(
-      "[MapNotifier_DEBUG] forceMapIdleAndZoomTo called with target: $target",
+      "[MapNotifier_DEBUG] forceMapIdleAndZoomTo: State updated to idle and target $target.",
     );
   }
 
@@ -783,7 +735,7 @@ class MapNotifier extends StateNotifier<MapState> {
       } else {
         state = state.copyWith(currentZoomTarget: ZoomTargetType.overview);
       }
-      _triggerAutoZoomLogic();
+      reEvaluateAutoZoom();
     }
   }
 
@@ -819,6 +771,69 @@ class MapNotifier extends StateNotifier<MapState> {
         "[MapNotifier_DEBUG] selectedConsolidatedItinerary también actualizado con el nuevo ETA.",
       );
     }
+  }
+
+  void clearRouteState(
+    MapboxService mapboxService,
+    BusTrackingController busTrackingController, {
+    bool preserveOriginAndDestination = false,
+    bool resetToInitialZoom = true,
+  }) async {
+    print("[MapNotifier_DEBUG] clearRouteState llamado.");
+    await mapboxService
+        .clearRoute(); // Esto llama a clearPreviousRouteLayers en el servicio
+    await mapboxService.clearHighlightedStop();
+    await mapboxService.toggleGeneralStopsVisibility(true);
+    await busTrackingController.stopTrackingBusLine();
+
+    MapDisplayMode newDisplayMode;
+    ZoomTargetType newZoomTarget;
+
+    if (preserveOriginAndDestination &&
+        state.origin != null &&
+        state.destination != null) {
+      newDisplayMode =
+          MapDisplayMode
+              .routeOverview; // Aunque no hay ruta, es el modo "listo para planificar"
+      newZoomTarget = ZoomTargetType.points;
+    } else if (preserveOriginAndDestination && state.origin != null) {
+      newDisplayMode = MapDisplayMode.originSelected;
+      newZoomTarget = ZoomTargetType.origenSelection;
+    } else if (preserveOriginAndDestination && state.destination != null) {
+      newDisplayMode = MapDisplayMode.destinationSelected;
+      newZoomTarget = ZoomTargetType.destinationSelection;
+    } else {
+      newDisplayMode = MapDisplayMode.blank;
+      newZoomTarget = ZoomTargetType.initial;
+    }
+
+    setIsPerformingProgrammaticZoom(false);
+
+    state = state.copyWith(
+      clearSelectedConsolidatedItinerary: true,
+      clearRepresentativeItinerary: true,
+      clearRepresentativeFirstBusETAInfo: true,
+      planningStatus: PlanningStatus.idle,
+      clearCurrentLegIndex: true,
+      showInstructionsPanel: false,
+      clearTrackedBusLineShortName: true,
+      clearRealDebugBusPosition: true,
+      clearRealDebugEtaMinutes: true,
+      clearRealDebugIsReal: true,
+      clearSimulatedBusPosition: true,
+      clearBusSpeedMetersPerSecond: true,
+      clearLastSpeedCalculationTime: true,
+      clearSimulationSegmentOriginPoint: true,
+      clearMaxSimulationTravelDistance: true,
+      realtimeTrackingAvailable: false,
+      realtimeTrackingAttempted: false,
+      currentDisplayMode: newDisplayMode,
+      currentZoomTarget: newZoomTarget,
+    );
+    print(
+      "[MapNotifier_DEBUG] clearRouteState: Estado final: displayMode=${state.currentDisplayMode}, zoomTarget=${state.currentZoomTarget}",
+    );
+    reEvaluateAutoZoom();
   }
 
   @override

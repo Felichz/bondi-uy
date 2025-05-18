@@ -18,15 +18,33 @@ class MapInteractionController {
   void onMapCameraChangeListener(CameraChangedEventData eventData) {
     // print("[MapInteractionController_DEBUG] Map CAMERA CHANGE detected.");
     final mapState = ref.read(mapNotifierProvider);
-    if (mapState.userMapInteraction == UserMapInteractionState.idle) {
+    if (!mapState.isPerformingProgrammaticZoom &&
+        mapState.userMapInteraction == UserMapInteractionState.idle) {
       // print("[MapInteractionController_DEBUG] Camera change while user was idle. Assuming manual move start.");
+      print(
+        "[MapInteractionController_DEBUG] onCameraChangeListener: Triggering mapInteractionStarted.",
+      );
       ref.read(mapNotifierProvider.notifier).mapInteractionStarted();
+    } else {
+      print(
+        "[MapInteractionController_DEBUG] onCameraChangeListener: Skipping mapInteractionStarted. Programmatic Zoom: ${mapState.isPerformingProgrammaticZoom}, State: ${mapState.userMapInteraction}.",
+      );
     }
   }
 
   void onMapIdleListener(MapIdleEventData data) {
     // print("[MapInteractionController_DEBUG] Map IDLE detected.");
-    ref.read(mapNotifierProvider.notifier).mapInteractionEnded();
+    final mapState = ref.read(mapNotifierProvider);
+    if (!mapState.isPerformingProgrammaticZoom) {
+      print(
+        "[MapInteractionController_DEBUG] onMapIdleListener: Triggering mapInteractionEnded.",
+      );
+      ref.read(mapNotifierProvider.notifier).mapInteractionEnded();
+    } else {
+      print(
+        "[MapInteractionController_DEBUG] onMapIdleListener: Skipping mapInteractionEnded. Programmatic Zoom: ${mapState.isPerformingProgrammaticZoom}.",
+      );
+    }
   }
 
   Future<void> handleMapTapEvent(
@@ -35,12 +53,33 @@ class MapInteractionController {
   ) async {
     // mapboxMap no es necesario directamente si mapboxService lo encapsula
     // if (mapboxService == null) return; // mapboxService es non-null por constructor
-    ref.read(mapNotifierProvider.notifier).mapInteractionStarted();
+    final mapState = ref.read(mapNotifierProvider);
+    if (!mapState.isPerformingProgrammaticZoom) {
+      print(
+        "[MapInteractionController_DEBUG] handleMapTapEvent: Triggering mapInteractionStarted.",
+      );
+      ref.read(mapNotifierProvider.notifier).mapInteractionStarted();
+    } else {
+      print(
+        "[MapInteractionController_DEBUG] handleMapTapEvent: Skipping mapInteractionStarted. Programmatic Zoom: ${mapState.isPerformingProgrammaticZoom}.",
+      );
+    }
+
     // Pasamos uiContext al callback para que pueda ser usado por _requestBusLinesForStopModal
     await mapboxService.handleMapTap(mapTapContext, (stopId, stopName) {
       _requestBusLinesForStopModal(stopId, stopName, uiContext);
     });
-    ref.read(mapNotifierProvider.notifier).mapInteractionEnded();
+
+    if (!mapState.isPerformingProgrammaticZoom) {
+      print(
+        "[MapInteractionController_DEBUG] handleMapTapEvent: Triggering mapInteractionEnded.",
+      );
+      ref.read(mapNotifierProvider.notifier).mapInteractionEnded();
+    } else {
+      print(
+        "[MapInteractionController_DEBUG] handleMapTapEvent: Skipping mapInteractionEnded. Programmatic Zoom: ${mapState.isPerformingProgrammaticZoom}.",
+      );
+    }
   }
 
   Future<void> handleMapLongPressEvent(MapContentGestureContext context) async {
@@ -52,9 +91,28 @@ class MapInteractionController {
     );
     // Aquí se podría, por ejemplo, iniciar una geocodificación inversa o permitir al usuario soltar un pin.
     // Por ahora, solo notificamos que la interacción comenzó y terminó.
-    ref.read(mapNotifierProvider.notifier).mapInteractionStarted();
+    final mapState = ref.read(mapNotifierProvider);
+    if (!mapState.isPerformingProgrammaticZoom) {
+      print(
+        "[MapInteractionController_DEBUG] handleMapLongPressEvent: Triggering mapInteractionStarted.",
+      );
+      ref.read(mapNotifierProvider.notifier).mapInteractionStarted();
+    } else {
+      print(
+        "[MapInteractionController_DEBUG] handleMapLongPressEvent: Skipping mapInteractionStarted. Programmatic Zoom: ${mapState.isPerformingProgrammaticZoom}.",
+      );
+    }
     // Lógica de long press...
-    ref.read(mapNotifierProvider.notifier).mapInteractionEnded();
+    if (!mapState.isPerformingProgrammaticZoom) {
+      print(
+        "[MapInteractionController_DEBUG] handleMapLongPressEvent: Triggering mapInteractionEnded.",
+      );
+      ref.read(mapNotifierProvider.notifier).mapInteractionEnded();
+    } else {
+      print(
+        "[MapInteractionController_DEBUG] handleMapLongPressEvent: Skipping mapInteractionEnded. Programmatic Zoom: ${mapState.isPerformingProgrammaticZoom}.",
+      );
+    }
   }
 
   void onMapLoadErrorListener(MapLoadingErrorEventData data) {

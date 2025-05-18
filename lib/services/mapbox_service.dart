@@ -51,6 +51,15 @@ class MapboxService {
   static const String INCOMING_BUS_TOOLTIP_LAYER_ID =
       "incoming-bus-tooltip-layer";
 
+  // >>> AÑADIDO: Constantes para tamaños de iconos
+  static const double kHighlightedBusIconSize =
+      0.7; // Tamaño para el bus destacado (antes 0.9)
+  static const double kNormalBusIconSize =
+      0.6; // Tamaño para buses normales (si se usaran múltiples)
+  static const double kTooltipIconSize =
+      kHighlightedBusIconSize; // Mismo tamaño que el bus destacado
+  // <<< FIN AÑADIDO
+
   final MapboxMap mapboxMap;
   bool _styleImagesAdded = false;
   bool _stopsAdded = false; // Para evitar recargar paradas
@@ -121,7 +130,6 @@ class MapboxService {
 
       if (modeUpperCase == LegModeConstants.walk) {
         legColor = Colors.blueAccent;
-        lineDasharrayValue = [2.0, 2.0];
         lineWidthValue = 3.0;
       } else if (modeUpperCase == LegModeConstants.bus ||
           modeUpperCase == LegModeConstants.transit) {
@@ -476,6 +484,10 @@ class MapboxService {
   }) async {
     if (positions.length < 2) return;
 
+    print(
+      "[MapboxService_Debug] drawRouteSegment called for sourceId=$sourceId, mainLayerId=$layerId. Color: ${lineColor.value}, lineWidth: $lineWidth, shadowWidth: $shadowWidth, dash: $lineDasharray.",
+    );
+
     final Map<String, dynamic> geometry = {
       'type': 'LineString',
       'coordinates': positions.map((p) => [p.lng, p.lat]).toList(),
@@ -568,25 +580,33 @@ class MapboxService {
       final mainLayerId = layerIds[0];
       final shadowLayerId = layerIds[1];
 
+      print(
+        "[MapboxService_Debug] updateMapRouteHighlight - Inside loop: legIndex=$legIndex, selectedLegIndex=$selectedLegIndex.",
+      );
       final bool isSelected = legIndex == selectedLegIndex;
 
+      // Aplicar estilos dinámicos como en main-old.dart
       final mainOpacity = isSelected ? 0.9 : 0.35;
       final mainWidth = isSelected ? 6.0 : 3.0;
       final shadowOpacity = isSelected ? 0.7 : 0.25;
       final shadowWidth = isSelected ? 8.0 : 5.0;
+
+      print(
+        "[MapboxService_Debug] updateMapRouteHighlight: Applying styles for legIndex=$legIndex (isSelected=$isSelected). MainLayer=$mainLayerId (width=$mainWidth, opacity=$mainOpacity), ShadowLayer=$shadowLayerId (width=$shadowWidth, opacity=$shadowOpacity).",
+      );
 
       try {
         // Actualizar capa principal
         if (await mapboxMap.style.styleLayerExists(mainLayerId)) {
           await mapboxMap.style.setStyleLayerProperty(
             mainLayerId,
-            "line-opacity",
-            mainOpacity,
+            'line-width',
+            mainWidth,
           );
           await mapboxMap.style.setStyleLayerProperty(
             mainLayerId,
-            "line-width",
-            mainWidth,
+            'line-opacity',
+            mainOpacity,
           );
         }
 
@@ -594,13 +614,13 @@ class MapboxService {
         if (await mapboxMap.style.styleLayerExists(shadowLayerId)) {
           await mapboxMap.style.setStyleLayerProperty(
             shadowLayerId,
-            "line-opacity",
-            shadowOpacity,
+            'line-width',
+            shadowWidth,
           );
           await mapboxMap.style.setStyleLayerProperty(
             shadowLayerId,
-            "line-width",
-            shadowWidth,
+            'line-opacity',
+            shadowOpacity,
           );
         }
       } catch (e) {
@@ -862,6 +882,7 @@ class MapboxService {
 
   // AÑADIDO: Método applyOverviewRouteStyle movido y adaptado desde _MapScreenState
   Future<void> applyOverviewRouteStyle() async {
+    print("[MapboxService_Debug] applyOverviewRouteStyle called.");
     if (_legLayerIds.isEmpty) return; // No hay capas de tramos para actualizar
 
     const overviewOpacity = 0.8;
@@ -875,6 +896,10 @@ class MapboxService {
       if (layerIds.length != 2) continue;
       final mainLayerId = layerIds[0];
       final shadowLayerId = layerIds[1];
+
+      print(
+        "[MapboxService_Debug] applyOverviewRouteStyle: Applying styles for legIndex=$legIndex. MainLayer=$mainLayerId (width=$overviewWidth, opacity=$overviewOpacity), ShadowLayer=$shadowLayerId (width=$overviewShadowWidth, opacity=$overviewShadowOpacity).",
+      );
 
       try {
         // Actualizar capa principal
@@ -1130,7 +1155,7 @@ class MapboxService {
             id: "$INCOMING_BUS_SEGMENT_LAYER_ID-shadow",
             sourceId: INCOMING_BUS_SEGMENT_SOURCE_ID,
             lineColor: Colors.black.withOpacity(0.4).value,
-            lineWidth: 8.0, // Original shadowWidth
+            lineWidth: 8.0,
             lineOpacity: 0.7,
             lineJoin: LineJoin.ROUND,
             lineCap: LineCap.ROUND,
@@ -1142,7 +1167,7 @@ class MapboxService {
             id: INCOMING_BUS_SEGMENT_LAYER_ID,
             sourceId: INCOMING_BUS_SEGMENT_SOURCE_ID,
             lineColor: Colors.green.value,
-            lineWidth: 6.0, // Original lineWidth
+            lineWidth: 6.0,
             lineOpacity: 0.9,
             lineJoin: LineJoin.ROUND,
             lineCap: LineCap.ROUND,
@@ -1231,8 +1256,14 @@ class MapboxService {
   // <<< FIN AÑADIDO
 
   // AÑADIDO: Método para hacer zoom y centrar el mapa en la ruta calculada.
-  Future<bool> zoomToRouteBounds(List<RouteLeg> legs) async {
-    if (mapboxMap == null || legs.isEmpty) return false;
+  Future<bool> zoomToRouteBounds(
+    List<RouteLeg> legs, {
+    VoidCallback? onAnimationEnd, // ADDED: onAnimationEnd callback
+  }) async {
+    if (mapboxMap == null || legs.isEmpty) {
+      onAnimationEnd?.call(); // Call callback even if zoom doesn't start
+      return false;
+    }
 
     final CoordinateBounds? routeBounds = await calculateBoundsForRoute(
       legs,
@@ -1264,17 +1295,20 @@ class MapboxService {
         print(
           "[MapboxService_Debug] Cámara ajustada para mostrar la ruta completa.",
         );
+        onAnimationEnd?.call(); // Call callback after animation completes
         return true; // Indica éxito
       } catch (e) {
         print(
           "[MapboxService_Debug] Error al calcular o volar a los límites de la ruta: $e",
         );
+        onAnimationEnd?.call(); // Call callback on error
         return false; // Indica fallo
       }
     } else {
       print(
         "[MapboxService_Debug] No se pudieron calcular los límites para la ruta.",
       );
+      onAnimationEnd?.call(); // Call callback if bounds cannot be calculated
       return false; // Indica fallo
     }
   }
@@ -1284,12 +1318,15 @@ class MapboxService {
     List<RouteLeg> legs,
     int legIndex,
     Position? busToInclude,
-    bool isInstructionsCollapsed,
-  ) async {
+    bool isInstructionsCollapsed, {
+    VoidCallback? onAnimationEnd, // ADDED: onAnimationEnd callback
+  }) async {
+    print("[MapboxService_DEBUG] zoomToLeg called for leg index $legIndex.");
     if (mapboxMap == null || legIndex < 0 || legIndex >= legs.length) {
       print(
-        "[MapboxService_Debug] zoomToLeg: Condiciones no cumplidas (mapa nulo o índice de tramo inválido). No se inició el zoom.",
+        "[MapboxService_DEBUG] zoomToLeg: Condiciones no cumplidas (mapa nulo o índice de tramo inválido). No se inició el zoom.",
       );
+      onAnimationEnd?.call(); // Call callback even if zoom doesn't start
       return false; // No se inició el zoom
     }
 
@@ -1299,6 +1336,9 @@ class MapboxService {
     CoordinateBounds? legBounds;
 
     if ((mode == 'BUS' || mode == 'TRANSIT') && busToInclude != null) {
+      print(
+        "[MapboxService_DEBUG] zoomToLeg: Leg mode is BUS/TRANSIT and busToInclude is not null. Using bus/origin bounds logic.",
+      );
       final LegEndpoint fromPlace = leg.from;
       if (fromPlace.lat != 0.0 && fromPlace.lon != 0.0) {
         // Verificar validez de coordenadas
@@ -1326,19 +1366,34 @@ class MapboxService {
           northeast: northeastPoint,
           infiniteBounds: false,
         );
+        print(
+          "[MapboxService_DEBUG] zoomToLeg: Calculated bounds using bus position: $legBounds",
+        );
       } else {
+        print(
+          "[MapboxService_DEBUG] zoomToLeg: Origin stop coordinates invalid. Falling back to calculateBoundsForLeg with bus.",
+        );
         legBounds = await calculateBoundsForLeg(
           legs,
           legIndex,
           additionalPoint: busToInclude,
         );
+        print(
+          "[MapboxService_DEBUG] zoomToLeg: Bounds from calculateBoundsForLeg fallback (with bus): $legBounds",
+        );
       }
     } else {
+      print(
+        "[MapboxService_DEBUG] zoomToLeg: Leg mode is not BUS/TRANSIT or busToInclude is null. Using calculateBoundsForLeg.",
+      );
       legBounds = await calculateBoundsForLeg(
         legs,
         legIndex,
         additionalPoint:
             (mode == 'BUS' || mode == 'TRANSIT') ? busToInclude : null,
+      );
+      print(
+        "[MapboxService_DEBUG] zoomToLeg: Bounds from calculateBoundsForLeg: $legBounds",
       );
     }
 
@@ -1350,6 +1405,7 @@ class MapboxService {
           bottom: isInstructionsCollapsed ? 100.0 : 80.0,
           right: 50.0,
         );
+        print("[MapboxService_DEBUG] zoomToLeg: Applying padding: $padding");
         final CameraOptions cameraOptions = await mapboxMap
             .cameraForCoordinateBounds(
               legBounds,
@@ -1366,17 +1422,20 @@ class MapboxService {
         print(
           "[MapboxService_Debug] Cámara ajustada para mostrar el tramo $legIndex.",
         );
+        onAnimationEnd?.call(); // Call callback after animation completes
         return true;
       } catch (e) {
         print(
           "[MapboxService_Debug] Error al calcular o volar a los límites del tramo $legIndex: $e",
         );
+        onAnimationEnd?.call(); // Call callback on error
         return false;
       }
     } else {
       print(
         "[MapboxService_Debug] No se pudieron calcular los límites para el tramo $legIndex.",
       );
+      onAnimationEnd?.call(); // Call callback if bounds cannot be calculated
       return false;
     }
   }
@@ -1386,6 +1445,7 @@ class MapboxService {
     List<Position> positions,
     EdgeInsets flutterPadding, {
     Duration? animationDuration,
+    VoidCallback? onAnimationEnd, // ADDED: onAnimationEnd callback
   }) async {
     print(
       "[MapboxService_Debug] zoomToFitPositions llamado con ${positions.length} posiciones.",
@@ -1394,6 +1454,7 @@ class MapboxService {
       print(
         "[MapboxService_Debug] zoomToFitPositions: MapboxMap es null o no hay posiciones. Abortando. No se inició el zoom.",
       );
+      onAnimationEnd?.call(); // Call callback even if zoom doesn't start
       return false; // No se inició el zoom
     }
 
@@ -1423,6 +1484,7 @@ class MapboxService {
         print(
           "[MapboxService_Debug] zoomToFitPositions (single): flyTo ejecutado.",
         );
+        onAnimationEnd?.call(); // Call callback after animation completes
         return true; // Zoom iniciado
       } else {
         // Para múltiples posiciones, Mapbox espera una lista de Point, no List<List<double>> para cameraForCoordinates
@@ -1442,10 +1504,12 @@ class MapboxService {
         print(
           "[MapboxService_Debug] zoomToFitPositions (multiple): flyTo ejecutado.",
         );
+        onAnimationEnd?.call(); // Call callback after animation completes
         return true; // Zoom iniciado
       }
     } catch (e) {
       print("[MapboxService_Debug] zoomToFitPositions: Excepción: $e");
+      onAnimationEnd?.call(); // Call callback on error
       return false; // No se inició el zoom
     }
   }
@@ -1621,35 +1685,29 @@ class MapboxService {
     }
   }
 
-  Future<void> updateRealtimeBusMarkerAndSegment(
-    BusArrivalInfo etaInfo,
-    List<Position>?
-    fullBusLineShape, // Shape completo de la línea de bus actual (puede ser null)
-    int?
-    upcomingStopIndexOnShape, // Índice de la parada de subida en el fullBusLineShape (puede ser null)
-  ) async {
+  Future<void> updateRealtimeBusMarkerAndSegment(BusArrivalInfo etaInfo) async {
     print(
-      "[MapboxService_Debug] updateRealtimeBusMarkerAndSegment (Optimizado) llamado. Bus: ${etaInfo.lineShortName}, Pos: ${etaInfo.position}",
+      "[MapboxService_Debug] updateRealtimeBusMarkerAndSegment (Simplificado) llamado. Bus: ${etaInfo.lineShortName}, Pos: ${etaInfo.position}",
     );
 
-    // --- Manejo del Marcador del Bus ---
     if (etaInfo.position == null) {
-      // Si no hay posición, asegurarse de que el marcador y el segmento estén limpios.
       print(
-        "[MapboxService_Debug] Posición del bus en etaInfo es null. Limpiando marcador y segmento.",
+        "[MapboxService_Debug] Posición del bus en etaInfo es null. Limpiando marcador y tooltip.",
       );
       await removeLayerAndSource(
         layerId: REALTIME_BUS_MARKER_LAYER_ID,
         sourceId: REALTIME_BUS_MARKER_SOURCE_ID,
       );
       await removeLayerAndSource(
-        layerId: REALTIME_BUS_GREEN_SEGMENT_LAYER_ID,
-        sourceId: REALTIME_BUS_GREEN_SEGMENT_SOURCE_ID,
+        layerId: INCOMING_BUS_TOOLTIP_LAYER_ID,
+        sourceId: REALTIME_BUS_MARKER_SOURCE_ID, // Tooltip usa la misma fuente
       );
+      stopTooltipFloatingAnimation();
       return;
     }
 
     final busPosition = etaInfo.position!;
+    // Ya no se necesita 'isClosestUpcoming' en properties si etaInfo siempre es el relevante
     final busFeature = {
       "type": "Feature",
       "geometry": {
@@ -1676,7 +1734,7 @@ class MapboxService {
             await mapboxMap.style.getSource(REALTIME_BUS_MARKER_SOURCE_ID)
                 as GeoJsonSource?;
         await source?.updateGeoJSON(busSourceDataString);
-        print("[MapboxService_Debug] Fuente del marcador de bus actualizada.");
+        // print("[MapboxService_Debug] Fuente del marcador de bus actualizada.");
       } else {
         await mapboxMap.style.addSource(
           GeoJsonSource(
@@ -1684,140 +1742,81 @@ class MapboxService {
             data: busSourceDataString,
           ),
         );
-        print("[MapboxService_Debug] Fuente del marcador de bus creada.");
-        // Si la fuente no existía, la capa tampoco debería existir, así que la creamos.
-        if (!await mapboxMap.style.styleLayerExists(
-          REALTIME_BUS_MARKER_LAYER_ID,
-        )) {
-          await mapboxMap.style.addLayer(
-            SymbolLayer(
-              id: REALTIME_BUS_MARKER_LAYER_ID,
-              sourceId: REALTIME_BUS_MARKER_SOURCE_ID,
-              iconImage: REALTIME_BUS_ICON_ID,
-              iconSize: 0.7,
-              iconAllowOverlap: true,
-              iconIgnorePlacement: true,
-            ),
-          );
-          print("[MapboxService_Debug] Capa del marcador de bus creada.");
-        }
+        // print("[MapboxService_Debug] Fuente del marcador de bus creada.");
       }
-    } catch (e) {
-      print(
-        "[MapboxService_Error] Error al actualizar/crear marcador de bus: $e",
-      );
-    }
 
-    // --- Manejo del Segmento Verde ---
-    bool shouldDrawGreenSegment =
-        fullBusLineShape != null &&
-        fullBusLineShape.isNotEmpty &&
-        upcomingStopIndexOnShape != null &&
-        upcomingStopIndexOnShape >= 0 &&
-        upcomingStopIndexOnShape < fullBusLineShape.length;
-
-    if (!shouldDrawGreenSegment) {
-      print(
-        "[MapboxService_Debug] Datos insuficientes para segmento verde o bus no rastreable. Limpiando segmento verde si existe.",
-      );
-      await removeLayerAndSource(
-        layerId: REALTIME_BUS_GREEN_SEGMENT_LAYER_ID,
-        sourceId: REALTIME_BUS_GREEN_SEGMENT_SOURCE_ID,
-      );
-      return; // Salir si no podemos dibujar el segmento verde
-    }
-
-    int busIndexOnShape = findClosestPointIndexOnShape(
-      fullBusLineShape!, // Sabemos que no es null por shouldDrawGreenSegment
-      Point_dart(
-        lat: busPosition.lat.toDouble(),
-        lng: busPosition.lng.toDouble(),
-      ),
-    );
-
-    if (busIndexOnShape != -1 && busIndexOnShape < upcomingStopIndexOnShape!) {
-      // Sabemos que no es null
-      List<Position> segmentPoints = fullBusLineShape.sublist(
-        busIndexOnShape,
-        upcomingStopIndexOnShape + 1,
+      final busLayerExists = await mapboxMap.style.styleLayerExists(
+        REALTIME_BUS_MARKER_LAYER_ID,
       );
 
-      if (segmentPoints.length >= 2) {
-        final segmentGeoJsonPayload = {
-          "type": "FeatureCollection",
-          "features": [
-            {
-              "type": "Feature",
-              "geometry": {
-                "type": "LineString",
-                "coordinates":
-                    segmentPoints.map((p) => [p.lng, p.lat]).toList(),
-              },
-            },
-          ],
-        };
-        final segmentSourceDataString = json.encode(segmentGeoJsonPayload);
-
-        try {
-          bool greenSourceExists = await mapboxMap.style.styleSourceExists(
-            REALTIME_BUS_GREEN_SEGMENT_SOURCE_ID,
-          );
-          if (greenSourceExists) {
-            final source =
-                await mapboxMap.style.getSource(
-                      REALTIME_BUS_GREEN_SEGMENT_SOURCE_ID,
-                    )
-                    as GeoJsonSource?;
-            await source?.updateGeoJSON(segmentSourceDataString);
-            print(
-              "[MapboxService_Debug] Fuente del segmento verde actualizada.",
-            );
-          } else {
-            await mapboxMap.style.addSource(
-              GeoJsonSource(
-                id: REALTIME_BUS_GREEN_SEGMENT_SOURCE_ID,
-                data: segmentSourceDataString,
-              ),
-            );
-            print("[MapboxService_Debug] Fuente del segmento verde creada.");
-            if (!await mapboxMap.style.styleLayerExists(
-              REALTIME_BUS_GREEN_SEGMENT_LAYER_ID,
-            )) {
-              await mapboxMap.style.addLayer(
-                LineLayer(
-                  id: REALTIME_BUS_GREEN_SEGMENT_LAYER_ID,
-                  sourceId: REALTIME_BUS_GREEN_SEGMENT_SOURCE_ID,
-                  lineColor: Colors.green.value,
-                  lineWidth: 5.0,
-                  lineOpacity: 0.8,
-                  lineJoin: LineJoin.ROUND,
-                  lineCap: LineCap.ROUND,
-                ),
-              );
-              print("[MapboxService_Debug] Capa del segmento verde creada.");
-            }
-          }
-        } catch (e) {
-          print(
-            "[MapboxService_Error] Error al actualizar/crear segmento verde: $e",
-          );
-        }
+      if (!busLayerExists) {
+        await mapboxMap.style.addLayer(
+          SymbolLayer(
+            id: REALTIME_BUS_MARKER_LAYER_ID,
+            sourceId: REALTIME_BUS_MARKER_SOURCE_ID,
+            iconImage: INCOMING_BUS_ICON_ID, // Directamente el icono resaltado
+            iconSize:
+                kHighlightedBusIconSize, // Directamente el tamaño resaltado
+            iconAllowOverlap: true,
+            iconIgnorePlacement: true,
+          ),
+        );
+        // print("[MapboxService_Debug] Capa del marcador de bus creada.");
       } else {
-        print(
-          "[MapboxService_Debug] No hay suficientes puntos para el segmento verde (${segmentPoints.length}). Limpiando si existe.",
+        await mapboxMap.style.setStyleLayerProperty(
+          REALTIME_BUS_MARKER_LAYER_ID,
+          'iconImage',
+          INCOMING_BUS_ICON_ID,
         );
-        await removeLayerAndSource(
-          layerId: REALTIME_BUS_GREEN_SEGMENT_LAYER_ID,
-          sourceId: REALTIME_BUS_GREEN_SEGMENT_SOURCE_ID,
+        await mapboxMap.style.setStyleLayerProperty(
+          REALTIME_BUS_MARKER_LAYER_ID,
+          'iconSize',
+          kHighlightedBusIconSize,
         );
+        // print("[MapboxService_Debug] Capa del marcador de bus actualizada.");
       }
-    } else {
-      print(
-        "[MapboxService_Debug] El bus no está antes de la parada o índices inválidos. Limpiando segmento verde si existe. busIndex: $busIndexOnShape, stopIndex: $upcomingStopIndexOnShape",
+
+      final tooltipLayerExists = await mapboxMap.style.styleLayerExists(
+        INCOMING_BUS_TOOLTIP_LAYER_ID,
       );
-      await removeLayerAndSource(
-        layerId: REALTIME_BUS_GREEN_SEGMENT_LAYER_ID,
-        sourceId: REALTIME_BUS_GREEN_SEGMENT_SOURCE_ID,
+
+      if (!tooltipLayerExists) {
+        await mapboxMap.style.addLayer(
+          SymbolLayer(
+            id: INCOMING_BUS_TOOLTIP_LAYER_ID,
+            sourceId: REALTIME_BUS_MARKER_SOURCE_ID,
+            iconImage: INCOMING_BUS_TOOLTIP_ICON_ID,
+            iconSize: kTooltipIconSize,
+            iconAllowOverlap: true,
+            iconIgnorePlacement: true,
+            // No se necesita filtro si la fuente solo tiene el bus relevante
+            iconOffset: [
+              0.0,
+              _lastTooltipOffset != 0.0 ? _lastTooltipOffset : -5.0,
+            ],
+          ),
+        );
+        // print("[MapboxService_Debug] Capa del tooltip del bus creada.");
+      } else {
+        // Actualizar propiedades por si acaso, aunque la fuente es la que cambia
+        await mapboxMap.style.setStyleLayerProperty(
+          INCOMING_BUS_TOOLTIP_LAYER_ID,
+          'iconImage',
+          INCOMING_BUS_TOOLTIP_ICON_ID,
+        );
+        await mapboxMap.style.setStyleLayerProperty(
+          INCOMING_BUS_TOOLTIP_LAYER_ID,
+          'iconSize',
+          kTooltipIconSize,
+        );
+        // print("[MapboxService_Debug] Capa del tooltip del bus actualizada.");
+      }
+
+      // Si llegamos aquí, el bus y el tooltip están configurados, iniciar animación
+      startTooltipFloatingAnimation();
+    } catch (e, s) {
+      print(
+        "[MapboxService_Error] Error al actualizar/crear marcador de bus o tooltip: $e\n$s",
       );
     }
   }
@@ -1829,10 +1828,13 @@ class MapboxService {
       layerId: REALTIME_BUS_MARKER_LAYER_ID,
       sourceId: REALTIME_BUS_MARKER_SOURCE_ID,
     );
-    // Limpiar segmento verde
+    // AÑADIDO: Limpiar también el tooltip y detener su animación
     await removeLayerAndSource(
-      layerId: REALTIME_BUS_GREEN_SEGMENT_LAYER_ID,
-      sourceId: REALTIME_BUS_GREEN_SEGMENT_SOURCE_ID,
+      layerId: INCOMING_BUS_TOOLTIP_LAYER_ID,
+      sourceId: REALTIME_BUS_MARKER_SOURCE_ID,
     );
+    stopTooltipFloatingAnimation();
+
+    // Limpiar segmento verde (esta función ahora solo limpia, no dibuja)
   }
 }

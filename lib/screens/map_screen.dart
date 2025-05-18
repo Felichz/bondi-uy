@@ -78,6 +78,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
   // Para gestionar el estado de la bottom sheet de búsqueda
   // Se podría mover a un provider si se vuelve más complejo
   ValueNotifier<bool> isSearchPanelExpanded = ValueNotifier(false);
+  final ValueNotifier<bool> _isSearchButtonLoading = ValueNotifier(false);
 
   // Para evitar mostrar el SnackBar de no disponibilidad repetidamente
   bool _realtimeSnackbarShown = false;
@@ -105,6 +106,9 @@ class _MapScreenState extends ConsumerState<MapScreen>
         _routeDisplayController?.clearPreviousRouteLayers().then((_) {
           _busTrackingController?.stopTrackingBusLine();
           if (mounted) {
+            // Colapsar el panel de búsqueda al finalizar la planificación exitosa
+            isSearchPanelExpanded.value = false;
+            _isSearchButtonLoading.value = false;
             showRouteOptionsModal(
               context: context,
               processAndDisplaySelectedItinerary: (
@@ -113,23 +117,34 @@ class _MapScreenState extends ConsumerState<MapScreen>
                 print(
                   "[_MapScreenState_DEBUG] RouteOptionsPanel: ConsolidatedItinerary selected.",
                 );
-                if (_mapboxService != null && _busTrackingController != null) {
+                if (_mapboxService != null &&
+                    _busTrackingController != null &&
+                    _routeDisplayController != null) {
                   mapNotifier.processSelectedItinerary(
                     consolidatedItinerary,
                     _mapboxService!,
                     _busTrackingController!,
+                    _routeDisplayController!,
                   );
                 } else {
                   print(
-                    "[_MapScreenState_ERROR] mapboxService o busTrackingController nulos al procesar itinerario.",
+                    "[_MapScreenState_ERROR] mapboxService, busTrackingController o routeDisplayController nulos al procesar itinerario.",
                   );
                 }
                 Navigator.of(context).pop();
                 FocusScope.of(context).unfocus();
                 _origenFocusNode.unfocus();
                 _destinoFocusNode.unfocus();
-                _realtimeSnackbarShown =
-                    false; // Resetear al seleccionar nueva ruta
+                _realtimeSnackbarShown = false;
+
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted) {
+                    final mapState = ref.read(mapNotifierProvider);
+                    print(
+                      "[MapScreen_PostFrameCallback] Map state after itinerary processed: DisplayMode=${mapState.currentDisplayMode}, SelectedLeg=${mapState.currentLegIndex}",
+                    );
+                  }
+                });
               },
             );
           }
@@ -143,11 +158,17 @@ class _MapScreenState extends ConsumerState<MapScreen>
           const SnackBar(content: Text("No se encontraron rutas.")),
         );
         _realtimeSnackbarShown = false; // Resetear
+        // Colapsar el panel de búsqueda si no se encontraron itinerarios
+        isSearchPanelExpanded.value = false;
+        _isSearchButtonLoading.value = false;
       } else if (nextStatus == PlanningStatus.error) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Error al planificar la ruta.")),
         );
         _realtimeSnackbarShown = false; // Resetear
+        // Colapsar el panel de búsqueda en caso de error
+        isSearchPanelExpanded.value = false;
+        _isSearchButtonLoading.value = false;
       }
     });
 
@@ -175,48 +196,6 @@ class _MapScreenState extends ConsumerState<MapScreen>
     );
 
     ref.listenManual<MapState>(mapNotifierProvider, (previous, next) {
-      bool isInOverviewModePrevious =
-          previous?.currentDisplayMode == MapDisplayMode.routeOverview;
-      bool isInOverviewModeNext =
-          next.currentDisplayMode == MapDisplayMode.routeOverview;
-
-      bool shouldStartNav =
-          (previous == null ||
-              (isInOverviewModePrevious && !isInOverviewModeNext)) ||
-          (!isInOverviewModePrevious &&
-              !isInOverviewModeNext &&
-              previous?.currentLegIndex != next.currentLegIndex);
-
-      if (shouldStartNav &&
-          !isInOverviewModeNext &&
-          next.currentLegIndex == 0) {
-        final representativeItinerary = next.representativeItinerary;
-        if (representativeItinerary != null &&
-            (representativeItinerary.legs).isNotEmpty &&
-            mounted) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted &&
-                _routeDisplayController != null &&
-                _mapboxService != null) {
-              _routeDisplayController!.updateMapRouteHighlight();
-            }
-          });
-        }
-      } else if (previous?.currentLegIndex != next.currentLegIndex &&
-          !isInOverviewModeNext) {
-        final representativeItinerary = next.representativeItinerary;
-        if (representativeItinerary != null &&
-            mounted &&
-            _routeDisplayController != null &&
-            _mapboxService != null) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) {
-              _routeDisplayController!.updateMapRouteHighlight();
-            }
-          });
-        }
-      }
-
       if (next.realtimeTrackingAttempted && !next.realtimeTrackingAvailable) {
         if (!_realtimeSnackbarShown) {
           ScaffoldMessenger.of(context).removeCurrentSnackBar();
@@ -252,14 +231,15 @@ class _MapScreenState extends ConsumerState<MapScreen>
     _mapInteractionController?.dispose();
     mapboxMap?.dispose();
     isSearchPanelExpanded.dispose();
+    _isSearchButtonLoading.dispose();
     super.dispose();
   }
 
-  _onMapCreated(MapboxMap mapboxMap) async {
+  void _onMapCreated(MapboxMap mapboxMap) {
     this.mapboxMap = mapboxMap;
-    _mapboxService = MapboxService(this.mapboxMap!);
+    _mapboxService = MapboxService(mapboxMap);
     _mapZoomController = MapZoomController(
-      mapboxMap: this.mapboxMap!,
+      mapboxMap: mapboxMap,
       mapboxService: _mapboxService!,
       ref: ref,
     );
@@ -272,17 +252,14 @@ class _MapScreenState extends ConsumerState<MapScreen>
       ref: ref,
     );
     _mapInteractionController = MapInteractionController(
-      ref: ref,
       mapboxService: _mapboxService!,
+      ref: ref,
     );
 
+    // Forzar el primer zoom al inicializar el mapa.
     ref
         .read(mapNotifierProvider.notifier)
         .forceMapIdleAndZoomTo(ZoomTargetType.initial);
-
-    if (mounted) {
-      setState(() {});
-    }
   }
 
   void _clearSearchFields() {
@@ -335,14 +312,15 @@ class _MapScreenState extends ConsumerState<MapScreen>
         mapNotifier.toggleInstructionsPanel(true);
         if (mapState.currentLegIndex != null &&
             _mapboxService != null &&
-            _busTrackingController != null) {
+            _busTrackingController != null &&
+            _routeDisplayController != null) {
           final currentLeg =
               mapState.representativeItinerary!.legs[mapState.currentLegIndex!];
           if (currentLeg.mode == LegModeConstants.bus) {
             mapNotifier.switchToLegTracking(
-              mapState.currentLegIndex!,
               _mapboxService!,
               _busTrackingController!,
+              _routeDisplayController!,
             );
           } else {
             mapNotifier.forceMapIdleAndZoomTo(ZoomTargetType.leg);
@@ -401,247 +379,276 @@ class _MapScreenState extends ConsumerState<MapScreen>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                SearchPanel(
-                  origenController: _origenController,
-                  destinoController: _destinoController,
-                  origenFocusNode: _origenFocusNode,
-                  destinoFocusNode: _destinoFocusNode,
-                  origenCoordinates:
-                      mapState.origin != null
-                          ? local_point.Point_dart(
-                            lat: mapState.origin!.lat.toDouble(),
-                            lng: mapState.origin!.lng.toDouble(),
-                          )
-                          : null,
-                  destinoCoordinates:
-                      mapState.destination != null
-                          ? local_point.Point_dart(
-                            lat: mapState.destination!.lat.toDouble(),
-                            lng: mapState.destination!.lng.toDouble(),
-                          )
-                          : null,
-                  geocodingService: ref.read(geocodingServiceProvider),
-                  isCalculatingRoute:
-                      mapState.planningStatus == PlanningStatus.loading,
-                  onOrigenSelected: (
-                    local_point.Point_dart? point,
-                    String? address,
-                  ) {
-                    _origenController.text = address ?? '';
-                    if (point != null) {
-                      final mapboxPosition = Position(point.lng, point.lat);
-                      if (_mapboxService != null &&
-                          _busTrackingController != null) {
-                        mapNotifier.setOrigin(
-                          mapboxPosition,
-                          address,
-                          _mapboxService!,
-                          _busTrackingController!,
+                ValueListenableBuilder<bool>(
+                  valueListenable: isSearchPanelExpanded,
+                  builder: (context, expanded, child) {
+                    return ValueListenableBuilder<bool>(
+                      valueListenable: _isSearchButtonLoading,
+                      builder: (context, isButtonLoading, child) {
+                        return SearchPanel(
+                          origenController: _origenController,
+                          destinoController: _destinoController,
+                          origenFocusNode: _origenFocusNode,
+                          destinoFocusNode: _destinoFocusNode,
+                          origenCoordinates:
+                              mapState.origin != null
+                                  ? local_point.Point_dart(
+                                    lat: mapState.origin!.lat.toDouble(),
+                                    lng: mapState.origin!.lng.toDouble(),
+                                  )
+                                  : null,
+                          destinoCoordinates:
+                              mapState.destination != null
+                                  ? local_point.Point_dart(
+                                    lat: mapState.destination!.lat.toDouble(),
+                                    lng: mapState.destination!.lng.toDouble(),
+                                  )
+                                  : null,
+                          geocodingService: ref.read(geocodingServiceProvider),
+                          isCalculatingRoute: isButtonLoading,
+                          onOrigenSelected: (
+                            local_point.Point_dart? point,
+                            String? address,
+                          ) {
+                            _origenController.text = address ?? '';
+                            if (point != null) {
+                              final mapboxPosition = Position(
+                                point.lng,
+                                point.lat,
+                              );
+                              if (_mapboxService != null &&
+                                  _busTrackingController != null) {
+                                mapNotifier.setOrigin(
+                                  mapboxPosition,
+                                  address,
+                                  _mapboxService!,
+                                  _busTrackingController!,
+                                );
+                              } else {
+                                print(
+                                  "[_MapScreenState_ERROR] Servicios nulos al seleccionar origen.",
+                                );
+                              }
+                            } else {
+                              if (_mapboxService != null &&
+                                  _busTrackingController != null) {
+                                mapNotifier.setOrigin(
+                                  null,
+                                  address,
+                                  _mapboxService!,
+                                  _busTrackingController!,
+                                );
+                              } else {
+                                print(
+                                  "[_MapScreenState_ERROR] Servicios nulos al seleccionar origen (sin coordenadas).",
+                                );
+                              }
+                            }
+                            setState(() {});
+                          },
+                          onDestinoSelected: (
+                            local_point.Point_dart? point,
+                            String? address,
+                          ) {
+                            _destinoController.text = address ?? '';
+                            if (point != null) {
+                              final mapboxPosition = Position(
+                                point.lng,
+                                point.lat,
+                              );
+                              if (_mapboxService != null &&
+                                  _busTrackingController != null) {
+                                mapNotifier.setDestination(
+                                  mapboxPosition,
+                                  address,
+                                  _mapboxService!,
+                                  _busTrackingController!,
+                                );
+                              } else {
+                                print(
+                                  "[_MapScreenState_ERROR] Servicios nulos al seleccionar destino.",
+                                );
+                              }
+                            } else {
+                              if (_mapboxService != null &&
+                                  _busTrackingController != null) {
+                                mapNotifier.setDestination(
+                                  null,
+                                  address,
+                                  _mapboxService!,
+                                  _busTrackingController!,
+                                );
+                              } else {
+                                print(
+                                  "[_MapScreenState_ERROR] Servicios nulos al seleccionar destino (sin coordenadas).",
+                                );
+                              }
+                            }
+                            setState(() {});
+                          },
+                          onOrigenClear: _clearSearchFields,
+                          onDestinoClear: _clearSearchFields,
+                          onSwap: () {
+                            if (_mapboxService != null &&
+                                _busTrackingController != null) {
+                              mapNotifier.swapOriginAndDestination(
+                                _mapboxService!,
+                                _busTrackingController!,
+                              );
+                            } else {
+                              print(
+                                "[_MapScreenState_ERROR] Servicios nulos al intercambiar O/D.",
+                              );
+                            }
+                          },
+                          onSearchRoute: () {
+                            if (_mapboxService != null &&
+                                _busTrackingController != null) {
+                              _isSearchButtonLoading.value = true;
+                              mapNotifier.planRoute(
+                                _mapboxService!,
+                                _busTrackingController!,
+                              );
+                            } else {
+                              print(
+                                "[_MapScreenState_ERROR] Servicios nulos al intentar planificar ruta.",
+                              );
+                            }
+                          },
+                          initialExpandedState: expanded,
+                          onToggleExpansion: _onSearchPanelToggle,
                         );
-                      } else {
-                        print(
-                          "[_MapScreenState_ERROR] Servicios nulos al seleccionar origen.",
-                        );
-                      }
-                    } else {
-                      if (_mapboxService != null &&
-                          _busTrackingController != null) {
-                        mapNotifier.setOrigin(
-                          null,
-                          address,
-                          _mapboxService!,
-                          _busTrackingController!,
-                        );
-                      } else {
-                        print(
-                          "[_MapScreenState_ERROR] Servicios nulos al seleccionar origen (sin coordenadas).",
-                        );
-                      }
-                    }
-                    setState(() {});
+                      },
+                    );
                   },
-                  onDestinoSelected: (
-                    local_point.Point_dart? point,
-                    String? address,
-                  ) {
-                    _destinoController.text = address ?? '';
-                    if (point != null) {
-                      final mapboxPosition = Position(point.lng, point.lat);
-                      if (_mapboxService != null &&
-                          _busTrackingController != null) {
-                        mapNotifier.setDestination(
-                          mapboxPosition,
-                          address,
-                          _mapboxService!,
-                          _busTrackingController!,
-                        );
-                      } else {
-                        print(
-                          "[_MapScreenState_ERROR] Servicios nulos al seleccionar destino.",
-                        );
-                      }
-                    } else {
-                      if (_mapboxService != null &&
-                          _busTrackingController != null) {
-                        mapNotifier.setDestination(
-                          null,
-                          address,
-                          _mapboxService!,
-                          _busTrackingController!,
-                        );
-                      } else {
-                        print(
-                          "[_MapScreenState_ERROR] Servicios nulos al seleccionar destino (sin coordenadas).",
-                        );
-                      }
-                    }
-                    setState(() {});
-                  },
-                  onOrigenClear: _clearSearchFields,
-                  onDestinoClear: _clearSearchFields,
-                  onSwap: () {
-                    if (_mapboxService != null &&
-                        _busTrackingController != null) {
-                      mapNotifier.swapOriginAndDestination(
-                        _mapboxService!,
-                        _busTrackingController!,
-                      );
-                    } else {
-                      print(
-                        "[_MapScreenState_ERROR] Servicios nulos al intercambiar O/D.",
-                      );
-                    }
-                  },
-                  onSearchRoute: () {
-                    if (_mapboxService != null &&
-                        _busTrackingController != null) {
-                      mapNotifier.planRoute(
-                        _mapboxService!,
-                        _busTrackingController!,
-                      );
-                    } else {
-                      print(
-                        "[_MapScreenState_ERROR] Servicios nulos al intentar planificar ruta.",
-                      );
-                    }
-                  },
-                  initialExpandedState:
-                      mapState.consolidatedItineraries.isEmpty &&
-                      mapState.origin == null &&
-                      mapState.destination == null,
-                  onToggleExpansion: _onSearchPanelToggle,
                 ),
-                if (mapState.selectedConsolidatedItinerary != null &&
-                    mapState.representativeItinerary != null &&
-                    !mapState.showInstructionsPanel)
-                  TripInstructions(
-                    key: const ValueKey("tripInstructionsBar"),
-                    currentRouteLegs:
-                        mapState.representativeItinerary?.legs ?? [],
-                    selectedLegIndex: mapState.currentLegIndex,
-                    showCollapsedInstructionsBar:
-                        !mapState.showInstructionsPanel &&
-                        mapState.selectedConsolidatedItinerary != null &&
-                        mapState.currentLegIndex != null &&
-                        !(mapState.currentDisplayMode ==
-                            MapDisplayMode.routeOverview),
-                    origenControllerText: _origenController.text,
-                    destinoControllerText: _destinoController.text,
-                    isInOverviewMode:
-                        (mapState.currentDisplayMode ==
-                            MapDisplayMode.routeOverview),
-                    onLegSelectedInBottomSheet: (index) {
-                      if (_mapboxService != null &&
-                          _busTrackingController != null) {
-                        mapNotifier.setSelectedLegIndex(
-                          index,
-                          _mapboxService!,
-                          _busTrackingController!,
-                          isFromTap: true,
-                        );
-                      }
-                    },
-                    onNavigateToPreviousLeg: () {
-                      if (mapState.currentLegIndex != null &&
-                          mapState.currentLegIndex! > 0 &&
-                          _mapboxService != null &&
-                          _busTrackingController != null) {
-                        mapNotifier.setSelectedLegIndex(
-                          mapState.currentLegIndex! - 1,
-                          _mapboxService!,
-                          _busTrackingController!,
-                        );
-                      }
-                    },
-                    onNavigateToNextLeg: () {
-                      if (mapState.currentLegIndex != null &&
-                          mapState.representativeItinerary != null &&
-                          mapState.currentLegIndex! <
-                              mapState.representativeItinerary!.legs.length -
-                                  1 &&
-                          _mapboxService != null &&
-                          _busTrackingController != null) {
-                        mapNotifier.setSelectedLegIndex(
-                          mapState.currentLegIndex! + 1,
-                          _mapboxService!,
-                          _busTrackingController!,
-                        );
-                      }
-                    },
-                    onExpandInstructionsTap: _onExpandInstructionsTap,
-                    realtimeEtaMinutes:
-                        mapState
-                            .selectedConsolidatedItinerary
-                            ?.representativeProcessedItinerary
-                            ?.representativeFirstBusETAInfo
-                            ?.minutesToArrival,
-                    trackedBusLineShortNameForEta:
-                        mapState
-                            .selectedConsolidatedItinerary
-                            ?.representativeProcessedItinerary
-                            ?.representativeFirstBusETAInfo
-                            ?.lineShortName,
-                    isHighlightedBusReal:
-                        mapState
-                            .selectedConsolidatedItinerary
-                            ?.representativeProcessedItinerary
-                            ?.representativeFirstBusETAInfo
-                            ?.isReal,
-                  ),
               ],
             ),
           ),
-          if (mapState.showInstructionsPanel &&
-              mapState.selectedConsolidatedItinerary != null &&
+          if (mapState.selectedConsolidatedItinerary != null &&
               mapState.representativeItinerary != null &&
-              _routeDisplayController != null)
-            TripInstructionsSheet(
-              key: const ValueKey("tripInstructionsSheet"),
-              legs: mapState.representativeItinerary!.legs,
-              origenControllerText:
-                  mapState.originAddress ?? _origenController.text,
-              destinoControllerText:
-                  mapState.destinationAddress ?? _destinoController.text,
-              routeDisplayController: _routeDisplayController!,
-              onLegSelected: (int legIndex) {
-                if (_mapboxService != null && _busTrackingController != null) {
-                  mapNotifier.setSelectedLegIndex(
-                    legIndex,
-                    _mapboxService!,
-                    _busTrackingController!,
-                    isFromTap: true,
-                  );
-                } else {
-                  print(
-                    "[_MapScreenState_ERROR] Servicios nulos al seleccionar tramo desde TripInstructionsSheet.",
-                  );
-                }
-              },
+              !mapState.showInstructionsPanel)
+            Positioned(
+              bottom: 10,
+              left: 10,
+              right: 10,
+              child: TripInstructions(
+                currentRouteLegs: mapState.representativeItinerary?.legs ?? [],
+                selectedLegIndex: mapState.currentLegIndex,
+                showCollapsedInstructionsBar:
+                    !mapState.showInstructionsPanel &&
+                    mapState.selectedConsolidatedItinerary != null &&
+                    mapState.currentLegIndex != null &&
+                    !(mapState.currentDisplayMode ==
+                        MapDisplayMode.routeOverview),
+                origenControllerText: _origenController.text,
+                destinoControllerText: _destinoController.text,
+                isInOverviewMode:
+                    (mapState.currentDisplayMode ==
+                        MapDisplayMode.routeOverview),
+                onLegSelectedInBottomSheet: (index) {
+                  if (_mapboxService != null &&
+                      _routeDisplayController != null) {
+                    mapNotifier.setSelectedLegIndex(
+                      index,
+                      _mapboxService!,
+                      _routeDisplayController!,
+                    );
+                  }
+                  Navigator.pop(context);
+                },
+                onNavigateToPreviousLeg: () {
+                  if (mapState.currentLegIndex != null &&
+                      mapState.currentLegIndex! > 0 &&
+                      _mapboxService != null &&
+                      _routeDisplayController != null) {
+                    mapNotifier.setSelectedLegIndex(
+                      mapState.currentLegIndex! - 1,
+                      _mapboxService!,
+                      _routeDisplayController!,
+                    );
+                  }
+                },
+                onNavigateToNextLeg: () {
+                  if (mapState.representativeItinerary != null &&
+                      mapState.currentLegIndex != null &&
+                      mapState.currentLegIndex! <
+                          mapState.representativeItinerary!.legs.length - 1 &&
+                      _mapboxService != null &&
+                      _routeDisplayController != null) {
+                    mapNotifier.setSelectedLegIndex(
+                      mapState.currentLegIndex! + 1,
+                      _mapboxService!,
+                      _routeDisplayController!,
+                    );
+                  }
+                },
+                onExpandInstructionsTap: () {
+                  if (mapState.representativeItinerary != null &&
+                      _routeDisplayController != null) {
+                    _showTripInstructionsBottomSheet(
+                      context,
+                      mapState.representativeItinerary!.legs,
+                      _routeDisplayController!,
+                      (index) {
+                        if (_mapboxService != null &&
+                            _routeDisplayController != null) {
+                          mapNotifier.setSelectedLegIndex(
+                            index,
+                            _mapboxService!,
+                            _routeDisplayController!,
+                          );
+                        }
+                        Navigator.pop(context);
+                      },
+                    );
+                  }
+                },
+                realtimeEtaMinutes:
+                    mapState
+                        .selectedConsolidatedItinerary
+                        ?.representativeProcessedItinerary
+                        ?.representativeFirstBusETAInfo
+                        ?.minutesToArrival,
+                trackedBusLineShortNameForEta:
+                    mapState
+                        .selectedConsolidatedItinerary
+                        ?.representativeProcessedItinerary
+                        ?.representativeFirstBusETAInfo
+                        ?.lineShortName,
+                isHighlightedBusReal:
+                    mapState
+                        .selectedConsolidatedItinerary
+                        ?.representativeProcessedItinerary
+                        ?.representativeFirstBusETAInfo
+                        ?.isReal,
+              ),
             ),
           if (mapState.planningStatus == PlanningStatus.loading)
             const Center(child: CircularProgressIndicator()),
         ],
       ),
+    );
+  }
+
+  void _showTripInstructionsBottomSheet(
+    BuildContext context,
+    List<RouteLeg> legs,
+    RouteDisplayController routeDisplayController,
+    Function(int) onLegSelected,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (BuildContext bc) {
+        return TripInstructionsSheet(
+          legs: legs,
+          origenControllerText: _origenController.text,
+          destinoControllerText: _destinoController.text,
+          routeDisplayController: routeDisplayController,
+          onLegSelected: onLegSelected,
+        );
+      },
     );
   }
 }

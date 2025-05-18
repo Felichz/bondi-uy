@@ -38,7 +38,15 @@ int findClosestPointIndexOnShape(
 Future<CoordinateBounds?> calculateBoundsForPositions(
   List<Position> positions,
 ) async {
-  if (positions.isEmpty) return null;
+  print(
+    "[GeometryUtils_DEBUG] calculateBoundsForPositions called with ${positions.length} positions.",
+  );
+  if (positions.isEmpty) {
+    print(
+      "[GeometryUtils_DEBUG] calculateBoundsForPositions: positions list is empty. Returning null.",
+    );
+    return null;
+  }
 
   double? minLat, maxLat, minLon, maxLon;
 
@@ -64,12 +72,19 @@ Future<CoordinateBounds?> calculateBoundsForPositions(
 
     final Point southwest = Point(coordinates: Position(minLon, minLat));
     final Point northeast = Point(coordinates: Position(maxLon, maxLat));
-    return CoordinateBounds(
+    final bounds = CoordinateBounds(
       southwest: southwest,
       northeast: northeast,
       infiniteBounds: false,
     );
+    print(
+      "[GeometryUtils_DEBUG] calculateBoundsForPositions calculated bounds: $bounds",
+    );
+    return bounds;
   }
+  print(
+    "[GeometryUtils_DEBUG] calculateBoundsForPositions: Could not calculate bounds. Returning null.",
+  );
   return null;
 }
 
@@ -80,9 +95,15 @@ Future<CoordinateBounds?> calculateBoundsForLeg(
   int legIndex, {
   Position? additionalPoint, // Parámetro opcional con nombre
 }) async {
+  print(
+    "[GeometryUtils_DEBUG] calculateBoundsForLeg called for legIndex: $legIndex, additionalPoint: $additionalPoint",
+  );
   if (legIndex < 0 ||
       legIndex >= currentRouteLegs.length ||
       currentRouteLegs.isEmpty) {
+    print(
+      "[GeometryUtils_DEBUG] calculateBoundsForLeg: Invalid legIndex or empty list. Returning null.",
+    );
     return null;
   }
 
@@ -100,7 +121,18 @@ Future<CoordinateBounds?> calculateBoundsForLeg(
       allPositionsForBounds.addAll(
         decodedPoints.map((p) => Position(p.longitude, p.latitude)),
       );
+      print(
+        "[GeometryUtils_DEBUG] calculateBoundsForLeg: Decoded ${decodedPoints.length} points from polyline.",
+      );
+    } else {
+      print(
+        "[GeometryUtils_DEBUG] calculateBoundsForLeg: Decoded 0 points from polyline.",
+      );
     }
+  } else {
+    print(
+      "[GeometryUtils_DEBUG] calculateBoundsForLeg: Polyline string is empty.",
+    );
   }
 
   // Fallback si no hay polyline (menos probable con RouteLeg)
@@ -112,21 +144,44 @@ Future<CoordinateBounds?> calculateBoundsForLeg(
     // fromPlace.lat y fromPlace.lon ya son double requeridos por LegEndpoint
     allPositionsForBounds.add(Position(fromPlace.lon, fromPlace.lat));
     allPositionsForBounds.add(Position(toPlace.lon, toPlace.lat));
+    print(
+      "[GeometryUtils_DEBUG] calculateBoundsForLeg: Using from/to points as fallback.",
+    );
   }
 
   if (additionalPoint != null) {
     allPositionsForBounds.add(additionalPoint);
+    print(
+      "[GeometryUtils_DEBUG] calculateBoundsForLeg: Added additional point.",
+    );
   }
 
-  if (allPositionsForBounds.isEmpty) return null;
+  if (allPositionsForBounds.isEmpty) {
+    print(
+      "[GeometryUtils_DEBUG] calculateBoundsForLeg: No positions to calculate bounds from. Returning null.",
+    );
+    return null;
+  }
 
-  return await calculateBoundsForPositions(allPositionsForBounds);
+  final bounds = await calculateBoundsForPositions(allPositionsForBounds);
+  print(
+    "[GeometryUtils_DEBUG] calculateBoundsForLeg calculated bounds: $bounds",
+  );
+  return bounds;
 }
 
 // AÑADIDO DESDE _MapScreenState
 Future<CoordinateBounds?> calculateBoundsForRoute(List<RouteLeg> legs) async {
   // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< CAMBIAR List<dynamic> a List<RouteLeg>
-  if (legs.isEmpty) return null;
+  print(
+    "[GeometryUtils_DEBUG] calculateBoundsForRoute called with ${legs.length} legs.",
+  );
+  if (legs.isEmpty) {
+    print(
+      "[GeometryUtils_DEBUG] calculateBoundsForRoute: legs list is empty. Returning null.",
+    );
+    return null;
+  }
 
   double? minLat, maxLat, minLon, maxLon;
 
@@ -143,6 +198,9 @@ Future<CoordinateBounds?> calculateBoundsForRoute(List<RouteLeg> legs) async {
         if (minLon == null || p.longitude < minLon) minLon = p.longitude;
         if (maxLon == null || p.longitude > maxLon) maxLon = p.longitude;
       }
+      print(
+        "[GeometryUtils_DEBUG] calculateBoundsForRoute: Processed polyline for a leg.",
+      );
     } else {
       // Fallback si no hay polyline (usar puntos from/to)
       final LegEndpoint fromPlace =
@@ -163,6 +221,9 @@ Future<CoordinateBounds?> calculateBoundsForRoute(List<RouteLeg> legs) async {
       if (maxLat == null || latTo > maxLat) maxLat = latTo;
       if (minLon == null || lonTo < minLon) minLon = lonTo;
       if (maxLon == null || lonTo > maxLon) maxLon = lonTo;
+      print(
+        "[GeometryUtils_DEBUG] calculateBoundsForRoute: Used from/to points for a leg fallback.",
+      );
     }
   }
 
@@ -178,12 +239,19 @@ Future<CoordinateBounds?> calculateBoundsForRoute(List<RouteLeg> legs) async {
 
     final Point southwestPoint = Point(coordinates: Position(minLon, minLat));
     final Point northeastPoint = Point(coordinates: Position(maxLon, maxLat));
-    return CoordinateBounds(
-      southwest: southwestPoint, // Pasar Point directamente
-      northeast: northeastPoint, // Pasar Point directamente
+    final bounds = CoordinateBounds(
+      southwest: southwestPoint,
+      northeast: northeastPoint,
       infiniteBounds: false,
     );
+    print(
+      "[GeometryUtils_DEBUG] calculateBoundsForRoute calculated bounds: $bounds",
+    );
+    return bounds;
   }
+  print(
+    "[GeometryUtils_DEBUG] calculateBoundsForRoute: Could not calculate bounds. Returning null.",
+  );
   return null;
 }
 

@@ -51,11 +51,9 @@ class ItineraryPlanningService {
     required bool arriveBy,
     int? numItineraries,
   }) async {
-    if (kDebugMode) {
-      print(
-        "[ItineraryPlanningService_DEBUG] planAndConsolidateItineraries llamado.",
-      );
-    }
+    print(
+      "[ItineraryPlanningService_DEBUG] planAndConsolidateItineraries llamado.",
+    );
     final List<ProcessedItinerary> processedItineraries =
         await getProcessedItineraries(
           fromPlace: fromPlace,
@@ -64,11 +62,9 @@ class ItineraryPlanningService {
           arriveBy: arriveBy,
           numItineraries: numItineraries,
         );
-    if (kDebugMode) {
-      print(
-        "[ItineraryPlanningService_DEBUG] planAndConsolidateItineraries: getProcessedItineraries completado. Número de itinerarios procesados: ${processedItineraries.length}",
-      );
-    }
+    print(
+      "[ItineraryPlanningService_DEBUG] getProcessedItineraries completado. Itinerarios procesados: ${processedItineraries.length}",
+    );
 
     if (processedItineraries.isEmpty) {
       return [];
@@ -77,14 +73,16 @@ class ItineraryPlanningService {
     final List<ConsolidatedItinerary> consolidated = _consolidateItineraries(
       processedItineraries,
     );
-    if (kDebugMode) {
-      print(
-        "[ItineraryPlanningService_DEBUG] planAndConsolidateItineraries: _consolidateItineraries completado. Número de itinerarios consolidados: ${consolidated.length}",
-      );
-    }
+    print(
+      "[ItineraryPlanningService_DEBUG] _consolidateItineraries completado. Itinerarios consolidados: ${consolidated.length}",
+    );
+    print(
+      "[ItineraryPlanningService_DEBUG] planAndConsolidateItineraries completado exitosamente.",
+    );
     return consolidated;
   }
 
+  @visibleForTesting
   Future<List<ProcessedItinerary>> getProcessedItineraries({
     required Point_dart fromPlace,
     required Point_dart toPlace,
@@ -92,11 +90,7 @@ class ItineraryPlanningService {
     required bool arriveBy,
     int? numItineraries,
   }) async {
-    if (kDebugMode) {
-      print(
-        "[ItineraryPlanningService_DEBUG] getProcessedItineraries llamado.",
-      );
-    }
+    print("[ItineraryPlanningService_DEBUG] getProcessedItineraries llamado.");
 
     // Formatear fecha y hora para OTP
     // Nota: OTP normalmente espera yyyy-MM-dd para la fecha y HH:mm:ss para la hora.
@@ -117,11 +111,9 @@ class ItineraryPlanningService {
     );
 
     if (otpResult.hasException) {
-      if (kDebugMode) {
-        print(
-          "[ItineraryPlanningService_ERROR] Error en la consulta OTP: ${otpResult.exception.toString()}",
-        );
-      }
+      print(
+        "[ItineraryPlanningService_ERROR] Error en la consulta OTP: ${otpResult.exception.toString()}",
+      );
       // Podríamos lanzar una excepción específica o devolver una lista vacía con advertencias.
       // Por ahora, devolvemos lista vacía, MapNotifier debería manejar esto.
       return [];
@@ -141,26 +133,20 @@ class ItineraryPlanningService {
                 )
                 .toList();
       } catch (e, s) {
-        if (kDebugMode) {
-          print(
-            "[ItineraryPlanningService_ERROR] Error parseando itinerarios de OTP: $e\n$s",
-          );
-        }
+        print(
+          "[ItineraryPlanningService_ERROR] Error parseando itinerarios de OTP: $e\n$s",
+        );
         return []; // Error en parseo, devolver vacío
       }
     } else {
-      if (kDebugMode) {
-        print(
-          "[ItineraryPlanningService_WARN] No se encontraron itinerarios en la respuesta de OTP o la estructura de datos es inesperada.",
-        );
-      }
-    }
-
-    if (kDebugMode) {
       print(
-        "[ItineraryPlanningService_DEBUG] getProcessedItineraries: Itinerarios parseados de OTP: ${otpItineraries.length}",
+        "[ItineraryPlanningService_WARN] No se encontraron itinerarios en la respuesta de OTP o la estructura de datos es inesperada.",
       );
     }
+
+    print(
+      "[ItineraryPlanningService_DEBUG] Itinerarios parseados de OTP: ${otpItineraries.length}",
+    );
 
     if (otpItineraries.isEmpty) {
       return [];
@@ -192,39 +178,31 @@ class ItineraryPlanningService {
         if (stopETAsCache.containsKey(stopIdForETA)) {
           arrivalsForThisStop = stopETAsCache[stopIdForETA];
           etaLookupAttempted = true;
-          if (kDebugMode) {
-            print(
-              "[ItineraryPlanningService_DEBUG_CACHE] Cache hit for stop $stopIdForETA.",
-            );
-          }
+          print(
+            "[ItineraryPlanningService_DEBUG_CACHE] Cache hit for stop $stopIdForETA.",
+          );
         } else if (stopIdsFetchedForETA.length <
             MAX_UNIQUE_STOPS_FOR_ETA_LOOKUP) {
-          if (kDebugMode) {
-            print(
-              "[ItineraryPlanningService_DEBUG_ETA_LIMIT] Attempting API fetch for new stop '$stopIdForETA'. Fetched unique stops count: ${stopIdsFetchedForETA.length} (Limit: $MAX_UNIQUE_STOPS_FOR_ETA_LOOKUP)",
-            );
-          }
+          print(
+            "[ItineraryPlanningService_DEBUG_ETA_LIMIT] Attempting API fetch for new stop '$stopIdForETA'. Fetched unique stops count: ${stopIdsFetchedForETA.length} (Limit: $MAX_UNIQUE_STOPS_FOR_ETA_LOOKUP)",
+          );
           try {
             arrivalsForThisStop = await _etaFetcherService
                 .getUpcomingBusesForStop(stopIdForETA);
             stopETAsCache[stopIdForETA] = arrivalsForThisStop;
           } catch (e, s) {
-            if (kDebugMode) {
-              print(
-                "[ItineraryPlanningService_ERROR] Error fetching ETAs for stop '$stopIdForETA' (within limit): $e\\n$s",
-              );
-            }
+            print(
+              "[ItineraryPlanningService_ERROR] Error fetching ETAs for stop '$stopIdForETA' (within limit): $e\\n$s",
+            );
             stopETAsCache[stopIdForETA] = null;
             arrivalsForThisStop = null;
           }
           stopIdsFetchedForETA.add(stopIdForETA);
           etaLookupAttempted = true;
         } else {
-          if (kDebugMode) {
-            print(
-              "[ItineraryPlanningService_DEBUG_ETA_LIMIT] MAX_UNIQUE_STOPS_FOR_ETA_LOOKUP ($MAX_UNIQUE_STOPS_FOR_ETA_LOOKUP) reached. Skipping API fetch for new stop '$stopIdForETA'.",
-            );
-          }
+          print(
+            "[ItineraryPlanningService_DEBUG_ETA_LIMIT] MAX_UNIQUE_STOPS_FOR_ETA_LOOKUP ($MAX_UNIQUE_STOPS_FOR_ETA_LOOKUP) reached. Skipping API fetch for new stop '$stopIdForETA'.",
+          );
           arrivalsForThisStop = null;
           etaLookupAttempted = false;
         }
@@ -242,6 +220,12 @@ class ItineraryPlanningService {
         etaLookupAttempted,
       );
       processedItineraries.add(processedItinerary);
+
+      if (kDebugMode && processedItinerary.warnings.isNotEmpty) {
+        print(
+          "[ItineraryPlanningService_DEBUG] Itinerario procesado con advertencias: ${processedItinerary.warnings.map((w) => w.name).toList()}",
+        );
+      }
     }
     return processedItineraries;
   }
