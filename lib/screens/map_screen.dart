@@ -527,7 +527,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
           ),
           if (mapState.selectedConsolidatedItinerary != null &&
               mapState.representativeItinerary != null &&
-              !mapState.showInstructionsPanel)
+              mapState.showInstructionsPanel)
             Positioned(
               bottom: 10,
               left: 10,
@@ -536,7 +536,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
                 currentRouteLegs: mapState.representativeItinerary?.legs ?? [],
                 selectedLegIndex: mapState.currentLegIndex,
                 showCollapsedInstructionsBar:
-                    !mapState.showInstructionsPanel &&
+                    mapState.showInstructionsPanel &&
                     mapState.selectedConsolidatedItinerary != null &&
                     mapState.currentLegIndex != null &&
                     !(mapState.currentDisplayMode ==

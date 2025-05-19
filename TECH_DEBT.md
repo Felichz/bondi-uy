@@ -237,3 +237,20 @@ Fecha Identificada: 2024-07-30
   - Se establece a `false` explícitamente _justo antes_ de que se llame a `showRouteOptionsModal(...)` (tras operaciones asíncronas como `clearPreviousRouteLayers`) o si la planificación falla o no devuelve resultados.
   - El `SearchPanel` ahora utiliza el valor de este `ValueNotifier` para su propiedad `isCalculatingRoute`.
 - **Estado:** Resuelto. El comportamiento del botón de carga ahora se alinea con la aparición del modal de opciones.
+
+## MapboxService - Padding Fijo en `zoomToLeg`
+
+- **Archivo:** `lib/services/mapbox_service.dart`
+- **Función:** `zoomToLeg`
+- **Descripción:** Actualmente, cuando se hace zoom para enfocar el bus en tiempo real y la parada de origen, se utiliza un `paddingGrados = 0.002;` fijo. Este padding es geográfico (en grados).
+- **Problema Potencial:** El efecto visual de este padding puede variar significativamente con el nivel de zoom. En zooms altos, podría ser demasiado espacio, y en zooms bajos, muy poco.
+- **Posible Mejora:** Investigar e implementar un sistema de padding dinámico, por ejemplo, basado en píxeles de pantalla que se traduzcan a grados según el nivel de zoom actual, o un porcentaje del viewport, para asegurar un espaciado visual más consistente alrededor de los elementos enfocados.
+- **Prioridad:** Baja/Media. La funcionalidad actual es aceptable, pero un padding más dinámico mejoraría la consistencia visual.
+
+# Deuda Técnica y Mejoras Futuras
+
+## Mejoras en Pasos de Espera de Itinerario
+
+- **Calcular Duración Precisa para Tramos `WAIT` Intermedios**: Actualmente, los tramos de "espera" intermedios (no el primero) pueden tener una duración nominal. Investigar el uso de los `startTime`/`endTime` de los `RouteLeg`s de OTP circundantes para calcular y mostrar una duración de espera más precisa.
+- **ETA en Tiempo Real para Buses Intermedios**: El sistema actual prioriza la ETA en tiempo real para el primer bus del itinerario o si un tramo `WAIT` específico tiene información de bus asociada (a través de `waitLegBusInfo`). Considerar mejorar `ItineraryPlanningService` o `BusTrackingController` para intentar obtener/mostrar ETAs en tiempo real para _todos_ los tramos de bus relevantes en un itinerario, no solo el primero, y asociarlos con sus correspondientes tramos `WAIT` precedentes.
+- **Refinamiento del Nombre de `representativeFirstBusETAInfo` en `MapState`**: Si bien la introducción de `waitLegBusInfo` aclara la información del bus para los tramos de espera, revisar si el nombre `representativeFirstBusETAInfo` sigue siendo el más adecuado para su propósito original (ETA del primer bus planificado para todo el itinerario consolidado) o si un nombre más específico (ej. `initialPlannedFirstBusETAInfo`) mejoraría la legibilidad a largo plazo, especialmente ahora que el bus "activo" para un tramo `WAIT` se gestiona por separado.
