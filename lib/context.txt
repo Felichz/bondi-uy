@@ -1,0 +1,145 @@
+Este archivo contiene varios prompt que he pickeado para mostrar aqui solo para que tengas un poco de context de como empezo esta nueva version del proyecto y que ideas core hay al rededor.
+
+=======
+
+@investigator.txt @index.md Hola, no soy experto en flutter de hecho vengo de react web, pero deberia poder conseguir lo que quiero de todas formas me imagino
+
+Lo que quiero es crear una capa de ui completamente agnostica a la logica de negocio. Quiero una capa que se encargue solo de la logica presentacional, y esta es la capa en la que mas me voy a involucrar a detalle y cuidado como humano portador de la vision final que quiero de la app antes de lanzarla al mercado.
+
+Yo tengo en mente como quiero que sea la UI y la idea con esta capa es mantenerla lo mas simple posible intentando maximizar la acotacion de posibilidades permitidas en la UI.
+
+Actualmente parece estar todo mezclado y hay un monton de factores que pueden afectar la UI final de manera directa.
+
+Yo quiero empezar una nueva capa desde 0 limpia que solo tenga explicitamente lo que yo pido, la idea es ser lo mas estrictos posibles, no quiero que esta capa de UI permita ninguna posibilidad desalineada con mi vision de la app y los flujos de usuario. Esto significa que las conexiones ente esta capa de ui y la capa de logica de negocio deben ser lo mas estrictas posibles.
+
+Por ejemplo yo, como capa de UI, manifesto de la vision del creador de la app, solo te quisiera permitir darme la informacion necesaria ya pronta y lista de antemano para dibujar el tramo de un trip en el mapa. No te voy a dar a ti, capa de logica de negocio y procesamiento de datos e informacion, la capacidad de comunicarte directamente con apis como la de mapbox. Mapbox es mi concern porque se trata de la UI. Ademas yo debo siempre estar en el medio acotando las posibilidades, no debe haber nada en el codebase que pueda tener un impacto en la UI sin pasar por mi primero, la capa de UI, manifesto y acotacion de la vision del creador de la app, defensor y representante de los flujos de usuario.
+
+Por lo tanto, lo unico que te voy a dar, capa de logica, es una api acotada lo maximo y abstracta unicamente para lo relevante de nuestra app, nada mas.
+
+Por ejemplo para la renderizacion de un trip, probablemente simplemente te voy a permitir pasarme como input la informacion del trip, osea la informacion de cada paso del trip, donde simplemente te voy a permitir una serie de posibilidades predefinidas con una estructura de datos previamente definida y clara para representar una fase del trip. Supongo que las unicas propiedades que tiene sentido que me muestres (a mi, capa de UI, que solo me importan los concern relacionados a dibujar todos los diferentes estados posibles de la app y permitir los flujos de usuario de la visión del creador de la app) supongo que las unicas propiedades que tiene sentido que me muestres para una fase de trip es por ejemplo el type que deberia poder solo ser walk (para caminar a una parada de bus), wait (esperar bus en la parada), bus (viajar arriba de un bus hasta una parada destino), y nada mas
+
+y para cada una de esas fases de trip me debes dar propiedades como el tramo o leg que se debe dibujar (no tengo mucha idea de esto pero basicamente me refiero a la informacion que se le debe pasar a mapbox para que sepa donde dibujar la ruta o tramo osea su estructura en el mapa geografico), y ya, porque yo como capa de UI me puedo encargar de todo lo demas que es mi concern, que es como presentar esa informacion al usuario de manera alineada a la vision de la app, por ejemplo establecer el color y estilos de cada type, los diferentes estados visuales, la dinamica dentro del trip y navegacion entre pasos, etc.
+
+comprendes a lo que voy? se puede hacer aqui en flutter para esta app? como?
+
+yo en react lo que haria seria toda la ui de los componentes y a parte tendria un modulo con toda la logica de negocio y pues la ui simplemente tendria callbacks en los botones y las diferentes cosas que puede hacer el usuario y ahi se hacen llamadas al modulo de logica (separado) para obtener informacion no? algo asi?
+
+osea por ejemplo toda la logica compleja que se encarga de obtener los datos de OTP y prepararlos no la tendria mezclada con la ui, tendria un modulo separado
+
+entonces por ejemplo cuando el usuario le da al boton de buscar un trip la UI, entonces la UI dispara el evento osea estaria bueno que la capa de logica sea quien le envia los callbacks a la capa de ui, y la ui simplemente ejecuta los callback cuando sucede algo cuando el usuario hace alguna accion no?
+
+osea el usuario le da al boton de buscar viaje, la ui dispara el callback que esta escuchando este evento, este callback esta dentro del modulo de logica, y este modulo de logica ejecuta toda la logica necesaria para hacer la llamada al server de OTP, obtener la informacion, y procesarla para ajustarla al input que recibe la capa de ui
+
+osea la verdad el input de la ui en este caso seria simplemente el state de la app no?
+
+una capa de ui solo deberia encargarse idealmente de recibir state como input y disparar eventos no?
+
+yo como capa de ui solo me encargo de establecer de manera clara que states puedo representar visualmente y de disparar los callback escuchando eventos
+
+entonces el codigo en la capa de ui solo tiene la logica para el comportamiento de los componentes individuales, define claramente el state de cada uno (mantiene el state global en el nivel mas alto tipo index o algo asi) y luego puede ir enviando el state hacia abajo depende cada componente hijo que informacion debe usar
+
+aqui en react es donde yo probablemente definiria un context para que este state global sea accesible por todos los componentes de la ui ya que cada componente le interesa consumir cierta informacion especifica
+
+pero bueno en la capa de ui tendriamos unicamente este state global (que puede ser modificada por la capa de logica ya que este es el punto de conexion o api con la capa de logica, es el input del modulo de ui), y luego tendriamos state especifico de cada componente unicamente dedicado a sus diferentes estados visuales, por ejemplo colapsado/expandido, enabled/disabled, entiendes?
+
+=======
+
+yo creo que lo mejor seria
+
+Paso 1. Defino el contrato de la ui, este sera el unico punto posible de conexion con la capa de logica, de hecho creo que aqui se deberian recibir los callback de la capa de logica que ejecutaremos en respuesta a eventos de la ui, como por ejemplo cuando el usuario le da click al boton de buscar ruta, la capa de ui captura este evento y ejecuta un callback que ser recibio como input en este archivo core que es el unico punto donde se recibe input de la capa de logica. Tiene sentido? preferiria evitar que hayan dos puntos de contacto con al capa de logica, preferiria mantenerlo lo mas acotado estricto y definido posible en un solo lugar. En este caso la capa de logica enviaria la consulta al server de OTP y luego se encargaria de todo el procesamiento logico para preparar un cambio de state en el input enviado a la capa de ui, por ejemplo cargando las opciones de itinerarios, entonces la ui reaccionaria mostrando el widget con las opciones y cambiando todo el state presentacional en pantalla, ya que en la capa de ui nuestro concern es como reaccionar a diferentes estados cierto? toda el concern presentacional.
+
+Paso 2. Aqui podemos encargarnos de desarrollar toda esta nueva version de capa de logica desde 0 adaptandonos al contrato de la ui y tomando de la version actual original del codigo. Creo que seria mejor empezar de 0 con toda esta nueva version de arquitectura, el codigo actual podemos considerarlo codigo viejo y solo lo usaremos para tomar codigo y reutilizar para adaptarlo a la nueva capa de logica que estara enfocada en enviar el input a la capa de ui y recibir los callbacks y hacer todo ese procesamiento logico.
+
+Paso 3. Aqui ya podemos comenzar a construir la UI y todos los componentes osea los widgets, creo que es mejor hacer esta parte despues de la capa logica porque aqui ya podremos recibir input para ir probando la app sin necesidad de mocks ficticios.
+
+=======
+
+quiero que me ayudes paso a paso a definir todo lo que hay que definir, podemos empezar por el estado del mapa si quieres
+
+yo creo que debemos aferrarnos a la filosofia de que la capa de ui debe intentar acotar lo maximo posible todas las opciones estrictamente a la vision de la app y unicamente permitir los flujos de usuario esperados
+
+esto que significa para el estado del mapa? significa por ejemplo que no debemos simplemente permitir recibir un estado de las cosas a dibujar en el mapa y ya, no
+
+esta capa es mas que eso creo que no estendiste esa sutil nota en mi vision de esta capa de ui, ya lo habia explicado antes, hasta te hable en primera persona explicandote quien soy desde el punto de vista de esa capa misma jaja porque respresenta lo que YO quiero de la app y no quiero permitir nada mas para ahorrarnos problemas innecesarios que podemos evitar por esta simple decision de arquitectura inicial
+
+esto significa que unicamente debemos permitir a la capa de negocio definir cierto tipo de estados para el mapa que tienen sentido para las diferentes fases del flujo de la app
+
+que cosas vamos a mostrar en nuestra app en todos los casos?
+
+pues al principio cuando el usuario entra a la app se encuentra simplemente con el panel arriba donde puede ingresar el input de origen y destino
+
+en este momento no deberiamos mostrar nada mas en el mapa que paradas de bus, ya que me gustaria posteriormente permitir que el usuario presione sobre paradas para obtener la informacion de la parada osea todos los ETA identico a como haciamos ahora al obtener los ETA posterior a la respuesta de OTP (que por cierto esa logica esta muy linda y va en buen camino asi que deberiamos tomarla de base cuando estemos haciendo la capa de logica, ya que tiene un buen procesamiento de la respuesta de otp para fusionar opciones y hasta un sistema de scoring)
+
+pero bueno esto significa que podemos dividir el state global de la app por fases o etapas del ciclo de vida, entonces tenemos la fase 1 donde el usuario no tiene ningun trip seleccionado y simplemente puede navegar por el mapa y ver informacion de las paradas
+
+luego la fase 2 donde el usuario ya puede ver las opciones de viaje para elegir calculadas con la logica que tenemos ahora osea el modulo de logica ya obtuvo los resultados de otp, ya los proceso y ya preparo las opciones de viaje a eleccion para el usuario, cada opcion con su score
+
+entonces la ui en este momento me gustaria que priorizara la opcion de mas score y mostrara en el mapa un preview del trip osea los tramos dibujados y las paradas renderizadas de origen y destino de los tramos de bus del itinerario y un mensaje que diga "esta es la opcion recomendada" y un boton en alguna parte para comenzar el viaje bastante llamativo
+
+luego a nivel secundario de jerarquia visual quisiera colocar alguna manera de ver las otras opciones de viaje para usuarios que les interese, estaria bueno que sea algun widget lindo bonito de navegacion de buena ux para navegar de manera simple entre las diferentes opciones y que el mapa se vaya encargando de renderiar los distintos trip para que el usuario pueda ver como preview mientras va navegando entre las opciones
+
+esto significa que en esta etapa del ciclo de vida de la app, la informacion que debemos aceptar para el mapa es solo la informacion del trip asi nos encargamos de dibujarlo en el mapa con nuestra logica para manejar mapbox en la capa de ui (que esta logica yo en react la tendria separada en un hook externo o algo asi osea un modulo externo que se encargue de wrappear la api de mabox y exponer una version abstracta y minima para los usos de la app, por ejemplo para dibujar distintos tipos de trapo segun su tipo y cosas asi osea solo lo que vamos a necesitar y ya), como decia en esta etapa el input de state para el mapa en realidad solo necesitara obtener la info del trip seleccionado y eso ni siquiera necesita venir de la capa de logica, ya que la capa de ui ya esta recibiendo las opciones de viaje y dentro de la ui tenemos el state interno de cual es el trip seleccionado por el usuario para preview (este state de preview es cosa de la capa de ui) asi que la ui en este caso ya tiene toda la informacion necesaria para el mapa
+
+luego en la otra etapa el usuario ya selecciono una opcion de viaje asi que en el mapa estariamos dibujando nuevamente los tramos del trip y esta info ya esta disponible de hecho el state sobre cual es el itinerario seleccionado como viaje activo es state de la ui es cosa del flujo de usuario y el ciclo de vida de la ui, no es cosa de la capa de logica, pero si vamos a necesitar interactuar con la capa de logica por el tema de obtener actualizaciones de ETA y ubicacion de bus en tiempo real en caso de que exista uno
+
+asi que en esta etapa la capa de logica debe encargarse de actualizar periodicamente el state de ETA del trip seleccionado y enviar esa informacion como input de la capa de ui
+
+entiendes como va la cosa?
+
+=======
+
+supongo que cuando el usuario selecciona una parada lo unico que se necesita pedirle a la capa de logia es la informacion sobre las ETA de esa parada, y posiblemente las lineas que pasan por esa parada si no estaba ya esa informacion pero igual vendria con el ETA si no recuerdo mal, asi que bueno, todo lo demas es state interno de la ui, es la capa de ui la que mantiene los conceptos como los del usuario con una parada seleccionada y que muestra los detalles de la parada en un panel, todo el state posible deberia mantenerse contenido en la capa de ui, siempre debemos pensar exponer las minimas conexiones necesarias con la capa de logica para mantener las cosas lo mas simples y minimalistas posibles, para simplificar el contrato con la capa de logica lo mas posible, asi es como debes pensar y razonar sobre todas estas cosas no lo olvides, entiendes me comprendes? te parece ok?
+
+=======
+
+crees que con lo que hablamos ya tienes una comprension suficientemente clara de como quiero que sea la app y los flujos? quiero que tengas todo esto claro asi puedes proceder con autonomia a completar la fase 1 osea este achivo core/padre de la capa de ui que recibe el input de afuera (de la capa de logica)
+
+de todas formas cuando estes implementando seria buena practica que me hagas preguntas cuando encuentres cuestiones de decision sobre como será el flujo de usuario ya que yo soy como el PM que entiende como quiere la app
+
+puedes considerar que ademas de las tool disponibles del IDE tambien me tienes a mi y yo te expongo mi API de consultarme cualquier cosa respecto a como quiero que sea la app
+
+siempre que lo consideres relevante puedes consultar esta api
+
+=======
+
+En respuesta a "Esto podría ser una función en tu capa de backend/core si prefieres.", no, no quiero que la capa de logica tenga conocimiento de mapbox solo tiene concimiento de la api de la ui y se encarga de hacer lo que la ui necesita, esta al servicio de la ui
+
+en cuanto a FaseApp.MOSTRANDO_OPCIONES_RUTA confio en que lo puedes diseñar bien con lo que ya te explique de mi vision y como seria el flujo
+
+en cuanto a VIAJE_ACTIVO_EN_CURSO, si recibiria la informacion de los tramos y necesitaria las actualizaciones del bus en tiempo real, pero no lo de indiceTramoActual, porque eso si es un concepto de la ui, el concepto de que tendremos un widget para movernos entre las etapas del trip (caminando, esperando parada, arriba del bus yendo a la parada destino), eso es cosa de la ui
+
+tampoco es necesario usuarioNavegoASiguienteTramoEnViajeActivo porque a la capa de logica le da igual, pero si deberia alguna manera de especificar cual es el bus en tiempo real escuchando, porque en casos de trasbordo si depende de cual tramo esta activo en la ui, pero supongo que entonces tiene sentido que la ui sea quien envie como parametro algo para identificar cual es el bus en tiempo real que necesitamos escuchar
+
+=======
+
+en cuanto a TramoViajeMostrable, recuerda, nada de texto, duracionEstimadaTexto debe ser duracionEstimadaSegundos en numero en segundos o minutos y distanciaTexto tambien, debe ser solo distanciaMetros o algo asi, el texto es algo presentacional
+
+`colorLineaBusHex` esto no tiene sentido borralo
+
+en cuanto a `Aserciones para asegurar que geometriaPolilinea o posicionPunto estén presentes según el tipo.` no se que tipo de aserciones es posible en flutter pero si, aun si hacemos la app crashear si no se cumple me parece bien para fase de dev
+
+mismo comentario del texto para las propiedades de `OpcionDeRutaMostrable`, en el caso de `advertenciaPrincipalTexto` puede ser en formato de una constante string y luego la ui decide con que texto mostrar cada caso
+
+=======
+
+dejame ver, hiciste un componente diferente para cada fase de la app? esto es correcto? no significa que se va a renderizar toda la ui cada vez que pasemos de una fase a otra? esto no me parece necesario y me parece contraproducente, hay que volver a renderizar toda la ui solo porque ahora pasamos a la fase de seleccionar ruta? lo unico que cambia entre una fase y otra realmente son las cosas y widget que estamos mostrando sobre el mapa pero el mapa siempre esta ahi durante todas estas fases no? que se te ocurre? quiza crear un widget root que renderize el mapa y ademas renderize un widget padre por cada fase? no se
+
+quisiera que logres que la app se vea igual que se veia en la app antigua pero en esta nueva arquitectura minimal y presentacional
+
+la unica diferencia seria el flujo de carousel que describi al seleccinar posibles rutas donde hay una preseleccionada como recomendada
+
+la idea era poder navegar entre las opciones y que en el mapa se pueda ir viendo un preview del trip seleccionado
+
+te acuerdas? recuerda que puedes leer todos los archivos que quieras de la app antigua @index.md 
+
+puedes usar el comando cat para asegurarte de obtener todo el contenido del archivo
+
+tienes prohibido usar la tool de leer archivos built in, debes usar cat si o si
+
+intenta mantener el estado especifico de un componente individual autocontenido en su propio scope por ejemplo un state colapsado/expandido, ya que eso no tiene efecto fuera del propio componente, bueno en el caso del search solo necestamos que se pueda colapsar cuando se presiona el boton de buscar ruta
+
+debes pensar bien el manejo de state, debes poner enfasis en pensar sobre eso para no complicar demasiado la ui
+
+debes intentar comprender el comportamiento / intencion de los componentes originales e intentar que eso se mantenga en esta nueva version, por ejemplo para el widget search se usaba algo para obtener recomendaciones de lugares mientras el usuario escribia, esa funcionalidad y comportamiento se debe mantener, probablemente en este caso necesitara una interaccion con la capa de logica si esto no esta implementado ahi, esas son cosas que debes revisar tu durante la marcha pero nunca olvides @REVIEW_GUIDELINES.md y tratar de mantener acotado y restringido lo maximo posible la comunicacion con la capa de logica, en este caso deberiamos tener la comuncacion minima para lograr explicitamente lo que necesita el componente que es pedir por recomendaciones mientras el usuario escribe y obtener estas recomendaciones, ya que el input enviado desde la capa de logica seria unicamente para este componente quiza podrias estructurar este state input de la capa ui para que pueda tener una estructura jerarquica osea quiza haya states globales pero esto es algo unicamente para este componente, pero siempre se manejara eso de manera estricta y restringida en un unico mismo punto de conexion entre las dos capas, un unico contrato
+
+=======

@@ -254,3 +254,17 @@ Fecha Identificada: 2024-07-30
 - **Calcular Duración Precisa para Tramos `WAIT` Intermedios**: Actualmente, los tramos de "espera" intermedios (no el primero) pueden tener una duración nominal. Investigar el uso de los `startTime`/`endTime` de los `RouteLeg`s de OTP circundantes para calcular y mostrar una duración de espera más precisa.
 - **ETA en Tiempo Real para Buses Intermedios**: El sistema actual prioriza la ETA en tiempo real para el primer bus del itinerario o si un tramo `WAIT` específico tiene información de bus asociada (a través de `waitLegBusInfo`). Considerar mejorar `ItineraryPlanningService` o `BusTrackingController` para intentar obtener/mostrar ETAs en tiempo real para _todos_ los tramos de bus relevantes en un itinerario, no solo el primero, y asociarlos con sus correspondientes tramos `WAIT` precedentes.
 - **Refinamiento del Nombre de `representativeFirstBusETAInfo` en `MapState`**: Si bien la introducción de `waitLegBusInfo` aclara la información del bus para los tramos de espera, revisar si el nombre `representativeFirstBusETAInfo` sigue siendo el más adecuado para su propósito original (ETA del primer bus planificado para todo el itinerario consolidado) o si un nombre más específico (ej. `initialPlannedFirstBusETAInfo`) mejoraría la legibilidad a largo plazo, especialmente ahora que el bus "activo" para un tramo `WAIT` se gestiona por separado.
+
+## Configuración y Seguridad
+
+### 13. Gestión del Token de Mapbox
+
+- **Fecha Identificada:** 2024-07-31
+- **Descripción:** Actualmente, el token de Mapbox está hardcodeado en `lib/backend/services/geocoding_service_adapter.dart` como una constante pública. Si bien esto fue una decisión consciente para la fase de desarrollo actual, no es una práctica recomendada para entornos de producción o para repositorios que puedan volverse públicos.
+- **Impacto Potencial:**
+  - **Seguridad:** Exponer tokens directamente en el código fuente versionado puede llevar a su abuso si el código se filtra o el repositorio es público.
+  - **Mantenibilidad:** Cambiar el token requiere una modificación directa del código y una nueva compilación. Dificulta el uso de diferentes tokens para distintos entornos (desarrollo, staging, producción).
+- **Acción Sugerida:** Antes de pasar a un entorno de producción o si el repositorio se comparte más ampliamente, se debe reimplementar un sistema más seguro y flexible para la gestión del token. Las opciones incluyen:
+  - **Variables de Entorno:** Utilizar `String.fromEnvironment('MAPBOX_ACCESS_TOKEN', defaultValue: 'tu_valor_por_defecto_o_vacio')` como se hacía anteriormente, asegurando que el proceso de build (CI/CD) inyecte el token correctamente para cada entorno.
+  - **Servicio de Configuración Remota:** Para mayor flexibilidad y seguridad, considerar obtener el token de un servicio de configuración remota al inicio de la aplicación.
+- **Estado:** Pendiente.
