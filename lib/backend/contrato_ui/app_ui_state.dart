@@ -451,6 +451,15 @@ class AppUiState {
   final String? mensajeErrorGlobal;
   final String? mensajeInfoGlobal; // Para mensajes no críticos
 
+  // Nuevo campo para el estado de expansión del panel de búsqueda
+  final bool panelDeBusquedaExpandido;
+
+  // Nuevo campo para el estado de cálculo de ruta
+  final EstadoSolicitud estadoCalculoRuta;
+
+  // Nuevo campo para controlar el zoom automático del mapa
+  final bool permitirZoomAutomaticoMapa;
+
   AppUiState({
     required this.faseActual,
     this.datosFaseInicial,
@@ -472,6 +481,9 @@ class AppUiState {
     this.mostrandoSpinnerGlobal = false,
     this.mensajeErrorGlobal,
     this.mensajeInfoGlobal,
+    this.panelDeBusquedaExpandido = true, // Por defecto expandido al inicio
+    this.estadoCalculoRuta = EstadoSolicitud.INICIAL,
+    this.permitirZoomAutomaticoMapa = true, // Por defecto permitir zoom
   }) {
     // Validaciones de consistencia de estado
     if (faseActual == FaseApp.INICIAL_SIN_BUSQUEDA &&
@@ -512,6 +524,9 @@ class AppUiState {
       mostrandoSpinnerGlobal: false,
       mensajeErrorGlobal: null,
       mensajeInfoGlobal: null,
+      panelDeBusquedaExpandido: true,
+      estadoCalculoRuta: EstadoSolicitud.INICIAL,
+      permitirZoomAutomaticoMapa: true,
     );
   }
 
@@ -549,6 +564,9 @@ class AppUiState {
     bool clearMensajeErrorGlobal = false,
     String? mensajeInfoGlobal,
     bool clearMensajeInfoGlobal = false,
+    bool? panelDeBusquedaExpandido,
+    EstadoSolicitud? estadoCalculoRuta,
+    bool? permitirZoomAutomaticoMapa,
   }) {
     return AppUiState(
       faseActual: faseActual ?? this.faseActual,
@@ -618,6 +636,11 @@ class AppUiState {
           clearMensajeInfoGlobal
               ? null
               : mensajeInfoGlobal ?? this.mensajeInfoGlobal,
+      panelDeBusquedaExpandido:
+          panelDeBusquedaExpandido ?? this.panelDeBusquedaExpandido,
+      estadoCalculoRuta: estadoCalculoRuta ?? this.estadoCalculoRuta,
+      permitirZoomAutomaticoMapa:
+          permitirZoomAutomaticoMapa ?? this.permitirZoomAutomaticoMapa,
     );
   }
 
@@ -641,7 +664,6 @@ class AppUiState {
 // --- Acciones/Interfaz que la Capa de Lógica (Backend) expondrá ---
 // Esto es conceptual. En Riverpod, esto se traduciría a los métodos públicos
 // de un StateNotifier o las funciones de un Provider.
-
 abstract class IAppLogic {
   // -- Para FaseApp.INICIAL_SIN_BUSQUEDA y manejo de paradas --
   Future<void> cargarParadasInicialesDelViewport(
@@ -666,6 +688,7 @@ abstract class IAppLogic {
   void limpiarSugerenciasDestino();
   void limpiarOrigenSeleccionado();
   void limpiarDestinoSeleccionado();
+  void intercambiarOrigenYDestino();
 
   Future<void> iniciarBusquedaDeRutas();
   Future<void> usuarioCanceloBusquedaOSeleccionRuta();
@@ -688,6 +711,7 @@ abstract class IAppLogic {
 
   // --- Acciones Generales ---
   Future<void> limpiarMensajeDeErrorGlobal();
+  void setErrorGlobal(String? mensaje);
 
   // --- Acciones Adicionales (Asegurar que estén) ---
   void pantallaDeInicioCargada();
@@ -700,4 +724,7 @@ abstract class IAppLogic {
   void usuarioSeleccionoPasoInstrucciones(int indicePaso);
   void usuarioPresionoSeguirEsteViaje();
   void detenerSeguimientoActivo();
+
+  // --- Acciones para el control del mapa ---
+  void setPermitirZoomAutomaticoMapa(bool permitir);
 }
