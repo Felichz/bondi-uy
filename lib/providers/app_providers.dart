@@ -598,6 +598,36 @@ class _MockAppLogic implements IAppLogic {
 
   // --- Acciones Generales ---
   @override
+  void intercambiarOrigenYDestino() {
+    print("_MockAppLogic: intercambiarOrigenYDestino called");
+    // Simulate swapping origin and destination in state
+    final currentState = _appUiStateNotifier.state;
+    _updateState(currentState.copyWith(
+      textoInputOrigenActual: currentState.textoInputDestinoActual,
+      textoInputDestinoActual: currentState.textoInputOrigenActual,
+      puntoOrigenParaBusqueda: currentState.puntoDestinoParaBusqueda,
+      puntoDestinoParaBusqueda: currentState.puntoOrigenParaBusqueda,
+      nombreLugarOrigenSeleccionado: currentState.nombreLugarDestinoSeleccionado,
+      nombreLugarDestinoSeleccionado: currentState.nombreLugarOrigenSeleccionado,
+      // Clear suggestions as they might not be relevant anymore
+      sugerenciasOrigen: [],
+      sugerenciasDestino: [],
+    ));
+  }
+
+  @override
+  void setErrorGlobal(String? mensaje) {
+    print("_MockAppLogic: setErrorGlobal called with message: $mensaje");
+    _updateState(_appUiStateNotifier.state.copyWith(mensajeErrorGlobal: mensaje));
+  }
+
+  @override
+  void setPermitirZoomAutomaticoMapa(bool permitir) {
+    print("_MockAppLogic: setPermitirZoomAutomaticoMapa called with: $permitir");
+    _updateState(_appUiStateNotifier.state.copyWith(permitirZoomAutomaticoMapa: permitir));
+  }
+
+  @override
   Future<void> limpiarMensajeDeErrorGlobal() async {
     print("_MockAppLogic: limpiarMensajeDeErrorGlobal called");
     _updateState(

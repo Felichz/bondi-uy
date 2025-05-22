@@ -5,10 +5,6 @@ import '../services/montevideo_api_service_adapter.dart';
 import '../services/itinerary_planning_service_adapter.dart';
 import '../services/geocoding_service_adapter.dart';
 
-// TODO: Importar los servicios necesarios cuando los creemos/adaptemos.
-// import '../services/montevideo_api_service_adapter.dart';
-// import '../services/itinerary_planning_service_adapter.dart';
-
 // El StateNotifierProvider para nuestro AppLogicNotifier.
 // La UI usará este provider para acceder al estado (AppUiState) y a las acciones (métodos de AppLogicNotifier).
 final geocodingServiceProvider = Provider<GeocodingServiceAdapter>((ref) {
@@ -290,24 +286,20 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
       );
 
       if (mounted) {
-        String? idPrimeraRecomendada;
-        if (opciones.any((op) => op.esRecomendada)) {
-          idPrimeraRecomendada =
-              opciones.firstWhere((op) => op.esRecomendada).idOpcion;
-        } else if (opciones.isNotEmpty) {
-          idPrimeraRecomendada = opciones.first.idOpcion;
+        OpcionDeRutaMostrable? primeraOpcion;
+        if (opciones.isNotEmpty) {
+          primeraOpcion = opciones.firstWhere((opt) => opt.esRecomendada, orElse: () => opciones.first);
         }
 
         state = state.copyWith(
           datosFaseOpcionesRuta: EstadoFaseOpcionesRuta(
             opcionesDeRuta: opciones,
           ),
-          idOpcionRutaPrevisualizada:
-              idPrimeraRecomendada, // Previsualizar la primera recomendada o la primera de la lista
+          idOpcionRutaPrevisualizada: primeraOpcion?.idOpcion,
           mostrandoSpinnerGlobal: false,
         );
         print(
-          "[AppLogicNotifier] Opciones de ruta cargadas en el estado. Previsualizando: $idPrimeraRecomendada",
+          "[AppLogicNotifier] Opciones de ruta cargadas en el estado. Previsualizando: ${primeraOpcion?.idOpcion}",
         );
       }
     } catch (e, s) {
@@ -332,13 +324,29 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
   Future<void> usuarioCanceloBusquedaOSeleccionRuta() async {
     _seguimientoBusTimer?.cancel();
     if (mounted) {
+      // Mantener origen y destino si ya estaban seteados
+      final origenActual = state.puntoOrigenParaBusqueda;
+      final nombreOrigenActual = state.nombreLugarOrigenSeleccionado;
+      final textoInputOrigenActual = state.textoInputOrigenActual;
+
+      final destinoActual = state.puntoDestinoParaBusqueda;
+      final nombreDestinoActual = state.nombreLugarDestinoSeleccionado;
+      final textoInputDestinoActual = state.textoInputDestinoActual;
+      
+      final paradasVisibles = state.datosFaseInicial?.paradasVisiblesEnMapa ?? [];
+
       state = AppUiState.inicial().copyWith(
-        // Conservar las paradas visibles si ya estaban cargadas
-        datosFaseInicial: EstadoFaseInicial(
-          paradasVisiblesEnMapa:
-              state.datosFaseInicial?.paradasVisiblesEnMapa ?? [],
-        ),
+        // Restaurar paradas visibles
+        datosFaseInicial: EstadoFaseInicial(paradasVisiblesEnMapa: paradasVisibles),
+        // Mantener O/D si existen
+        puntoOrigenParaBusqueda: origenActual,
+        nombreLugarOrigenSeleccionado: nombreOrigenActual,
+        textoInputOrigenActual: textoInputOrigenActual,
+        puntoDestinoParaBusqueda: destinoActual,
+        nombreLugarDestinoSeleccionado: nombreDestinoActual,
+        textoInputDestinoActual: textoInputDestinoActual,
       );
+      print("[AppLogicNotifier] Búsqueda o selección de ruta cancelada. ZoomTarget: ${state.zoomTargetActual}");
     }
   }
 
@@ -412,6 +420,8 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
       state = state.copyWith(
         clearInfoParadaConsultada: true,
         estadoInfoParadaConsultada: EstadoSolicitud.INICIAL,
+        zoomTargetActual: ZoomTarget.ninguno(), // Al cerrar, no hay zoom específico
+        permitirZoomAutomaticoMapa: false, // Evitar zoom automático no deseado
       );
     }
   }
@@ -518,28 +528,26 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
 
   @override
   void seleccionarSugerenciaOrigen(SugerenciaLugar sugerencia) {
-    state = state.copyWith(
-      textoInputOrigenActual:
-          sugerencia.nombreLugar ?? sugerencia.nombreCompleto,
-      sugerenciasOrigen: [],
-      estadoSugerenciasOrigen: EstadoSolicitud.INICIAL,
-      puntoOrigenParaBusqueda: sugerencia.coordenadas,
-      nombreLugarOrigenSeleccionado:
-          sugerencia.nombreLugar ?? sugerencia.nombreCompleto,
-    );
+    if (mounted) {
+      state = state.copyWith(
+        textoInputOrigenActual: sugerencia.nombreCompleto,
+        puntoOrigenParaBusqueda: sugerencia.coordenadas,
+        nombreLugarOrigenSeleccionado: sugerencia.nombreLugar ?? sugerencia.nombreCompleto,
+        clearSugerenciasOrigen: true,
+      );
+    }
   }
 
   @override
   void seleccionarSugerenciaDestino(SugerenciaLugar sugerencia) {
-    state = state.copyWith(
-      textoInputDestinoActual:
-          sugerencia.nombreLugar ?? sugerencia.nombreCompleto,
-      sugerenciasDestino: [],
-      estadoSugerenciasDestino: EstadoSolicitud.INICIAL,
-      puntoDestinoParaBusqueda: sugerencia.coordenadas,
-      nombreLugarDestinoSeleccionado:
-          sugerencia.nombreLugar ?? sugerencia.nombreCompleto,
-    );
+    if (mounted) {
+      state = state.copyWith(
+        textoInputDestinoActual: sugerencia.nombreCompleto,
+        puntoDestinoParaBusqueda: sugerencia.coordenadas,
+        nombreLugarDestinoSeleccionado: sugerencia.nombreLugar ?? sugerencia.nombreCompleto,
+        clearSugerenciasDestino: true,
+      );
+    }
   }
 
   @override
@@ -564,60 +572,100 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
   @override
   void limpiarOrigenSeleccionado() {
     print("[AppLogicNotifier] limpiarOrigenSeleccionado llamado");
-    state = state.copyWith(
-      textoInputOrigenActual: "",
-      clearPuntoOrigenParaBusqueda: true,
-      clearNombreLugarOrigenSeleccionado: true,
-      sugerenciasOrigen: [],
-      estadoSugerenciasOrigen: EstadoSolicitud.INICIAL,
-    );
+    if (mounted) {
+      state = state.copyWith(
+        textoInputOrigenActual: '',
+        clearPuntoOrigenParaBusqueda: true,
+        clearNombreLugarOrigenSeleccionado: true,
+        clearSugerenciasOrigen: true,
+      );
+    }
   }
 
   @override
   void limpiarDestinoSeleccionado() {
     print("[AppLogicNotifier] limpiarDestinoSeleccionado llamado");
-    state = state.copyWith(
-      textoInputDestinoActual: "",
-      clearPuntoDestinoParaBusqueda: true,
-      clearNombreLugarDestinoSeleccionado: true,
-      sugerenciasDestino: [],
-      estadoSugerenciasDestino: EstadoSolicitud.INICIAL,
-    );
+    if (mounted) {
+      state = state.copyWith(
+        textoInputDestinoActual: '',
+        clearPuntoDestinoParaBusqueda: true,
+        clearNombreLugarDestinoSeleccionado: true,
+        clearSugerenciasDestino: true,
+      );
+    }
+  }
+
+  @override
+  void intercambiarOrigenYDestino() {
+    if (mounted) {
+      final origenActual = state.puntoOrigenParaBusqueda;
+      final destinoActual = state.puntoDestinoParaBusqueda;
+      final nombreOrigenActual = state.nombreLugarOrigenSeleccionado;
+      final nombreDestinoActual = state.nombreLugarDestinoSeleccionado;
+      final textoInputOrigenActual = state.textoInputOrigenActual;
+      final textoInputDestinoActual = state.textoInputDestinoActual;
+
+      var nuevoEstado = state.copyWith(
+        textoInputOrigenActual: textoInputDestinoActual,
+        textoInputDestinoActual: textoInputOrigenActual,
+        puntoOrigenParaBusqueda: destinoActual,
+        clearPuntoOrigenParaBusqueda: destinoActual == null,
+        puntoDestinoParaBusqueda: origenActual,
+        clearPuntoDestinoParaBusqueda: origenActual == null,
+        nombreLugarOrigenSeleccionado: nombreDestinoActual,
+        clearNombreLugarOrigenSeleccionado: nombreDestinoActual == null,
+        nombreLugarDestinoSeleccionado: nombreOrigenActual,
+        clearNombreLugarDestinoSeleccionado: nombreOrigenActual == null,
+      );
+      state = nuevoEstado; // Asignar el estado modificado
+      print("[AppLogicNotifier] Origen y Destino intercambiados.");
+    }
   }
 
   @override
   void seleccionarOpcionDeRutaParaPrevisualizar(String idOpcionRuta) {
-    if (state.faseActual == FaseApp.MOSTRANDO_OPCIONES_RUTA &&
-        state.datosFaseOpcionesRuta != null) {
-      final opcionEncontrada = state.datosFaseOpcionesRuta!.opcionesDeRuta.any(
-        (opcion) => opcion.idOpcion == idOpcionRuta,
-      );
-      if (opcionEncontrada) {
-        print(
-          "[AppLogicNotifier] Previsualizando opción de ruta: $idOpcionRuta",
-        );
-        if (state.idOpcionRutaPrevisualizada == idOpcionRuta) {
-          state = state.copyWith(clearIdOpcionRutaPrevisualizada: true);
+    if (mounted) {
+      final opciones = state.datosFaseOpcionesRuta?.opcionesDeRuta ?? [];
+      final opcionSeleccionada =
+          opciones.firstWhereOrNull((opt) => opt.idOpcion == idOpcionRuta);
+
+      if (opcionSeleccionada != null) {
+        final List<Coordenada> todosLosPuntosDeLaRuta = [];
+        for (var tramo in opcionSeleccionada.tramosParaPreview) {
+          if (tramo.geometriaPolilinea != null) {
+            todosLosPuntosDeLaRuta.addAll(tramo.geometriaPolilinea!);
+          }
+          if (tramo.posicionPunto != null) {
+            todosLosPuntosDeLaRuta.add(tramo.posicionPunto!);
+          }
+        }
+
+        if (todosLosPuntosDeLaRuta.isNotEmpty) {
+          state = state.copyWith(
+            idOpcionRutaPrevisualizada: idOpcionRuta,
+          );
         } else {
+          // Si la ruta no tiene puntos, no cambiamos el zoom target
           state = state.copyWith(idOpcionRutaPrevisualizada: idOpcionRuta);
         }
       } else {
-        print(
-          "[AppLogicNotifier_WARN] No se encontró la opción de ruta con ID $idOpcionRuta para previsualizar.",
-        );
-        state = state.copyWith(clearIdOpcionRutaPrevisualizada: true);
+        // Opción no encontrada, solo actualizar el ID (o limpiarlo si se prefiere)
+        state = state.copyWith(idOpcionRutaPrevisualizada: idOpcionRuta);
       }
-    } else {
-      print(
-        "[AppLogicNotifier_WARN] Intento de previsualizar ruta fuera de la fase MOSTRANDO_OPCIONES_RUTA o sin datos.",
-      );
     }
   }
 
   @override
   void limpiarSeleccionDeRutaPrevisualizada() {
     print("[AppLogicNotifier] Limpiando selección de ruta previsualizada.");
-    state = state.copyWith(clearIdOpcionRutaPrevisualizada: true);
+    if (mounted) {
+      final origenActual = state.puntoOrigenParaBusqueda;
+      final destinoActual = state.puntoDestinoParaBusqueda;
+
+      state = state.copyWith(
+        clearIdOpcionRutaPrevisualizada: true,
+      );
+    }
   }
 
   @override
@@ -945,8 +993,8 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
       state = state.copyWith(
         clearInfoParadaConsultada: true,
         estadoInfoParadaConsultada: EstadoSolicitud.INICIAL,
-        // También podrías querer limpiar cualquier mensaje de error asociado a la consulta de parada
-        // clearMensajeErrorGlobal: true, // Ojo: esto limpiaría CUALQUIER error global.
+        zoomTargetActual: ZoomTarget.ninguno(), // Al cerrar, no hay zoom específico
+        permitirZoomAutomaticoMapa: false, // Evitar zoom automático no deseado
       );
     }
   }
@@ -992,6 +1040,7 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
       );
     }
   }
+
 }
 
 // Extension para facilitar el acceso a los datos de la fase actual

@@ -1,4 +1,7 @@
 // lib/backend/contrato_ui/app_ui_state.dart
+// lib/backend/contrato_ui/app_ui_state.dart
+import 'package:bondi_uy/utils/map_types.dart'; // Added import for ZoomTarget and ZoomTargetType
+import 'package:collection/collection.dart' show listEquals;
 
 // Este archivo define el contrato de datos y estados que la capa de lógica (backend)
 // proveerá a la capa de UI. La UI consumirá este estado para renderizarse.
@@ -225,6 +228,17 @@ class TramoViajeMostrable {
         "Distancia debe ser mayor a 0 para tramos de caminar.",
       );
     }
+  }
+
+  // Getter to consolidate coordinates for drawing on map or other uses
+  List<Coordenada> get coordenadasDelTramo {
+    if (tipo == TipoTramoViaje.CAMINAR || tipo == TipoTramoViaje.VIAJE_EN_BUS) {
+      return geometriaPolilinea ?? [];
+    }
+    if (tipo == TipoTramoViaje.ESPERAR_BUS) {
+      return posicionPunto != null ? [posicionPunto!] : [];
+    }
+    return []; // Should not happen given the types
   }
 }
 
@@ -456,9 +470,8 @@ class AppUiState {
 
   // Nuevo campo para el estado de cálculo de ruta
   final EstadoSolicitud estadoCalculoRuta;
-
-  // Nuevo campo para controlar el zoom automático del mapa
   final bool permitirZoomAutomaticoMapa;
+  final ZoomTarget? zoomTargetActual;
 
   AppUiState({
     required this.faseActual,
@@ -483,7 +496,8 @@ class AppUiState {
     this.mensajeInfoGlobal,
     this.panelDeBusquedaExpandido = true, // Por defecto expandido al inicio
     this.estadoCalculoRuta = EstadoSolicitud.INICIAL,
-    this.permitirZoomAutomaticoMapa = true, // Por defecto permitir zoom
+    this.permitirZoomAutomaticoMapa = true,
+    this.zoomTargetActual,
   }) {
     // Validaciones de consistencia de estado
     if (faseActual == FaseApp.INICIAL_SIN_BUSQUEDA &&
@@ -527,6 +541,7 @@ class AppUiState {
       panelDeBusquedaExpandido: true,
       estadoCalculoRuta: EstadoSolicitud.INICIAL,
       permitirZoomAutomaticoMapa: true,
+      zoomTargetActual: ZoomTarget(tipo: ZoomTargetType.initial),
     );
   }
 
@@ -567,6 +582,7 @@ class AppUiState {
     bool? panelDeBusquedaExpandido,
     EstadoSolicitud? estadoCalculoRuta,
     bool? permitirZoomAutomaticoMapa,
+    ZoomTarget? zoomTargetActual,
   }) {
     return AppUiState(
       faseActual: faseActual ?? this.faseActual,
@@ -637,12 +653,12 @@ class AppUiState {
               ? null
               : mensajeInfoGlobal ?? this.mensajeInfoGlobal,
       panelDeBusquedaExpandido:
-          panelDeBusquedaExpandido ?? this.panelDeBusquedaExpandido,
-      estadoCalculoRuta: estadoCalculoRuta ?? this.estadoCalculoRuta,
-      permitirZoomAutomaticoMapa:
-          permitirZoomAutomaticoMapa ?? this.permitirZoomAutomaticoMapa,
-    );
-  }
+        panelDeBusquedaExpandido ?? this.panelDeBusquedaExpandido,
+    estadoCalculoRuta: estadoCalculoRuta ?? this.estadoCalculoRuta,
+      permitirZoomAutomaticoMapa: permitirZoomAutomaticoMapa ?? this.permitirZoomAutomaticoMapa,
+      zoomTargetActual: zoomTargetActual ?? this.zoomTargetActual,
+  );
+}
 
   @override
   String toString() {
@@ -712,6 +728,7 @@ abstract class IAppLogic {
   // --- Acciones Generales ---
   Future<void> limpiarMensajeDeErrorGlobal();
   void setErrorGlobal(String? mensaje);
+  void setPermitirZoomAutomaticoMapa(bool permitir);
 
   // --- Acciones Adicionales (Asegurar que estén) ---
   void pantallaDeInicioCargada();
@@ -724,7 +741,4 @@ abstract class IAppLogic {
   void usuarioSeleccionoPasoInstrucciones(int indicePaso);
   void usuarioPresionoSeguirEsteViaje();
   void detenerSeguimientoActivo();
-
-  // --- Acciones para el control del mapa ---
-  void setPermitirZoomAutomaticoMapa(bool permitir);
 }

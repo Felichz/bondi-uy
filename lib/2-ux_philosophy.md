@@ -67,6 +67,7 @@ Para mantener la separación clara y adherir a la arquitectura presentacional, d
   - Conceptos visuales y de layout (padding, margin, colores, fuentes, animaciones, modales, spinners visuales).
   - El estado interno _puramente visual_ de sus propios widgets (ej: si un campo de texto tiene foco, si una animación está en curso), **siempre y cuando ese estado no afecte la lógica de negocio o el estado general de la app más allá de la presentación inmediata**. Si el estado visual _debe_ ser coordinado a través de múltiples widgets o persistir (como la expansión del panel de búsqueda que impacta el mapa), entonces se refleja en `AppUiState`.
   - Cómo formatear datos crudos del `AppUiState` para la presentación (ej: convertir segundos a "5 min", mostrar fechas, aplicar formatos de número).
+  - **Controlar el flujo de la interfaz de usuario y las interacciones visuales directas:** Esto incluye, por ejemplo, decidir cuándo y cómo hacer zoom en el mapa basándose en los cambios de `AppUiState` y las acciones del usuario, manejar animaciones, y gestionar el estado local de los widgets que no afecta la lógica de negocio.
 - **No Conoce (y no debe importar ni instanciar):**
   - Reglas de negocio o lógica compleja.
   - Cómo obtener datos de APIs o servicios externos.
@@ -87,6 +88,7 @@ Para mantener la separación clara y adherir a la arquitectura presentacional, d
   - Detalles de cómo se renderiza el `AppUiState`. (Por ejemplo, no le importa si el panel de búsqueda está colapsado o expandido; simplemente actualiza el estado `estadoCalculoRuta` en `AppUiState` cuando busca rutas, y la UI reacciona visualmente a eso).
   - Cómo reaccionar directamente a los gestos del usuario (solo responde a las _acciones_ invocadas por la UI).
   - El estado interno _puramente visual_ de los widgets de la UI.
+  - **Controlar directamente el comportamiento del mapa o dictar flujos específicos de la UI:** Por ejemplo, la capa de lógica no debe decidir niveles de zoom, iniciar animaciones de mapa, o gestionar la visibilidad de elementos puramente presentacionales. Estas son responsabilidades de la capa de UI, que reacciona a los datos provistos en `AppUiState`.
 
 **Ejemplo práctico:**
 
@@ -106,3 +108,7 @@ tambien es importante que nunca olvides y siempre tengas cuenta una cosa: todos 
 asi que siempre que tengas un problema de que no sabes como usar una api o algo debes simplemente redirigirte al proyecto viejo, recuerda que estamos haciendo una adaptacion con el principal objetivo de separar una capa de logica con una capa de ui firme minimalista y presentacional y clean para facilitar el mantenimiento
 
 recuerda, no debes complicarte, ve directo al grano lee el codigo viejo hasta tener todo lo que necesitas no solo 300 lineas
+
+y otra cosa, cuando estes pensando agregar cualquier cosa a la capa de logica o ui, siempre debes pensar en conceptos, el concepto que estas metiendo que es? por lo que dijiste quieres hacer que la capa de logica mantenga el concepto de indice de tramo seleccionado, ese concepto, "tramo seleccionado" que crees que es? con que tiene que ver? con procesamiento de informacion o con la app de cara al usuario y los flujos de usuario y las dinamicas de la ui? creo que esta bastante claro no?
+
+de ahora en adelante quiero que siempre que te encuentres un problema de api o algo simplemente investigues como se lograba en el codigo viejo como primer paso SIEMPRE, no tienes permitido siquiera comenzar a pensar soluciones e indagar sin primero consultar el ánalogo del codigo viejo, MÍNIMO debes tener siempre el ánalogo del codigo viejo en contexto, recuerda que este es un proyecto de ADAPTACIÓN a la nueva arquitectura, NUNCA debes iniciar investigaciones ni desperdiciar tokens ni hacer busquedas en internet sin primero consultar como se solucionó el problema en el código viejo, por ejemplo todo lo que necesitamos hacer con mapbox ya se hizo en el código viejo y de hecho con la misma versión porque estamos compartiendo el pubspec.yaml

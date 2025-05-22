@@ -42,6 +42,28 @@ class _RouteOptionsViewState extends ConsumerState<RouteOptionsView> {
     // el onStyleLoadedListener y el ref.listen se encargarán.
   }
 
+  void _handleMapIdle(MapIdleEventData data) {
+    if (mapboxMap == null) return;
+    final appLogic = ref.read(appLogicProvider);
+
+    mapboxMap!.getCameraState().then((cameraState) {
+      final center = Coordenada(
+        latitud: cameraState.center.coordinates.lat.toDouble(),
+        longitud: cameraState.center.coordinates.lng.toDouble(),
+      );
+      final zoom = cameraState.zoom.toDouble();
+      print(
+        "[_RouteOptionsViewState] Map idle by user. Center: $center, Zoom: $zoom",
+      );
+      appLogic.usuarioMovioMapaManualente(center, zoom);
+      appLogic.setPermitirZoomAutomaticoMapa(false);
+    }).catchError((e) {
+      print(
+        "[_RouteOptionsViewState] Error getting camera state on idle: $e",
+      );
+    });
+  }
+
   Future<void> _onStyleLoaded() async {
     if (mapboxMap == null) return;
     // Cargar íconos si fueran necesarios (ej. para puntos de espera)
@@ -182,30 +204,70 @@ class _RouteOptionsViewState extends ConsumerState<RouteOptionsView> {
       }
     }
 
-    // Zoom a la ruta
-    if (todasLasCoordenadasDeLaRuta.isNotEmpty && mapboxMap != null) {
-      final mapboxPoints =
-          todasLasCoordenadasDeLaRuta
-              .map((c) => Point(coordinates: Position(c.longitud, c.latitud)))
-              .toList();
-      try {
-        final cameraOptions = await mapboxMap!.cameraForCoordinates(
-          mapboxPoints,
-          MbxEdgeInsets(
-            top: 100.0,
-            left: 40.0,
-            bottom: (MediaQuery.of(context).size.height * 0.45),
-            right: 40.0,
-          ), // Consider panel height
-          null,
-          null,
-        );
-        mapboxMap!.flyTo(cameraOptions, MapAnimationOptions(duration: 1200));
-      } catch (e) {
-        print("[_RouteOptionsViewState] Error zooming to route preview: $e");
-      }
-    }
+    // El zoom a la ruta ahora se maneja por el listener de zoomTargetActual
+    // y el método _performAutomaticZoom.
   }
+
+  /*
+Future<void> _performAutomaticZoom(ZoomTarget target) async {
+  if (!mounted || mapboxMap == null) return;
+
+  print("[_RouteOptionsViewState] Performing automatic zoom for target: ${target.tipo}");
+
+  if (target.tipo != ZoomTargetType.RUTA_COMPLETA && target.tipo != ZoomTargetType.BOUNDS) {
+    print("[_RouteOptionsViewState] Zoom target type ${target.tipo} not handled by this view.");
+    // Si el tipo no es para esta vista, igualmente seteamos permitirZoomAutomaticoMapa a false
+    // para no quedar en un estado de espera si este target fue dirigido aquí por error.
+    // ref.read(appLogicProvider.notifier).setPermitirZoomAutomaticoMapa(false); // REMOVED
+    return;
+  }
+
+  if (target.boundsEsquinaSO == null || target.boundsEsquinaNE == null) {
+    print("[_RouteOptionsViewState] Zoom target ${target.tipo} is missing bounds.");
+    // ref.read(appLogicProvider.notifier).setPermitirZoomAutomaticoMapa(false); // REMOVED
+    return;
+  }
+
+  try {
+    final CoordinateBounds bounds = CoordinateBounds(
+      southwest: Point(coordinates: Position(target.boundsEsquinaSO!.longitud, target.boundsEsquinaSO!.latitud)),
+      northeast: Point(coordinates: Position(target.boundsEsquinaNE!.longitud, target.boundsEsquinaNE!.latitud)),
+      // infiniteBounds: false, // Por defecto es false, no es necesario si SO y NE están bien definidos
+    );
+
+    final MbxEdgeInsets padding = MbxEdgeInsets(
+      top: 100.0,
+      left: 40.0,
+      // Usar MediaQuery directamente aquí podría ser problemático si el context no está disponible
+      // o si este método se llama fuera del ciclo de build. Se recomienda pasar el valor o calcularlo
+      // de forma más segura. Por ahora, usaremos un valor fijo o el que estaba antes.
+      // double panelHeightFactor = 0.45; // Asumimos un factor, idealmente esto viene de una constante o config.
+      // bottom: (MediaQuery.of(context).size.height * panelHeightFactor),
+      bottom: (MediaQuery.of(context).size.height * 0.42), // Ajustado a 42% para el panel de opciones (initialChildSize 0.4 + un poco de margen)
+      right: 40.0,
+    );
+
+    final CameraOptions cameraOptions = await mapboxMap!.cameraForBounds(
+      bounds,
+      padding,
+      null, // bearing
+      null, // pitch
+    );
+    await mapboxMap!.flyTo(cameraOptions, MapAnimationOptions(duration: 1200));
+
+  } catch (e, s) {
+    print("[_RouteOptionsViewState] Error performing automatic zoom to bounds: $e");
+    print(s);
+  }
+
+  // Desactivar el permiso después del intento de zoom.
+  await Future.delayed(const Duration(milliseconds: 100)); // Pequeño delay
+  if (mounted) {
+    // ref.read(appLogicProvider.notifier).setPermitirZoomAutomaticoMapa(false); // REMOVED
+    print("[_RouteOptionsViewState] permitirZoomAutomaticoMapa set to false after zoom attempt. (COMMENTED OUT)");
+  }
+}
+*/
 
   Future<void> _clearRoutePreview() async {
     if (mapboxMap == null) return;
@@ -335,7 +397,8 @@ class _RouteOptionsViewState extends ConsumerState<RouteOptionsView> {
               zoom: initialZoom,
             ),
             onMapCreated: _onMapCreated,
-            onStyleLoadedListener: (_) => _onStyleLoaded(), // Añadido listener
+            onStyleLoadedListener: (_) => _onStyleLoaded(),
+            onMapIdleListener: _handleMapIdle, // Listener para interacciones manuales
           ),
           // Panel inferior con la lista de opciones de ruta
           _RouteOptionsPanel(

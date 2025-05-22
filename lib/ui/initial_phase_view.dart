@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:bondi_uy/utils/map_types.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'package:bondi_uy/providers/app_providers.dart'; // Assuming providers are defined here
@@ -52,6 +53,22 @@ class _InitialPhaseViewState extends ConsumerState<InitialPhaseView> {
   @override
   void initState() {
     super.initState();
+
+    // Listener para reaccionar a los cambios en zoomTargetActual
+    // Usamos listenManual para tener más control o si necesitamos cancelar la suscripción explícitamente.
+    // Alternativamente, ref.listen dentro de build si el widget se reconstruye con frecuencia,
+    // o un Consumer que envuelva solo la parte del mapa si es más aislado.
+    // Para un listener a nivel de State, initState o didChangeDependencies es común.
+    ref.listenManual(appUiStateProvider.select((s) => s.zoomTargetActual),
+        (ZoomTarget? previousTarget, ZoomTarget? currentTarget) {
+      final currentUiState = ref.read(appUiStateProvider);
+      if (currentUiState.permitirZoomAutomaticoMapa &&
+          currentTarget != null && currentTarget.tipo != ZoomTargetType.none) {
+        print(
+            "[_InitialPhaseViewState] Listener: Detected zoom target: ${currentTarget.tipo}");
+        _performAutomaticZoom(currentTarget);
+      }
+    }, fireImmediately: true); // fireImmediately para manejar un target inicial si existe
   }
 
   @override
@@ -503,6 +520,61 @@ class _InitialPhaseViewState extends ConsumerState<InitialPhaseView> {
   }
 
   // Implementar _zoomToFitPoints (Placeholder, necesita MapboxService o lógica de cámara)
+  Future<void> _performAutomaticZoom(ZoomTarget target) async {
+    if (!mounted || mapboxMap == null) return;
+
+    print("[_InitialPhaseViewState] Performing automatic zoom for target: ${target.tipo}");
+
+    List<Coordenada>? pointsToZoom = [];
+
+    switch (target.tipo) {
+      case ZoomTargetType.paradaEspecifica:
+        if (target.puntoUnico != null) {
+          pointsToZoom.add(target.puntoUnico!);
+        }
+        break;
+      case ZoomTargetType.puntosOrigenDestino:
+        if (target.puntos != null && target.puntos!.isNotEmpty) {
+          pointsToZoom.addAll(target.puntos!.map((point) => Coordenada(latitud: point['latitud']!, longitud: point['longitud']!)));
+        }
+        break;
+      case ZoomTargetType.none:
+      case ZoomTargetType.rutaCompleta: // No manejado en InitialPhaseView
+      case ZoomTargetType.bounds: // No manejado en InitialPhaseView
+      case ZoomTargetType.ubicacionUsuario: // No manejado aún
+        print(
+            "[_InitialPhaseViewState] Zoom target type ${target.tipo} not handled or no points.");
+        // Si no hay puntos para este tipo de target, o el tipo no es para esta vista,
+        // igualmente seteamos permitirZoomAutomaticoMapa a false para no quedar en un estado de espera.
+        ref.read(appLogicProvider).setPermitirZoomAutomaticoMapa(false);
+        return;
+      default:
+        print("[_InitialPhaseViewState] Unknown zoom target type: ${target.tipo}");
+        ref.read(appLogicProvider).setPermitirZoomAutomaticoMapa(false);
+        return;
+    }
+
+    if (pointsToZoom.isNotEmpty) {
+      // Llamamos a la función existente que ya verifica 'permitirZoomAutomaticoMapa'
+      // pero nuestra lógica de control está en este wrapper.
+      // _zoomToFitPoints ya tiene la lógica de animación.
+      await _zoomToFitPoints(pointsToZoom);
+    } else {
+      print("[_InitialPhaseViewState] No valid points to zoom to for target: ${target.tipo}");
+    }
+
+    // Después de intentar el zoom (o si no había puntos válidos para el target),
+    // desactivar el permiso para futuros zooms automáticos hasta que la lógica lo vuelva a permitir.
+    // Esto es crucial para que el usuario pueda interactuar manualmente después.
+    // Añadimos un pequeño delay para asegurar que la animación del mapa pueda iniciar/completar visualmente
+    // antes de que potencialmente _onMapIdleListener se dispare y lo setee a false también.
+    await Future.delayed(const Duration(milliseconds: 100)); // Ajustar si es necesario
+    if (mounted) {
+      ref.read(appLogicProvider).setPermitirZoomAutomaticoMapa(false);
+      print("[_InitialPhaseViewState] permitirZoomAutomaticoMapa set to false after zoom attempt.");
+    }
+  }
+
   Future<void> _zoomToFitPoints(List<Coordenada> points) async {
     if (mapboxMap == null ||
         points.isEmpty ||

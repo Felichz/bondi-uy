@@ -15,6 +15,7 @@ class ActiveTripView extends ConsumerStatefulWidget {
 }
 
 class _ActiveTripViewState extends ConsumerState<ActiveTripView> {
+  bool _isAutoZoomEnabled = true;
   MapboxMap? mapboxMap;
   List<String> _activeRouteSourceIds = [];
   List<String> _activeRouteLayerIds = [];
@@ -31,7 +32,8 @@ class _ActiveTripViewState extends ConsumerState<ActiveTripView> {
   @override
   void initState() {
     super.initState();
-    // La lógica de dibujar la ruta se moverá a _onStyleLoaded para asegurar que el mapa esté listo.
+    // La lógica de dibujar la ruta y el zoom inicial se maneja en _onStyleLoaded.
+    // El listener para zoomTargetActual ha sido eliminado como parte del refactor de Ticket 5.
   }
 
   void _onMapCreated(MapboxMap controller) {
@@ -44,13 +46,28 @@ class _ActiveTripViewState extends ConsumerState<ActiveTripView> {
     // TODO: Cargar íconos específicos para esta vista si son necesarios (ej. marcador de bus en tiempo real).
 
     final activeTripState = ref.read(appUiStateProvider).datosFaseViajeActivo;
-    if (activeTripState != null) {
-      // Dibujar la ruta completa del viaje activo.
-      // Usamos activeTripState.tramosDelViaje que es la lista autoritativa para esta fase.
+    if (activeTripState != null && activeTripState.tramosDelViaje.isNotEmpty) {
+      List<Coordenada> todasLasCoordenadasDeLaRuta = activeTripState.tramosDelViaje
+          .expand((tramo) => tramo.coordenadasDelTramo)
+          .toList();
+
       await _displayActiveRoute(
         activeTripState.tramosDelViaje,
-        0,
-      ); // TODO: Usar el índice del tramo actual real
+        0, // TODO: Usar el índice del tramo actual real desde activeTripState.indiceTramoActual
+      );
+
+      if (_isAutoZoomEnabled && todasLasCoordenadasDeLaRuta.isNotEmpty) {
+        // Realizar el zoom inicial a los límites de la ruta mostrada.
+        await _zoomToRouteBounds(todasLasCoordenadasDeLaRuta);
+        // Después del primer zoom automático exitoso, lo desactivamos para que no interfiera
+        // con la interacción manual, a menos que otra lógica lo reactive.
+        if (mounted) {
+          setState(() {
+            _isAutoZoomEnabled = false;
+            print("[_ActiveTripViewState] Initial auto zoom completed, _isAutoZoomEnabled set to false.");
+          });
+        }
+      }
     }
   }
 
@@ -238,6 +255,127 @@ class _ActiveTripViewState extends ConsumerState<ActiveTripView> {
   // TODO: Función para resaltar el tramo actual en el mapa.
   // Future<void> _highlightCurrentLeg(int tramoIndex) async { ... }
 
+  void _handleMapIdle(MapIdleEventData data) {
+    if (mapboxMap == null) return;
+    // No need to read appLogic for this specific action anymore.
+    // final appLogic = ref.read(appLogicProvider.notifier);
+
+    mapboxMap!.getCameraState().then((cameraState) {
+      final center = Coordenada(
+        latitud: cameraState.center.coordinates.lat.toDouble(),
+        longitud: cameraState.center.coordinates.lng.toDouble(),
+      );
+      final zoom = cameraState.zoom.toDouble();
+      print(
+        "[_ActiveTripViewState] Map idle. Potentially by user. Center: $center, Zoom: $zoom",
+      );
+      // Inform appLogic about manual map movement for other potential logic (e.g. reloading markers based on viewport)
+      ref.read(appLogicProvider).usuarioMovioMapaManualente(center, zoom);
+
+      // When the user interacts manually with the map, disable automatic zoom locally.
+      if (_isAutoZoomEnabled) {
+        setState(() {
+          _isAutoZoomEnabled = false;
+          print(
+              "[_ActiveTripViewState] Automatic zoom disabled due to manual map interaction (idle).");
+        });
+      }
+    }).catchError((e) {
+      print(
+        "[_ActiveTripViewState] Error getting camera state on idle: $e",
+      );
+    });
+  }
+
+  // Método refactorizado para hacer zoom a un conjunto de coordenadas (límites).
+  // El antiguo _performAutomaticZoom(ZoomTarget target) se reemplaza por este método más específico.
+  Future<void> _zoomToRouteBounds(List<Coordenada> routeCoordinates) async {
+    if (!mounted || mapboxMap == null || routeCoordinates.isEmpty) {
+      print("[_ActiveTripViewState] Zoom to route bounds skipped: map not ready, or no coordinates.");
+      return;
+    }
+    print("[_ActiveTripViewState] Performing zoom to route bounds.");
+
+    if (routeCoordinates.length == 1) {
+      // Si solo hay una coordenada, centrar el mapa en ella con un zoom razonable.
+      final singlePoint = routeCoordinates.first;
+      final cameraOptions = CameraOptions(
+        center: Point(coordinates: Position(singlePoint.longitud, singlePoint.latitud)),
+        zoom: 16.0, // Zoom predeterminado para un solo punto
+        padding: MbxEdgeInsets(
+            top: 80.0, 
+            left: 40.0, 
+            bottom: (MediaQuery.of(context).size.height * 0.33), // Considerar panel de instrucciones
+            right: 40.0),
+      );
+      if (mounted) {
+        try {
+          await mapboxMap!.flyTo(
+            cameraOptions,
+            MapAnimationOptions(duration: 1200, startDelay: 0),
+          );
+          print("[_ActiveTripViewState] Flew to single point successfully.");
+        } catch (e) {
+          print("[_ActiveTripViewState] Error during flyTo single point: $e");
+        }
+      }
+      return;
+    }
+
+    // Calcular los límites (bounds) a partir de la lista de coordenadas
+    double minLat = routeCoordinates.first.latitud;
+    double maxLat = routeCoordinates.first.latitud;
+    double minLng = routeCoordinates.first.longitud;
+    double maxLng = routeCoordinates.first.longitud;
+
+    for (var coord in routeCoordinates.skip(1)) {
+      if (coord.latitud < minLat) minLat = coord.latitud;
+      if (coord.latitud > maxLat) maxLat = coord.latitud;
+      if (coord.longitud < minLng) minLng = coord.longitud;
+      if (coord.longitud > maxLng) maxLng = coord.longitud;
+    }
+
+    Point southwest = Point(coordinates: Position(minLng, minLat));
+    Point northeast = Point(coordinates: Position(maxLng, maxLat));
+
+    CameraOptions cameraOptions;
+    try {
+      // El panel de instrucciones en ActiveTripView tiene initialChildSize: 0.3, puede llegar a 0.65
+      final MbxEdgeInsets padding = MbxEdgeInsets(
+        top: 80.0, // Espacio para posible AppBar o notificaciones
+        left: 40.0,
+        bottom: (MediaQuery.of(context).size.height * 0.35), // 33% del panel + pequeño margen
+        right: 40.0,
+      );
+      cameraOptions = await mapboxMap!.cameraForCoordinateBounds(
+        CoordinateBounds(southwest: southwest, northeast: northeast, infiniteBounds: false),
+        padding, 
+        null, 
+        null,
+        null, // maxZoom
+        null  // offset
+      );
+      print("[_ActiveTripViewState] Calculated camera for bounds: ${cameraOptions.encode()}");
+    } catch (e) {
+      print("[_ActiveTripViewState] Error calculating camera for bounds: $e");
+      return;
+    }
+
+    if (mounted) {
+      try {
+        await mapboxMap!.flyTo(
+          cameraOptions,
+          MapAnimationOptions(duration: 1200, startDelay: 0),
+        );
+        print("[_ActiveTripViewState] flyTo to route bounds executed successfully.");
+      } catch (e) {
+        print("[_ActiveTripViewState] Error during flyTo to route bounds: $e");
+      }
+    }
+    // No se deshabilita _isAutoZoomEnabled aquí. Se deshabilita en _onStyleLoaded después del primer zoom,
+    // o en _handleMapIdle si el usuario interactúa.
+  }
+
   @override
   Widget build(BuildContext context) {
     final appUiState = ref.watch(appUiStateProvider);
@@ -263,12 +401,15 @@ class _ActiveTripViewState extends ConsumerState<ActiveTripView> {
         activeTripState.tramosDelViaje;
     // TODO: Obtener el índice del tramo actual (la lógica debería proveerlo o la UI derivarlo).
     // final int tramoActualIndex = activeTripState.indiceTramoActual ?? 0;
+    // FIXME: Usar el índice del tramo actual real desde activeTripState.indiceTramoActual cuando esté disponible.
+    final int tramoActualIndex = activeTripState.tramosDelViaje.isNotEmpty ? 0 : 0; // Placeholder
 
     // TODO: Implementar listeners para cambios en posicionActualBusReal, etc.
     // ref.listen<Coordenada?>(appUiStateProvider.select((s) => s.datosFaseViajeActivo?.posicionActualBusReal), (prev, next) {
     //   if (next != null) { // _updateRealTimeBusPosition(next); }
     // });
 
+    // TODO: Conectar este listener cuando activeTripState.indiceTramoActual esté disponible y la lógica lo actualice.
     // ref.listen<int?>(appUiStateProvider.select((s) => s.datosFaseViajeActivo?.indiceTramoActual), (prev, next) {
     //    if (next != null) { // _highlightCurrentLeg(next); }
     // });
@@ -284,6 +425,7 @@ class _ActiveTripViewState extends ConsumerState<ActiveTripView> {
       body: Stack(
         children: [
           MapWidget(
+            onMapIdleListener: _handleMapIdle,
             key: const ValueKey("active_trip_map"),
             cameraOptions: CameraOptions(
               // TODO: Establecer cámara inicial adecuada (zoom a la ruta)
@@ -298,8 +440,7 @@ class _ActiveTripViewState extends ConsumerState<ActiveTripView> {
           // Panel de Instrucciones Mejorado
           _ActiveTripInstructionsPanel(
             tramos: tramosDelViaje,
-            // TODO: Pasar el índice del tramo actual cuando esté disponible en AppUiState
-            // tramoActualIndex: activeTripState.indiceTramoActual ?? 0,
+            tramoActualIndex: tramoActualIndex, // Pasando el índice (actualmente placeholder)
             onFinalizarViaje: () => appLogic.detenerSeguimientoActivo(),
             // TODO: Conectar acciones de navegación de tramos
             // onSeleccionarTramo: (index) => appLogic.usuarioSeleccionoPasoInstrucciones(index),
@@ -335,19 +476,19 @@ class _ActiveTripViewState extends ConsumerState<ActiveTripView> {
 // --- Panel de Instrucciones de Viaje Activo ---
 class _ActiveTripInstructionsPanel extends StatelessWidget {
   final List<TramoViajeMostrable> tramos;
-  // final int tramoActualIndex; // Descomentar cuando esté disponible
+  final int tramoActualIndex; // Ahora se recibe, aunque su valor puede ser un placeholder
   final VoidCallback onFinalizarViaje;
-  // final Function(int) onSeleccionarTramo; // Descomentar
-  // final VoidCallback onSiguienteTramo; // Descomentar
-  // final VoidCallback onAnteriorTramo; // Descomentar
+  // final Function(int) onSeleccionarTramo; // TODO: Conectar cuando la lógica esté lista
+  // final VoidCallback onSiguienteTramo; // TODO: Conectar
+  // final VoidCallback onAnteriorTramo; // TODO: Conectar
 
   const _ActiveTripInstructionsPanel({
     required this.tramos,
-    // required this.tramoActualIndex, // Descomentar
+    required this.tramoActualIndex,
     required this.onFinalizarViaje,
-    // required this.onSeleccionarTramo, // Descomentar
-    // required this.onSiguienteTramo, // Descomentar
-    // required this.onAnteriorTramo, // Descomentar
+    // required this.onSeleccionarTramo,
+    // required this.onSiguienteTramo,
+    // required this.onAnteriorTramo,
   });
 
   @override
@@ -356,8 +497,10 @@ class _ActiveTripInstructionsPanel extends StatelessWidget {
       return const SizedBox.shrink(); // No mostrar nada si no hay tramos
     }
 
-    // TODO: Determinar información del tramo actual para mostrar en la parte superior del panel (cuando esté colapsado)
-    // final TramoViajeMostrable tramoActual = tramos[tramoActualIndex];
+    // Determinar información del tramo actual para mostrar en la parte superior del panel (cuando esté colapsado)
+    final TramoViajeMostrable tramoActual = (tramoActualIndex >= 0 && tramoActualIndex < tramos.length) 
+                                            ? tramos[tramoActualIndex] 
+                                            : tramos.first; // Fallback al primer tramo si el índice es inválido
 
     return Positioned(
       bottom: 0,
@@ -402,12 +545,12 @@ class _ActiveTripInstructionsPanel extends StatelessWidget {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      // TODO: Mostrar información resumida del tramo actual aquí
-                      // Ejemplo: Text(tramoActual.descripcion, style: Theme.of(context).textTheme.titleMedium),
-                      Text(
-                        "Instrucciones del Viaje",
-                        style: Theme.of(context).textTheme.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.bold),
+                      Expanded(
+                        child: Text(
+                          tramoActual.descripcion, // Mostrar descripción del tramo actual
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                       TextButton.icon(
                         icon: const Icon(Icons.close),
@@ -438,11 +581,11 @@ class _ActiveTripInstructionsPanel extends StatelessWidget {
                     itemCount: tramos.length,
                     itemBuilder: (context, index) {
                       final tramo = tramos[index];
-                      // bool esTramoActual = index == tramoActualIndex; // Descomentar
+                      bool esTramoActual = index == tramoActualIndex;
                       return _TramoInstruccionListItem(
                         tramo: tramo,
-                        // esTramoActual: esTramoActual, // Descomentar
-                        // onTap: () => onSeleccionarTramo(index), // Descomentar
+                        esTramoActual: esTramoActual,
+                        // onTap: () => onSeleccionarTramo(index), // TODO: Conectar onTap
                       );
                     },
                     separatorBuilder: (context, index) => const Divider(),
@@ -460,13 +603,13 @@ class _ActiveTripInstructionsPanel extends StatelessWidget {
 // --- Widget para cada ítem de instrucción en la lista ---
 class _TramoInstruccionListItem extends StatelessWidget {
   final TramoViajeMostrable tramo;
-  // final bool esTramoActual; // Descomentar
-  // final VoidCallback? onTap; // Descomentar
+  final bool esTramoActual;
+  final VoidCallback? onTap; // TODO: Conectar onTap si es necesario
 
   const _TramoInstruccionListItem({
     required this.tramo,
-    // required this.esTramoActual, // Descomentar
-    // this.onTap, // Descomentar
+    required this.esTramoActual,
+    this.onTap,
   });
 
   IconData _getIconForTramo(TipoTramoViaje tipo) {
@@ -493,19 +636,16 @@ class _TramoInstruccionListItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
-    // bool esTramoActual = index == tramoActualIndex; // TODO: Cuando esté disponible
-    // Color tileColor = esTramoActual ? colorScheme.primary.withOpacity(0.1) : Colors.transparent;
-    // Color iconColor = esTramoActual ? colorScheme.primary : colorScheme.onSurfaceVariant;
-    // FontWeight titleFontWeight = esTramoActual ? FontWeight.bold : FontWeight.w500;
-    Color iconColor = colorScheme.secondary; // Color por defecto para íconos
-    FontWeight titleFontWeight = FontWeight.w500;
-    Color tileColor = Colors.transparent;
+    Color tileColor = esTramoActual ? colorScheme.primary.withOpacity(0.1) : Colors.transparent;
+    Color iconColor = esTramoActual ? colorScheme.primary : colorScheme.secondary;
+    FontWeight titleFontWeight = esTramoActual ? FontWeight.bold : FontWeight.w500;
+
 
     return InkWell(
-      // onTap: onTap, // Descomentar cuando la lógica de selección de tramo esté
-      //splashColor: colorScheme.primary.withOpacity(0.2),
+      onTap: onTap,
+      splashColor: colorScheme.primary.withOpacity(0.2),
       child: Container(
-        // color: tileColor, // Descomentar para resaltar tramo actual
+        color: tileColor, // Resaltar tramo actual
         padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,

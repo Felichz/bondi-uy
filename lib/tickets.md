@@ -108,52 +108,77 @@ Cada ticket incluirá referencias a las partes relevantes del código antiguo (`
   - `lib/ui/widgets/trip_instruction_list_item.dart` (Nuevo o adaptar)
   - `lib/backend/contrato_ui/app_ui_state.dart` (para `datosFaseViajeActivo`)
   - Interfaz `IAppLogic` (para `detenerSeguimientoActivo`, manejo de pasos de instrucciones)
-- **Estado:** `INICIADO` (según resumen previo, pendiente de revisión detallada)
+- **Estado:** `EN PROGRESO`
 - **Sub-tareas:**
   - **Mapa en `ActiveTripView`:** `EN PROGRESO`
-    - Integrar `MapboxMap`.
-    - `_displayActiveRoute()`: dibujar ruta confirmada (`activeTripState.tramosDelViaje`) con estilos similares a previsualización y zoom.
-    - `_clearActiveRoute()`.
+    - Integrar `MapboxMap`: `COMPLETADO`.
+    - `_displayActiveRoute()`: dibujar ruta confirmada (`activeTripState.tramosDelViaje`) con estilos similares a previsualización: `EN PROGRESO` (dibujo básico implementado).
+    - `_clearActiveRoute()`: `COMPLETADO`.
+    - **Gestión de cámara y zoom por `ActiveTripView`:** `EN PROGRESO` (Adaptar a la nueva arquitectura UI-driven)
+        - Al iniciar el viaje (transición a `datosFaseViajeActivo`), `ActiveTripView` decidirá hacer zoom para mostrar la ruta completa y la ubicación del usuario, basándose en los datos de `AppUiState`.
+        - `ActiveTripView` gestionará la opción de seguir la ubicación del usuario, actualizando la cámara del mapa según sea necesario. (`PENDIENTE`)
+        - `ActiveTripView` ajustará el zoom/vista a medida que el usuario avanza (ej. al acercarse a la siguiente instrucción/parada), basándose en los datos de `AppUiState.datosFaseViajeActivo`. (`PENDIENTE`)
+        - La interacción manual del usuario con el mapa en `ActiveTripView` pausará/modificará el comportamiento de seguimiento o zoom automático local.
   - **Panel de Instrucciones (`_ActiveTripInstructionsPanel`):** `EN PROGRESO`
-    - Implementar como `DraggableScrollableSheet`.
-    - Usar `_TramoInstruccionListItem` para mostrar cada tramo (ícono, descripción, duración, distancia, detalles línea bus).
-    - Botón "Finalizar" llama a `appLogic.detenerSeguimientoActivo()`.
-    - **Pendiente:** Integración `indiceTramoActual`, resaltado tramo actual, navegación entre tramos, visualización seguimiento bus.
+    - Implementar como `DraggableScrollableSheet`: `COMPLETADO`.
+    - Usar `_TramoInstruccionListItem` para mostrar cada tramo (ícono, descripción, duración, distancia, detalles línea bus): `EN PROGRESO` (listado básico y resaltado visual del tramo actual implementado, pero `indiceTramoActual` es un placeholder).
+    - Botón "Finalizar" llama a `appLogic.detenerSeguimientoActivo()`: `COMPLETADO`.
+    - **Pendiente:**
+        - Integración `indiceTramoActual`: `BLOQUEADO` (requiere actualización de `EstadoFaseViajeActivo` en `app_ui_state.dart` para proveer el índice real).
+        - Resaltado tramo actual (en el mapa, ej. con `_highlightCurrentLeg`): `PENDIENTE`.
+        - Navegación entre tramos (botones siguiente/anterior, selección directa): `PENDIENTE`.
+        - Visualización seguimiento bus en tiempo real (si aplica): `PENDIENTE`.
 
 ---
 
-### Ticket 5: Manejo de Interacciones del Mapa y Zoom
+### Ticket 5: Manejo de Interacciones del Mapa y Zoom (`REFACTORIZADO`)
 
-**Objetivo:** Conectar las interacciones del usuario con el mapa (mover, zoom) con la capa de lógica y asegurar que la UI del mapa reaccione correctamente a los objetivos de zoom definidos por el estado.
+**Descripción:** La lógica de zoom automático y la gestión de interacciones manuales con el mapa ahora residen completamente en la capa de UI. Cada vista (`InitialPhaseView`, `RouteOptionsView`, `ActiveTripView`) es responsable de observar los cambios relevantes en `AppUiState` (ej: selección de origen/destino, disponibilidad de opciones de ruta, inicio de viaje) y decidir localmente cómo y cuándo ajustar el zoom del mapa. La capa de lógica (`AppLogicNotifier`) ya no dicta el comportamiento del zoom.
 
-**Estado relevante en `AppUiState`:** `permitirZoomAutomaticoMapa`, `userMapInteraction` (conceptual, a implementar su efecto en la lógica), `currentZoomTarget` (conceptual).
+**Estado Actual:** `EN PROGRESO (Backend Completo, UI Mayormente Implementada)`
 
-**Referencia código antiguo:**
+**Avances Backend (Realizados):**
+- **`app_ui_state.dart`**:
+    - Eliminado `bool permitirZoomAutomaticoMapa` de `AppUiState`.
+    - Eliminado `ZoomTarget? zoomTargetActual` de `AppUiState`.
+    - Eliminada la clase `ZoomTarget` y el enum `ZoomTargetType`.
+    - Actualizado constructor y `copyWith` en `AppUiState` para reflejar estas eliminaciones.
+- **`app_logic_provider.dart` (`AppLogicNotifier`) e `IAppLogic`**:
+    - Eliminadas todas las asignaciones a `permitirZoomAutomaticoMapa` y `zoomTargetActual`.
+    - Eliminado el método `setPermitirZoomAutomaticoMapa(bool permitir)` de `IAppLogic` y su implementación en `AppLogicNotifier`.
+        - Si `true`: `permitirZoomAutomaticoMapa = true`.
 
-- `lib/controllers/map_interaction_controller.dart` (manejo de `onMapCameraChangeListener`, `onMapIdleListener`, `handleMapTapEvent`).
-- `lib/controllers/map_zoom_controller.dart` (manejo de `handleZoomTarget`, `_performZoom`).
-- `lib/services/mapbox_service.dart` (métodos de bajo nivel para interactuar con la API de Mapbox, como `flyTo`, `zoomToFitPositions`, `zoomToRouteBounds`, `zoomToLeg`).
+**Estado Anterior de la UI (Pre-Refactorización - Conservado como referencia histórica):**
+- **`InitialPhaseView.dart`**:
+    - Implementado `_performAutomaticZoom(ZoomTarget target)` para manejar `ZoomTargetType.PARADA_ESPECIFICA` y `ZoomTargetType.PUNTOS_ORIGEN_DESTINO`.
+    - Añadido listener en `initState` para `zoomTargetActual` que, si `permitirZoomAutomaticoMapa` es true, llama a `_performAutomaticZoom`.
+    - `_onMapIdleListener` existente ya gestiona la desactivación de `permitirZoomAutomaticoMapa` en interacción manual.
+- **`RouteOptionsView.dart`**:
+    - Lógica de zoom desacoplada de `_displayRoutePreview()`.
+    - Implementado `_performAutomaticZoom(ZoomTarget target)` para manejar `ZoomTargetType.RUTA_COMPLETA` y `ZoomTargetType.BOUNDS`, usando `cameraForBounds`.
+    - Añadido listener en `initState` para `zoomTargetActual` que llama a `_performAutomaticZoom`.
+    - Implementado `_handleMapIdle` (conectado a `onCameraIdleListener` del `MapWidget`) para gestionar interacciones manuales y llamar a `setPermitirZoomAutomaticoMapa(false)`.
+- **`ActiveTripView.dart`**:
+    - Implementado `_performAutomaticZoom(ZoomTarget target)` para manejar `ZoomTargetType.BOUNDS` (para la ruta completa al inicio) y `ZoomTargetType.UBICACION_USUARIO`.
+    - Añadido listener en `initState` para `zoomTargetActual` que, si `permitirZoomAutomaticoMapa` es true, llama a `_performAutomaticZoom`.
+    - Implementado `_handleMapIdle` (conectado a `addOnMapIdleListener`) para gestionar interacciones manuales y llamar a `setPermitirZoomAutomaticoMapa(false)`.
 
-**Detalles:**
+**Próximos Pasos (UI - Post-Refactorización):**
+- **Revisión y Adaptación de Vistas:**
+    - Cada vista (`InitialPhaseView`, `RouteOptionsView`, `ActiveTripView`) debe implementar su propia lógica para observar los cambios en `AppUiState` y determinar si se requiere un ajuste de zoom (ej: al seleccionar origen/destino, al recibir nuevas opciones de ruta, al iniciar un viaje).
+    - La lógica para calcular los `LatLngBounds` o el centro/zoom específico para el mapa residirá dentro de cada vista o en helpers dedicados a la UI.
+    - La interacción manual del usuario con el mapa en una vista específica pausará o modificará el comportamiento de zoom automático local de esa vista.
+- **Eliminar Dependencias de `ZoomTarget` y `permitirZoomAutomaticoMapa`:**
+    - Remover cualquier uso restante de `ZoomTarget`, `ZoomTargetType`, y la lógica que dependía de `permitirZoomAutomaticoMapa` del `AppUiState` en todas las vistas.
+- **Testing:**
+    - Probar todos los escenarios de zoom automático (selección de O/D, previsualización de ruta, selección de parada).
+    - Probar que el zoom manual interrumpe correctamente el zoom automático.
+    - Asegurar transiciones suaves.
 
-- Configurar listeners en el widget del mapa para `onCameraChange`, `onIdle`, `onMapTap`, `onMapLongPress`.
-- Cuando la cámara cambie (`onCameraChange`), si no es un cambio programático (la vieja lógica de `userMapInteraction` es útil aquí), llamar a `usuarioMovioMapaManualente(nuevoCentro, nuevoZoom)` en `IAppLogic`.
-- Cuando el mapa esté inactivo (`onIdle`), la vieja lógica de `MapInteractionController` (`mapInteractionEnded`) puede inspirar cómo la UI avisa a la lógica que la interacción manual terminó.
-- Cuando se haga tap en el mapa (`onMapTap`), llamar a `usuarioHizoTapEnMapa(coordenadaTocada)` en `IAppLogic`. Si el tap es en una parada, `IAppLogic` se encargará de actualizar el estado (`infoParadaConsultada`).
-- Observar `currentZoomTarget` en `AppUiState`. Cuando cambie, usar la lógica (probablemente extraída de `MapZoomController` y usando métodos de `MapboxService`) para realizar la transición de cámara (`flyTo`, `zoomToFitBounds`, etc.) según el `ZoomTargetType` y los datos relevantes del estado (ej. `puntoOrigenParaBusqueda`, `puntoDestinoParaBusqueda`, `datosFaseOpcionesRuta.opcionesDeRuta` o `datosFaseViajeActivo.tramosDelViaje` dependiendo del target). Asegurarse de que los zooms automáticos no interrumpan si `userMapInteraction` indica que el usuario está moviendo el mapa manualmente.
-
-**Estado:** `EN PROGRESO`.
-
-- Los listeners del mapa en `InitialPhaseView` (`onTapListener`, `onMapIdleListener`) ya están configurados para notificar a `IAppLogic` sobre las interacciones del usuario.
-- Se añadió `permitirZoomAutomaticoMapa` a `AppUiState` y `setPermitirZoomAutomaticoMapa(bool permitir)` a `IAppLogic`.
-- **Avances en la UI:**
-  - **Completado:** La lógica en `InitialPhaseView` (`_zoomToFitPoints`) ahora respeta `appUiState.permitirZoomAutomaticoMapa`.
-  - **Completado:** `_onMapIdleListener` en `InitialPhaseView` ahora llama a `appLogic.setPermitirZoomAutomaticoMapa(false)` después de que el usuario mueve el mapa.
-- **Pendiente (Lógica de Aplicación - `AppLogic`):**
-  - Implementar la gestión de `permitirZoomAutomaticoMapa`:
-    - Ponerlo a `false` cuando `usuarioMovioMapaManualente` es llamado (esto ya se hace desde la UI indirectamente, pero `AppLogic` debe manejar el estado).
-    - Ponerlo a `true` después de acciones como `seleccionarSugerenciaOrigen`, `seleccionarSugerenciaDestino`, o cuando se inicia una nueva búsqueda de ruta, para permitir que el mapa se centre en los nuevos puntos.
-  - Implementar cómo la UI reacciona a los objetivos de zoom (`currentZoomTarget` conceptual) provenientes del `AppUiState`, más allá del zoom inicial a origen/destino.
+**Consideraciones Adicionales:**
+- Cada vista que contenga un mapa probablemente gestionará su propio `MapController`.
+- La lógica para determinar los parámetros de cámara (bounds, centro/zoom) se basará en los datos del `AppUiState` y el contexto de la vista actual.
+- **Referencia código antiguo para UI:** Aunque `MapZoomController` y la lógica de zoom en `MapboxService` ya no se usarán directamente debido al cambio de responsabilidades, los algoritmos de cálculo de bounds o ajustes de cámara podrían seguir siendo referencias útiles para implementar en la capa de UI.
 
 ---
 
