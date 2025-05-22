@@ -115,6 +115,7 @@ Cada ticket incluirá referencias a las partes relevantes del código antiguo (`
     - `_displayActiveRoute()`: dibujar ruta confirmada (`activeTripState.tramosDelViaje`) con estilos similares a previsualización: `EN PROGRESO` (dibujo básico implementado).
     - `_clearActiveRoute()`: `COMPLETADO`.
     - **Gestión de cámara y zoom por `ActiveTripView`:** `EN PROGRESO` (Adaptar a la nueva arquitectura UI-driven)
+      - Resueltos errores de compilación en `ActiveTripView` relacionados con `CoordinateBounds` y `cameraForCoordinateBounds` del SDK de Mapbox v2.8.0.
         - Al iniciar el viaje (transición a `datosFaseViajeActivo`), `ActiveTripView` decidirá hacer zoom para mostrar la ruta completa y la ubicación del usuario, basándose en los datos de `AppUiState`.
         - `ActiveTripView` gestionará la opción de seguir la ubicación del usuario, actualizando la cámara del mapa según sea necesario. (`PENDIENTE`)
         - `ActiveTripView` ajustará el zoom/vista a medida que el usuario avanza (ej. al acercarse a la siguiente instrucción/parada), basándose en los datos de `AppUiState.datosFaseViajeActivo`. (`PENDIENTE`)
@@ -166,8 +167,10 @@ Cada ticket incluirá referencias a las partes relevantes del código antiguo (`
 **Próximos Pasos (UI - Post-Refactorización):**
 - **Revisión y Adaptación de Vistas:**
     - Cada vista (`InitialPhaseView`, `RouteOptionsView`, `ActiveTripView`) debe implementar su propia lógica para observar los cambios en `AppUiState` y determinar si se requiere un ajuste de zoom (ej: al seleccionar origen/destino, al recibir nuevas opciones de ruta, al iniciar un viaje).
+      - `ActiveTripView` ha sido actualizada para usar los métodos correctos del SDK Mapbox v2.8.0 (`cameraForCoordinateBounds`, `CoordinateBounds` con `infiniteBounds`) para el cálculo de opciones de cámara.
     - La lógica para calcular los `LatLngBounds` o el centro/zoom específico para el mapa residirá dentro de cada vista o en helpers dedicados a la UI.
     - La interacción manual del usuario con el mapa en una vista específica pausará o modificará el comportamiento de zoom automático local de esa vista.
+      - El manejo de eventos de inactividad del mapa (`onMapIdleListener`) ha sido refactorizado en `RouteOptionsView` y `ActiveTripView` para alinearse con el SDK v2.8.0, utilizando el parámetro `MapWidget.onMapIdleListener`.
 - **Eliminar Dependencias de `ZoomTarget` y `permitirZoomAutomaticoMapa`:**
     - Remover cualquier uso restante de `ZoomTarget`, `ZoomTargetType`, y la lógica que dependía de `permitirZoomAutomaticoMapa` del `AppUiState` en todas las vistas.
 - **Testing:**

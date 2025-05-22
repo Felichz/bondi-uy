@@ -15,10 +15,16 @@ class ActiveTripView extends ConsumerStatefulWidget {
 }
 
 class _ActiveTripViewState extends ConsumerState<ActiveTripView> {
-  bool _isAutoZoomEnabled = true;
+  int _currentLegIndex = 0; // Manages the currently selected/highlighted instruction index
+  bool _isAutoZoomEnabled = true; // For initial zoom to route bounds
+  bool _followUserLocation = true; // To toggle user location tracking
   MapboxMap? mapboxMap;
   List<String> _activeRouteSourceIds = [];
   List<String> _activeRouteLayerIds = [];
+
+  // Constantes para IDs de la ubicación del usuario
+  static const String USER_LOCATION_SOURCE_ID = 'user-location-source';
+  static const String USER_LOCATION_LAYER_ID = 'user-location-layer';
 
   // Constantes para IDs de capas y fuentes de la ruta activa
   static const String ACTIVE_WALK_SOURCE_PREFIX = 'active-walk-source-';
@@ -28,6 +34,79 @@ class _ActiveTripViewState extends ConsumerState<ActiveTripView> {
   static const String ACTIVE_WAIT_SOURCE_PREFIX = 'active-wait-source-';
   static const String ACTIVE_WAIT_LAYER_PREFIX = 'active-wait-layer-';
   // TODO: Podríamos necesitar íconos para inicio/fin de tramos o paradas específicas del viaje activo.
+  // Properties for route lines
+  static const Map<String, dynamic> _WALK_LINE_PROPERTIES = {
+    'line-color': '#8888FF', // Light blue-ish grey for walking
+    'line-width': 3.0,
+    'line-dasharray': [2, 2],
+  };
+  static const Map<String, dynamic> _BUS_LINE_PROPERTIES = {
+    'line-color': '#FF0000', // Primary color (e.g., red) for bus
+    'line-width': 5.0,
+  };
+  static const Map<String, dynamic> _WAIT_CIRCLE_PROPERTIES = {
+    'circle-color': '#FFA500', // Orange for waiting
+    'circle-radius': 8.0,
+    'circle-stroke-width': 2.0,
+    'circle-stroke-color': '#FFFFFF',
+  };
+
+  static const Map<String, dynamic> _HIGHLIGHTED_WALK_LINE_PROPERTIES = {
+    'line-color': '#5050D0', // Darker blue for highlighted walk
+    'line-width': 5.0,
+    'line-dasharray': [1, 0], // Solid or very short dash
+  };
+  static const Map<String, dynamic> _HIGHLIGHTED_BUS_LINE_PROPERTIES = {
+    'line-color': '#CC0000', // Darker/brighter red for highlighted bus
+    'line-width': 7.0,
+  };
+  static const Map<String, dynamic> _HIGHLIGHTED_WAIT_CIRCLE_PROPERTIES = {
+    'circle-color': '#FF8C00', // Darker orange for highlighted waiting
+    'circle-radius': 10.0,
+    'circle-stroke-width': 2.5,
+    'circle-stroke-color': '#FFFFFF',
+  };
+
+Future<void> _highlightCurrentLegOnMap(int legIndex) async {
+    if (mapboxMap == null) return;
+    final activeTripState = ref.read(appUiStateProvider).datosFaseViajeActivo;
+    if (activeTripState == null) return;
+
+    for (int i = 0; i < activeTripState.tramosDelViaje.length; i++) {
+      final tramo = activeTripState.tramosDelViaje[i];
+      bool isCurrent = i == legIndex;
+      String layerId;
+      Map<String, dynamic> properties;
+
+      switch (tramo.tipo) {
+        case TipoTramoViaje.CAMINAR:
+          layerId = '$ACTIVE_WALK_LAYER_PREFIX$i';
+          properties = isCurrent ? _HIGHLIGHTED_WALK_LINE_PROPERTIES : _WALK_LINE_PROPERTIES;
+          break;
+        case TipoTramoViaje.VIAJE_EN_BUS:
+          layerId = '$ACTIVE_BUS_LAYER_PREFIX$i';
+          properties = isCurrent ? _HIGHLIGHTED_BUS_LINE_PROPERTIES : _BUS_LINE_PROPERTIES;
+          break;
+        case TipoTramoViaje.ESPERAR_BUS:
+          layerId = '$ACTIVE_WAIT_LAYER_PREFIX$i';
+          properties = isCurrent ? _HIGHLIGHTED_WAIT_CIRCLE_PROPERTIES : _WAIT_CIRCLE_PROPERTIES;
+          break;
+        default:
+          continue; // Skip unknown types
+      }
+      try {
+        if (await mapboxMap?.style.styleLayerExists(layerId) ?? false) {
+          // Iterate over properties and update them one by one
+          for (var entry in properties.entries) {
+            await mapboxMap?.style.setStyleLayerProperty(layerId, entry.key, entry.value);
+          }
+        }
+      } catch (e) {
+        print('Error setting layer properties for $layerId: $e');
+      }
+    }
+  }
+
 
   @override
   void initState() {
@@ -42,9 +121,91 @@ class _ActiveTripViewState extends ConsumerState<ActiveTripView> {
   }
 
   Future<void> _onStyleLoaded() async {
-    if (mapboxMap == null) return;
-    // TODO: Cargar íconos específicos para esta vista si son necesarios (ej. marcador de bus en tiempo real).
+    if (!mounted) return;
+    print("[_ActiveTripViewState] Map style loaded.");
+    await _displayActiveRouteAndHighlightInitialLeg();
 
+    // Add user location marker if available on style load
+    final initialUserLocation = ref.read(appUiStateProvider).datosFaseViajeActivo?.ubicacionActualUsuario;
+    if (initialUserLocation != null) {
+      await _updateUserLocationOnMap(initialUserLocation);
+    }
+  }
+
+  // --- Métodos para la ubicación del usuario ---
+  Future<void> _updateUserLocationOnMap(Coordenada? userLocation) async {
+    if (mapboxMap == null || !mounted) return;
+
+    if (userLocation == null) {
+      // Remove user location layer if it exists and location is null
+      if (await mapboxMap!.style.styleLayerExists(USER_LOCATION_LAYER_ID)) {
+        await mapboxMap!.style.removeStyleLayer(USER_LOCATION_LAYER_ID);
+      }
+      if (await mapboxMap!.style.styleSourceExists(USER_LOCATION_SOURCE_ID)) {
+        await mapboxMap!.style.removeStyleSource(USER_LOCATION_SOURCE_ID);
+      }
+      return;
+    }
+
+    final point = Point(coordinates: Position(userLocation.longitud, userLocation.latitud));
+    final geoJsonSource = {
+      'type': 'FeatureCollection',
+      'features': [
+        {
+          'type': 'Feature',
+          'geometry': point.toJson(),
+          'properties': {} // Add any properties if needed
+        }
+      ]
+    };
+
+    try {
+      // Remove existing layer and source first, then add new ones.
+      if (await mapboxMap!.style.styleLayerExists(USER_LOCATION_LAYER_ID)) {
+        await mapboxMap!.style.removeStyleLayer(USER_LOCATION_LAYER_ID);
+      }
+      if (await mapboxMap!.style.styleSourceExists(USER_LOCATION_SOURCE_ID)) {
+        await mapboxMap!.style.removeStyleSource(USER_LOCATION_SOURCE_ID);
+      }
+
+      // Add the new source with updated data
+      await mapboxMap!.style.addSource(GeoJsonSource(id: USER_LOCATION_SOURCE_ID, data: jsonEncode(geoJsonSource)));
+
+      // Add the new layer
+      await mapboxMap!.style.addLayer(
+        CircleLayer(
+          id: USER_LOCATION_LAYER_ID,
+          sourceId: USER_LOCATION_SOURCE_ID,
+          circleColor: Colors.blue.value,
+          circleRadius: 8.0,
+          circleStrokeWidth: 2.0,
+          circleStrokeColor: Colors.white.value,
+        ),
+      );
+    } catch (e) {
+      print("[_ActiveTripViewState] Error updating user location on map: $e");
+    }
+
+    if (_followUserLocation) {
+      _centerMapOnUserLocation(userLocation);
+    }
+  }
+
+  void _centerMapOnUserLocation(Coordenada userLocation) {
+    if (mapboxMap == null || !mounted) return;
+    mapboxMap!.flyTo(
+      CameraOptions(
+        center: Point(coordinates: Position(userLocation.longitud, userLocation.latitud)),
+        zoom: 16.0, 
+        pitch: 0.0,
+        bearing: 0.0,
+      ),
+      MapAnimationOptions(duration: 900, startDelay: 0),
+    );
+  }
+
+  Future<void> _displayActiveRouteAndHighlightInitialLeg() async {
+    if (mapboxMap == null || !mounted) return;
     final activeTripState = ref.read(appUiStateProvider).datosFaseViajeActivo;
     if (activeTripState != null && activeTripState.tramosDelViaje.isNotEmpty) {
       List<Coordenada> todasLasCoordenadasDeLaRuta = activeTripState.tramosDelViaje
@@ -53,8 +214,9 @@ class _ActiveTripViewState extends ConsumerState<ActiveTripView> {
 
       await _displayActiveRoute(
         activeTripState.tramosDelViaje,
-        0, // TODO: Usar el índice del tramo actual real desde activeTripState.indiceTramoActual
+        _currentLegIndex, 
       );
+      await _highlightCurrentLegOnMap(_currentLegIndex); // Highlight initial leg
 
       if (_isAutoZoomEnabled && todasLasCoordenadasDeLaRuta.isNotEmpty) {
         // Realizar el zoom inicial a los límites de la ruta mostrada.
@@ -95,7 +257,9 @@ class _ActiveTripViewState extends ConsumerState<ActiveTripView> {
       String sourceId = '';
       String layerId = '';
       Map<String, dynamic> geoJsonFeature;
-      // bool esTramoActual = i == tramoActualIndex; // TODO: Usar para resaltar
+      // Highlighting is now handled by _highlightCurrentLegOnMap, so direct style changes here are less critical
+      // but we keep the original properties for initial drawing.
+      // bool esTramoActual = i == tramoActualIndex; // This variable is not directly used for styling here anymore.
 
       switch (tramo.tipo) {
         case TipoTramoViaje.CAMINAR:
@@ -120,13 +284,11 @@ class _ActiveTripViewState extends ConsumerState<ActiveTripView> {
               LineLayer(
                 id: layerId,
                 sourceId: sourceId,
-                lineColor:
-                    Colors
-                        .blueGrey
-                        .shade300
-                        .value, // Color más tenue para no actual
-                lineWidth: 3.0,
-                lineDasharray: [2, 2],
+                lineColor: _parseColor(_WALK_LINE_PROPERTIES['line-color'] as String?),
+                lineWidth: (_WALK_LINE_PROPERTIES['line-width'] as num?)?.toDouble(),
+                lineDasharray: (_WALK_LINE_PROPERTIES['line-dasharray'] as List<dynamic>?)
+                    ?.map((e) => (e as num).toDouble())
+                    .toList(),
               ),
             );
             _activeRouteSourceIds.add(sourceId);
@@ -155,11 +317,8 @@ class _ActiveTripViewState extends ConsumerState<ActiveTripView> {
               LineLayer(
                 id: layerId,
                 sourceId: sourceId,
-                lineColor:
-                    Theme.of(
-                      context,
-                    ).colorScheme.secondary.value, // Usar color secundario
-                lineWidth: 4.0,
+                lineColor: _parseColor(_BUS_LINE_PROPERTIES['line-color'] as String?),
+                lineWidth: (_BUS_LINE_PROPERTIES['line-width'] as num?)?.toDouble(),
               ),
             );
             _activeRouteSourceIds.add(sourceId);
@@ -187,10 +346,10 @@ class _ActiveTripViewState extends ConsumerState<ActiveTripView> {
               CircleLayer(
                 id: layerId,
                 sourceId: sourceId,
-                circleColor: Colors.orangeAccent.value,
-                circleRadius: 6.0,
-                circleStrokeWidth: 1.0,
-                circleStrokeColor: Colors.white.value,
+                circleColor: _parseColor(_WAIT_CIRCLE_PROPERTIES['circle-color'] as String?),
+                circleRadius: (_WAIT_CIRCLE_PROPERTIES['circle-radius'] as num?)?.toDouble(),
+                circleStrokeWidth: (_WAIT_CIRCLE_PROPERTIES['circle-stroke-width'] as num?)?.toDouble(),
+                circleStrokeColor: _parseColor(_WAIT_CIRCLE_PROPERTIES['circle-stroke-color'] as String?),
               ),
             );
             _activeRouteSourceIds.add(sourceId);
@@ -211,7 +370,7 @@ class _ActiveTripViewState extends ConsumerState<ActiveTripView> {
           MbxEdgeInsets(
             top: 80.0,
             left: 40.0,
-            bottom: (MediaQuery.of(context).size.height * 0.35),
+            bottom: (MediaQuery.of(context).size.height * 0.35), // Ajustar padding para panel de instrucciones
             right: 40.0,
           ), // Ajustar padding para panel de instrucciones
           null,
@@ -255,36 +414,23 @@ class _ActiveTripViewState extends ConsumerState<ActiveTripView> {
   // TODO: Función para resaltar el tramo actual en el mapa.
   // Future<void> _highlightCurrentLeg(int tramoIndex) async { ... }
 
+  int? _parseColor(String? hexColor) {
+    if (hexColor == null) return null;
+    final buffer = StringBuffer();
+    if (hexColor.length == 6 || hexColor.length == 7) buffer.write('ff'); // Add alpha if missing
+    buffer.write(hexColor.replaceFirst('#', ''));
+    return int.tryParse(buffer.toString(), radix: 16);
+  }
+
   void _handleMapIdle(MapIdleEventData data) {
-    if (mapboxMap == null) return;
-    // No need to read appLogic for this specific action anymore.
-    // final appLogic = ref.read(appLogicProvider.notifier);
-
-    mapboxMap!.getCameraState().then((cameraState) {
-      final center = Coordenada(
-        latitud: cameraState.center.coordinates.lat.toDouble(),
-        longitud: cameraState.center.coordinates.lng.toDouble(),
-      );
-      final zoom = cameraState.zoom.toDouble();
-      print(
-        "[_ActiveTripViewState] Map idle. Potentially by user. Center: $center, Zoom: $zoom",
-      );
-      // Inform appLogic about manual map movement for other potential logic (e.g. reloading markers based on viewport)
-      ref.read(appLogicProvider).usuarioMovioMapaManualente(center, zoom);
-
-      // When the user interacts manually with the map, disable automatic zoom locally.
-      if (_isAutoZoomEnabled) {
-        setState(() {
-          _isAutoZoomEnabled = false;
-          print(
-              "[_ActiveTripViewState] Automatic zoom disabled due to manual map interaction (idle).");
-        });
-      }
-    }).catchError((e) {
-      print(
-        "[_ActiveTripViewState] Error getting camera state on idle: $e",
-      );
-    });
+    // Cuando el usuario interactúa manualmente con el mapa, desactivamos el auto-zoom inicial y el seguimiento de usuario.
+    if (mounted && (_isAutoZoomEnabled || _followUserLocation)) {
+      setState(() {
+        _isAutoZoomEnabled = false;
+        _followUserLocation = false;
+        print("[_ActiveTripViewState] Map idle detected, _isAutoZoomEnabled and _followUserLocation set to false.");
+      });
+    }
   }
 
   // Método refactorizado para hacer zoom a un conjunto de coordenadas (límites).
@@ -379,6 +525,17 @@ class _ActiveTripViewState extends ConsumerState<ActiveTripView> {
   @override
   Widget build(BuildContext context) {
     final appUiState = ref.watch(appUiStateProvider);
+    final activeTripData = appUiState.datosFaseViajeActivo;
+
+    // Actualizar la ubicación del usuario en el mapa cuando cambie en el estado
+    // Usamos addPostFrameCallback para asegurar que se ejecute después de que el build complete
+    // y el mapboxMap esté potencialmente listo o actualizado.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && activeTripData != null) {
+        _updateUserLocationOnMap(activeTripData.ubicacionActualUsuario);
+      }
+    });
+
     final appLogic = ref.read(appLogicProvider);
     final activeTripState = appUiState.datosFaseViajeActivo;
 
@@ -399,131 +556,114 @@ class _ActiveTripViewState extends ConsumerState<ActiveTripView> {
         activeTripState.opcionDeRutaSeleccionada;
     final List<TramoViajeMostrable> tramosDelViaje =
         activeTripState.tramosDelViaje;
-    // TODO: Obtener el índice del tramo actual (la lógica debería proveerlo o la UI derivarlo).
-    // final int tramoActualIndex = activeTripState.indiceTramoActual ?? 0;
-    // FIXME: Usar el índice del tramo actual real desde activeTripState.indiceTramoActual cuando esté disponible.
-    final int tramoActualIndex = activeTripState.tramosDelViaje.isNotEmpty ? 0 : 0; // Placeholder
-
-    // TODO: Implementar listeners para cambios en posicionActualBusReal, etc.
-    // ref.listen<Coordenada?>(appUiStateProvider.select((s) => s.datosFaseViajeActivo?.posicionActualBusReal), (prev, next) {
-    //   if (next != null) { // _updateRealTimeBusPosition(next); }
-    // });
-
-    // TODO: Conectar este listener cuando activeTripState.indiceTramoActual esté disponible y la lógica lo actualice.
-    // ref.listen<int?>(appUiStateProvider.select((s) => s.datosFaseViajeActivo?.indiceTramoActual), (prev, next) {
-    //    if (next != null) { // _highlightCurrentLeg(next); }
-    // });
 
     return Scaffold(
-      // appBar: AppBar(
-      //   title: Text('Viaje: ${viajeConfirmado.idOpcion}'), // O un título más descriptivo
-      //   leading: IconButton(
-      //     icon: const Icon(Icons.close), // O un "Finalizar Viaje"
-      //     onPressed: () => appLogic.detenerSeguimientoActivo(),
-      //   ),
-      // ),
+      // ...
       body: Stack(
         children: [
           MapWidget(
             onMapIdleListener: _handleMapIdle,
             key: const ValueKey("active_trip_map"),
             cameraOptions: CameraOptions(
-              // TODO: Establecer cámara inicial adecuada (zoom a la ruta)
               center: Point(
-                coordinates: Position(-56.164532, -34.901112),
-              ), // Montevideo default
+                coordinates: Position(-56.164532, -34.901112), // Montevideo default
+              ),
               zoom: 12.0,
             ),
             onMapCreated: _onMapCreated,
-            onStyleLoadedListener: (_) => _onStyleLoaded(), // Añadido listener
+            onStyleLoadedListener: (_) async => await _onStyleLoaded(), // Corrected to call the new _onStyleLoaded
           ),
+          // ...
           // Panel de Instrucciones Mejorado
           _ActiveTripInstructionsPanel(
-            tramos: tramosDelViaje,
-            tramoActualIndex: tramoActualIndex, // Pasando el índice (actualmente placeholder)
-            onFinalizarViaje: () => appLogic.detenerSeguimientoActivo(),
-            // TODO: Conectar acciones de navegación de tramos
-            // onSeleccionarTramo: (index) => appLogic.usuarioSeleccionoPasoInstrucciones(index),
-            // onSiguienteTramo: () => appLogic.navegarASiguientePasoInstrucciones(),
-            // onAnteriorTramo: () => appLogic.navegarAAnteriorPasoInstrucciones(),
+            activeTripState: activeTripState,
+            appLogic: appLogic,
+            currentLegIndex: _currentLegIndex,
+            onLegSelected: (newIndex) {
+              setState(() {
+                _currentLegIndex = newIndex;
+                _highlightCurrentLegOnMap(newIndex);
+                // Si el seguimiento de usuario está activo, podríamos querer desactivarlo al seleccionar manualmente un tramo
+                // o ajustar el zoom al tramo seleccionado.
+                // if (_followUserLocation) _followUserLocation = false;
+                // TODO: Considerar ajustar el zoom del mapa al tramo seleccionado if _followUserLocation is false or _isAutoZoomEnabled is false
+              });
+            },
           ),
         ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          setState(() {
+            _followUserLocation = !_followUserLocation;
+            if (_followUserLocation) {
+              _isAutoZoomEnabled = false; // Si activamos seguir usuario, el zoom inicial ya no aplica
+              final currentUserLocation = ref.read(appUiStateProvider).datosFaseViajeActivo?.ubicacionActualUsuario;
+              if (currentUserLocation != null) {
+                _centerMapOnUserLocation(currentUserLocation);
+              }
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Siguiendo ubicación del usuario.'), duration: Duration(seconds: 2)),
+              );
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Seguimiento de ubicación desactivado.'), duration: Duration(seconds: 2)),
+              );
+            }
+          });
+        },
+        tooltip: _followUserLocation ? 'Dejar de seguir ubicación' : 'Seguir ubicación',
+        backgroundColor: _followUserLocation ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.surface,
+        foregroundColor: _followUserLocation ? Theme.of(context).colorScheme.onPrimary : Theme.of(context).colorScheme.onSurface,
+        child: Icon(_followUserLocation ? Icons.my_location : Icons.location_searching),
       ),
     );
   }
 
-  IconData _getIconForTramo(TipoTramoViaje tipo) {
-    switch (tipo) {
-      case TipoTramoViaje.CAMINAR:
-        return Icons.directions_walk;
-      case TipoTramoViaje.ESPERAR_BUS:
-        return Icons.time_to_leave;
-      case TipoTramoViaje.VIAJE_EN_BUS:
-        return Icons.directions_bus;
-      default:
-        return Icons.device_unknown;
-    }
-  }
-
-  @override
-  void dispose() {
-    _clearActiveRoute(); // Limpiar la ruta del mapa al salir de la vista
-    mapboxMap = null;
-    super.dispose();
-  }
+  // ...
 }
 
-// --- Panel de Instrucciones de Viaje Activo ---
+// ...
+
 class _ActiveTripInstructionsPanel extends StatelessWidget {
-  final List<TramoViajeMostrable> tramos;
-  final int tramoActualIndex; // Ahora se recibe, aunque su valor puede ser un placeholder
-  final VoidCallback onFinalizarViaje;
-  // final Function(int) onSeleccionarTramo; // TODO: Conectar cuando la lógica esté lista
-  // final VoidCallback onSiguienteTramo; // TODO: Conectar
-  // final VoidCallback onAnteriorTramo; // TODO: Conectar
+  final EstadoFaseViajeActivo activeTripState;
+  final IAppLogic appLogic;
+  final int currentLegIndex;
+  final void Function(int) onLegSelected;
+  final VoidCallback? onPreviousLeg;
+  final VoidCallback? onNextLeg;
 
   const _ActiveTripInstructionsPanel({
-    required this.tramos,
-    required this.tramoActualIndex,
-    required this.onFinalizarViaje,
-    // required this.onSeleccionarTramo,
-    // required this.onSiguienteTramo,
-    // required this.onAnteriorTramo,
+    required this.activeTripState,
+    required this.appLogic,
+    required this.currentLegIndex,
+    required this.onLegSelected,
+    this.onPreviousLeg,
+    this.onNextLeg,
   });
 
   @override
   Widget build(BuildContext context) {
-    if (tramos.isEmpty) {
+    if (activeTripState.tramosDelViaje.isEmpty) {
       return const SizedBox.shrink(); // No mostrar nada si no hay tramos
     }
 
     // Determinar información del tramo actual para mostrar en la parte superior del panel (cuando esté colapsado)
-    final TramoViajeMostrable tramoActual = (tramoActualIndex >= 0 && tramoActualIndex < tramos.length) 
-                                            ? tramos[tramoActualIndex] 
-                                            : tramos.first; // Fallback al primer tramo si el índice es inválido
+    final TramoViajeMostrable tramoActual = (currentLegIndex >= 0 && currentLegIndex < activeTripState.tramosDelViaje.length) 
+                                            ? activeTripState.tramosDelViaje[currentLegIndex] 
+                                            : activeTripState.tramosDelViaje.first; // Fallback al primer tramo si el índice es inválido
 
     return Positioned(
       bottom: 0,
       left: 0,
       right: 0,
       child: DraggableScrollableSheet(
-        initialChildSize:
-            0.3, // Altura inicial (más pequeño que en opciones de ruta)
-        minChildSize:
-            0.15, // Altura mínima (ej. solo una barra con info del tramo actual)
-        maxChildSize: 0.7, // Altura máxima
-        expand: false,
+        // ...
         builder: (BuildContext context, ScrollController scrollController) {
           return Card(
-            elevation: 8.0,
-            margin: const EdgeInsets.fromLTRB(8.0, 8.0, 8.0, 0),
-            shape: const RoundedRectangleBorder(
-              borderRadius: BorderRadius.only(
-                topLeft: Radius.circular(16.0),
-                topRight: Radius.circular(16.0),
-              ),
-            ),
+            // ...
             child: Column(
+              mainAxisSize: MainAxisSize.min, // Important for DraggableScrollableSheet content
               children: [
                 // Handle para arrastrar
                 Container(
@@ -536,56 +676,53 @@ class _ActiveTripInstructionsPanel extends StatelessWidget {
                   ),
                 ),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    16.0,
-                    0,
-                    8.0,
-                    0,
-                  ), // Reducido padding vertical
+                  padding: const EdgeInsets.fromLTRB(16.0, 0, 8.0, 8.0), // Added bottom padding
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
+                      IconButton(
+                        icon: const Icon(Icons.arrow_back_ios),
+                        onPressed: onPreviousLeg,
+                        tooltip: 'Anterior',
+                      ),
                       Expanded(
                         child: Text(
                           tramoActual.descripcion, // Mostrar descripción del tramo actual
                           style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
                           overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
                         ),
                       ),
+                      IconButton(
+                        icon: const Icon(Icons.arrow_forward_ios),
+                        onPressed: onNextLeg,
+                        tooltip: 'Siguiente',
+                      ),
                       TextButton.icon(
-                        icon: const Icon(Icons.close),
+                        icon: const Icon(Icons.close, size: 20),
                         label: const Text("Finalizar"),
-                        onPressed: onFinalizarViaje,
+                        onPressed: () => appLogic.detenerSeguimientoActivo(),
                         style: TextButton.styleFrom(
                           foregroundColor: Theme.of(context).colorScheme.error,
+                          padding: const EdgeInsets.symmetric(horizontal: 8.0) // Adjust padding
                         ),
                       ),
                     ],
                   ),
                 ),
-                // Placeholder para botones de navegación Anterior/Siguiente
-                // TODO: Implementar lógica y visibilidad de estos botones
-                // Padding(
-                //   padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 0),
-                //   child: Row(
-                //     mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                //     children: [
-                //       IconButton(icon: Icon(Icons.arrow_back_ios), onPressed: () { /* onAnteriorTramo */ }),
-                //       IconButton(icon: Icon(Icons.arrow_forward_ios), onPressed: () { /* onSiguienteTramo */ }),
-                //     ],
-                //   ),
-                // ),
+                const Divider(height: 1),
+                // ...
                 Expanded(
                   child: ListView.separated(
                     controller: scrollController,
-                    itemCount: tramos.length,
+                    itemCount: activeTripState.tramosDelViaje.length,
                     itemBuilder: (context, index) {
-                      final tramo = tramos[index];
-                      bool esTramoActual = index == tramoActualIndex;
+                      final tramo = activeTripState.tramosDelViaje[index];
+                      bool esTramoActual = index == currentLegIndex;
                       return _TramoInstruccionListItem(
                         tramo: tramo,
                         esTramoActual: esTramoActual,
-                        // onTap: () => onSeleccionarTramo(index), // TODO: Conectar onTap
+                        onTap: () => onLegSelected(index),
                       );
                     },
                     separatorBuilder: (context, index) => const Divider(),

@@ -381,6 +381,7 @@ class EstadoFaseViajeActivo {
   final int? minutosParaLlegadaBusReal;
   final bool seguimientoBusRealDisponibleEnTramoActual;
   final OpcionDeRutaMostrable opcionDeRutaSeleccionada;
+  final Coordenada? ubicacionActualUsuario; // Nueva propiedad
 
   EstadoFaseViajeActivo({
     required this.idViajeActivoConfirmado,
@@ -390,6 +391,7 @@ class EstadoFaseViajeActivo {
     this.posicionActualBusReal,
     this.minutosParaLlegadaBusReal,
     this.seguimientoBusRealDisponibleEnTramoActual = false,
+    this.ubicacionActualUsuario, // Nueva propiedad
   });
 
   EstadoFaseViajeActivo copyWith({
@@ -403,6 +405,8 @@ class EstadoFaseViajeActivo {
     int? minutosParaLlegadaBusReal,
     bool clearMinutosParaLlegadaBusReal = false,
     bool? seguimientoBusRealDisponibleEnTramoActual,
+    Coordenada? ubicacionActualUsuario, // Nueva propiedad
+    bool clearUbicacionActualUsuario = false, // Nueva propiedad
   }) {
     return EstadoFaseViajeActivo(
       idViajeActivoConfirmado:
@@ -425,6 +429,10 @@ class EstadoFaseViajeActivo {
       seguimientoBusRealDisponibleEnTramoActual:
           seguimientoBusRealDisponibleEnTramoActual ??
           this.seguimientoBusRealDisponibleEnTramoActual,
+      ubicacionActualUsuario:
+          clearUbicacionActualUsuario
+              ? null
+              : ubicacionActualUsuario ?? this.ubicacionActualUsuario,
     );
   }
 }
