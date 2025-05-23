@@ -39,7 +39,7 @@ class _ActiveTripViewState extends ConsumerState<ActiveTripView> {
   static const Map<String, dynamic> _WALK_LINE_PROPERTIES = {
     'line-color':
         0xFF448AFF, // Colors.blueAccent.value - EXACTO del código viejo
-    'line-width': 4.0, // AUMENTADO para más visibilidad
+    'line-width': 5.0, // CAMBIO: de 4.0 a 5.0 para consistencia con BUS
     'line-opacity': 0.9, // EXACTO del código viejo
     'line-join': 'round',
     'line-cap': 'round',
@@ -73,7 +73,8 @@ class _ActiveTripViewState extends ConsumerState<ActiveTripView> {
   // Estados highlighted (más gruesos cuando están seleccionados)
   static const Map<String, dynamic> _HIGHLIGHTED_WALK_LINE_PROPERTIES = {
     'line-color': 0xFF448AFF, // Colors.blueAccent.value
-    'line-width': 6.0, // EXACTO del código viejo cuando isSelected
+    'line-width':
+        8.0, // Cambio: de 6.0 a 8.0 para mantener proporción con base 5.0
     'line-opacity': 0.9,
     'line-join': 'round',
     'line-cap': 'round',

@@ -242,3 +242,189 @@ Stack(
 **Última actualización**: `2025-01-23 - Bug #3 completado + Mejoras UX adicionales (panel colapsable, iconos reales, z-order)`
 **Responsable**: Claude (AI Assistant)
 **Revisión siguiente**: Implementación de Mejora #1 (flujo step-by-step)
+
+## 🎨 MEJORAS UX RECIENTES (Enero 2025)
+
+### Mejora #2: Rediseño completo de interfaz de viaje activo
+
+**Descripción**: Modernización total de la UI durante el viaje activo para experiencia más elegante y compacta.
+
+**Mejoras Implementadas**:
+
+- ✅ **Panel superior compacto**: Información de instrucciones más elegante con menos padding
+- ✅ **Botón de salida integrado**: Reemplazado botón "Finalizar Viaje" molesto por icono sutil en header
+- ✅ **Panel de navegación mejorado**: Controles de paso anterior/siguiente más intuitivos
+- ✅ **Espaciado optimizado**: Mejor aprovechamiento del espacio de pantalla
+- ✅ **Chips informativos compactos**: Tiempo, distancia y línea de bus en formato reducido
+- ✅ **Padding de mapa ajustado**: Evita que la ruta quede oculta detrás del panel de información
+
+**Ubicación**: `lib/ui/overlays/active_trip_overlay.dart`
+**Prioridad**: 🟢 MEJORA UX
+**Estado**: ✅ **COMPLETADO**
+
+---
+
+### Mejora #3: Sistema de animación de flechas flotantes
+
+**Descripción**: Implementación de animaciones suaves para las flechas de subida/bajada en paradas de bus.
+
+**Características Implementadas**:
+
+- ✅ **Animación flotante sincronizada**: Flechas ↑↓ se mueven en coordinación perfecta
+- ✅ **Aplicado en ambas fases**: RouteOptionsOverlay (preview) y ActiveTripOverlay (viaje activo)
+- ✅ **Movimiento sutil**: Amplitud reducida (0.15) para elegancia sin distracción
+- ✅ **Velocidad optimizada**: 0.15 incremento de fase para fluidez ideal
+- ✅ **Flechas mejoradas**: Tamaño aumentado (28px) y mejor contraste (halo 1.2px)
+- ✅ **Sistema de limpieza**: Animaciones se detienen automáticamente al cambiar de fase
+
+**Ubicación**:
+
+- `lib/ui/overlays/active_trip_overlay.dart`
+- `lib/ui/overlays/route_options_overlay.dart`
+
+**Prioridad**: 🟢 MEJORA UX
+**Estado**: ✅ **COMPLETADO**
+
+---
+
+### Mejora #4: Optimizaciones visuales del mapa
+
+**Descripción**: Mejoras en la visualización del mapa para evitar interferencias y mejor claridad.
+
+**Mejoras Implementadas**:
+
+- ✅ **Labels de ciudades ocultos**: Eliminado texto "Montevideo" que tapaba información del panel
+- ✅ **Iconos de paradas completos**: Mostrar paradas de origen/destino en todos los tramos de bus
+- ✅ **Z-order corregido**: Paradas de bus siempre aparecen encima de líneas de ruta
+- ✅ **Carga de iconos mejorada**: Sistema robusto de carga de `stop_icon.png`
+- ✅ **Padding superior aumentado**: De 80px a 180px para evitar que rutas queden ocultas
+
+**Ubicación**:
+
+- `lib/ui/overlays/active_trip_overlay.dart` (métodos `_hideCityLabels`, `_addBusStopsForSegment`)
+- `lib/ui/overlays/route_options_overlay.dart`
+
+**Prioridad**: 🟢 MEJORA UX
+**Estado**: ✅ **COMPLETADO**
+
+---
+
+**Última actualización**: `2025-01-23 - Mejoras #2, #3, #4 completadas - UI modernizada + animaciones flotantes`
+
+### Mejora #5: Bus en tiempo real en el mapa (✅ COMPLETADO - Enero 2025)
+
+**Descripción**: Implementación de visualización de buses en tiempo real durante el viaje activo, inspirado en la funcionalidad del proyecto viejo.
+
+**Resultado Logrado**:
+
+1. ✅ **En Preview de Rutas**: Muestra bus del PRIMER tramo de bus (más relevante para el usuario)
+2. ✅ **En Viaje Activo**: Muestra bus del PRÓXIMO tramo de bus según paso actual:
+   - Si estoy caminando → muestra bus del siguiente tramo de bus
+   - Si estoy esperando → muestra bus actual que espero
+   - Si estoy EN el bus → muestra bus del siguiente transbordo (si hay)
+   - Si es el último tramo de bus → detiene sondeo
+3. ✅ **Línea Verde de Aproximación**: Sigue la geometría real de la ruta del bus (NO línea recta)
+4. ✅ **Tooltip Flotante**: Widget overlay con ETA, línea, estado tiempo real
+5. ✅ **Actualización Periódica**: Sondeo cada 15 segundos para nuevas posiciones
+
+**Implementaciones Completadas**:
+
+- ✅ **BusTooltipWidget**: Tooltip animado con información rica (línea, ETA, tiempo real/programado)
+- ✅ **ActiveTripOverlay Extensions**: Variables de estado, timer de 15s, conversión de coordenadas, SymbolLayer
+- ✅ **Preview en RouteOptionsOverlay**: Solo primer tramo de bus, lógica de ETA fallback
+- ✅ **Lógica de Tracking Inteligente**: Determina automáticamente qué tramo de bus trackear según paso actual
+- ✅ **Integración con AppLogicNotifier**: Lee datos de bus desde estado central (`posicionActualBusReal`, `minutosParaLlegadaBusReal`)
+- ✅ **Cleanup y Gestión de Estado**: Limpieza en dispose(), start/stop lógico
+- ✅ **Icono de Bus**: Renderizado usando `incoming_bus.png` con tamaño apropiado (0.6 para viaje activo, 0.5 para preview)
+- ✅ **Geometría Completa**: Línea verde sigue calles reales usando `shapeId` desde OTP GraphQL
+- ✅ **Carga de Shapes**: Sistema de carga de geometrías completas desde `assets/data/shapes.geojson`
+
+**🎉 PROBLEMA RESUELTO - Línea Verde de Aproximación**:
+
+**Solución Implementada**: La línea verde ahora sigue correctamente la geometría de la ruta del bus.
+
+**Fix Técnico**:
+
+- ✅ Modificada consulta GraphQL en OTP para incluir `shapeId` en objeto `trip`
+- ✅ Sistema de carga de geometrías completas desde `shapes.geojson`
+- ✅ Funciones `findClosestPointIndexOnShape()` y `getGeometrySegment()` funcionando
+- ✅ Lógica de fallback robusta cuando no hay `shapeId` disponible
+
+**Comportamiento Correcto Logrado**:
+
+```
+Bus ────┐
+        │ (siguiendo calles)
+        ├─── Tramo de Calle A
+        ├─── Curva
+        ├─── Tramo de Calle B
+        └─── Parada 🚏
+```
+
+**Archivos Implementados**:
+
+- `lib/utils/geometry_utils.dart` - Funciones de cálculo geométrico
+- `lib/ui/overlays/route_options_overlay.dart` - Preview con geometría correcta
+- `lib/ui/overlays/active_trip_overlay.dart` - Viaje activo con geometría correcta
+- `lib/backend/services/itinerary_planning_service_adapter.dart` - Query GraphQL mejorada
+
+**Criterios de Aceptación Cumplidos**:
+
+- ✅ Línea verde sigue geometría real de la ruta (NO línea recta)
+- ✅ Bus se muestra solo en tramos relevantes según lógica de viaje
+- ✅ Tooltip aparece correctamente posicionado sobre el bus
+- ✅ Actualización periódica funciona sin errores
+- ✅ No hay pérdidas de memoria o recursos
+- ✅ Performance es fluida en dispositivos de gama media
+
+**Prioridad**: 🟢 **COMPLETADO**
+**Estado**: ✅ **COMPLETADO** - Funcionalidad completamente implementada y funcional
+
+**Ubicación**:
+
+- `lib/ui/overlays/active_trip_overlay.dart` - Funcionalidad principal
+- `lib/ui/overlays/route_options_overlay.dart` - Preview de rutas
+- `lib/ui/widgets/bus_tooltip_widget.dart` - Tooltip del bus
+- `lib/utils/geometry_utils.dart` - Cálculos geométricos
+
+---
+
+**Última actualización**: `2025-01-23 - Debugging línea verde de aproximación - funcionalidad base implementada`
+
+### Mejora #6: Estandarización de grosores de líneas (✅ COMPLETADO - Enero 2025)
+
+**Descripción**: Unificación de todos los grosores de líneas en el mapa para consistencia visual entre tramos de walk, bus, y tiempo real.
+
+**Problema Original**:
+
+- Líneas WALK (azul): 4.0px
+- Líneas BUS (naranja): 5.0px
+- Línea verde de aproximación del bus: 4.0px
+- Bordes variables: 6.0-8.0px
+
+**Solución Implementada**:
+
+- ✅ **Grosor estándar unificado**: Todas las líneas principales ahora usan **5.0px**
+- ✅ **Bordes estándar**: Todos los bordes ahora usan **8.0px**
+- ✅ **Opacidad de bordes unificada**: Todos los bordes ahora usan **opacity: 1.0** (antes la línea verde usaba 0.7-0.8)
+- ✅ **Estados highlighted**: Proporcionales (8.0px para líneas principales)
+- ✅ **Consistencia cross-overlay**: RouteOptionsOverlay, ActiveTripOverlay, y MapStyleConstants sincronizados
+
+**Archivos Modificados**:
+
+- `lib/ui/map_style_constants.dart` - Constantes base actualizadas
+- `lib/ui/active_trip_view.dart` - Constantes locales actualizadas
+- `lib/ui/overlays/route_options_overlay.dart` - Línea verde de aproximación
+- `lib/ui/overlays/active_trip_overlay.dart` - Línea verde de aproximación
+
+**Criterios de Aceptación Cumplidos**:
+
+- ✅ Todas las líneas tienen grosor visual consistente
+- ✅ Bordes proporcionalmente más gruesos para contraste
+- ✅ Estados highlighted mantienen proporciones
+- ✅ Experiencia visual uniforme en todas las fases
+
+**Prioridad**: 🟢 **MEJORA UX**
+**Estado**: ✅ **COMPLETADO** - Visual consistency achieved
+
+---

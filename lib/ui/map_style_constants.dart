@@ -11,7 +11,7 @@ class MapStyleConstants {
   static const Map<String, dynamic> WALK_LINE_PROPERTIES = {
     'line-color':
         0xFF448AFF, // Colors.blueAccent.value - EXACTO del código viejo
-    'line-width': 4.0, // AUMENTADO de 3.0 a 4.0 para más visibilidad
+    'line-width': 5.0, // CAMBIO: de 4.0 a 5.0 para consistencia con BUS
     'line-opacity': 0.9,
     'line-join': 'round',
     'line-cap': 'round',
@@ -44,7 +44,7 @@ class MapStyleConstants {
   // Estados normales/transparentados (cuando otro tramo está highlighted)
   static const Map<String, dynamic> DIMMED_WALK_PROPERTIES = {
     'line-color': 0xFF448AFF, // Colors.blueAccent.value
-    'line-width': 4.0, // Mantiene grosor original
+    'line-width': 5.0, // Cambio: de 4.0 a 5.0 para consistencia
     'line-opacity': 0.35, // Transparentado
     'line-join': 'round',
     'line-cap': 'round',
@@ -71,7 +71,8 @@ class MapStyleConstants {
   // Del código viejo: mainWidth = isSelected ? 6.0 : 3.0;
   static const Map<String, dynamic> HIGHLIGHTED_WALK_PROPERTIES = {
     'line-color': 0xFF448AFF, // Colors.blueAccent.value
-    'line-width': 7.0, // Más grueso cuando highlighted
+    'line-width':
+        8.0, // Cambio: de 7.0 a 8.0 para mantener proporción con base 5.0
     'line-opacity': 0.9, // Opaco total
     'line-join': 'round',
     'line-cap': 'round',

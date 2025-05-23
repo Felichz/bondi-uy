@@ -10,6 +10,7 @@ import 'package:bondi_uy/ui/map_style_constants.dart';
 import 'package:flutter/services.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
+import 'package:bondi_uy/utils/geometry_utils.dart';
 
 class RouteOptionsOverlay extends ConsumerStatefulWidget {
   final MapboxMap? mapboxMap;
@@ -45,6 +46,18 @@ class _RouteOptionsOverlayState extends ConsumerState<RouteOptionsOverlay> {
   // Constantes para iconos (igual que InitialPhaseView)
   static const String STOP_ICON_IMAGE_ID = 'stop-icon'; // stop_icon.png
   static const String BUS_ICON_IMAGE_ID = 'bus-icon'; // incoming_bus.png
+
+  // Constantes para buses en tiempo real en preview
+  static const String PREVIEW_BUS_REALTIME_SOURCE_PREFIX =
+      'preview-bus-realtime-source-';
+  static const String PREVIEW_BUS_REALTIME_LAYER_PREFIX =
+      'preview-bus-realtime-layer-';
+
+  // Constantes para línea verde de aproximación en preview
+  static const String PREVIEW_BUS_APPROACH_SOURCE_PREFIX =
+      'preview-bus-approach-source-';
+  static const String PREVIEW_BUS_APPROACH_LAYER_PREFIX =
+      'preview-bus-approach-layer-';
 
   @override
   void initState() {
@@ -239,8 +252,11 @@ class _RouteOptionsOverlayState extends ConsumerState<RouteOptionsOverlay> {
     final floatOffset =
         (sin(_arrowAnimationPhase) * 0.15); // Amplitud reducida de 0.3 a 0.15
 
+    // Crear una copia de la lista para evitar concurrent modification
+    final layerIdsCopy = List<String>.from(_animatedArrowLayerIds);
+
     // Actualizar todas las capas de flechas animadas de forma sincronizada
-    for (String layerId in _animatedArrowLayerIds) {
+    for (String layerId in layerIdsCopy) {
       try {
         if (await widget.mapboxMap!.style.styleLayerExists(layerId)) {
           final isUpArrow = layerId.contains('boarding'); // Los boarding son ↑
@@ -297,6 +313,23 @@ class _RouteOptionsOverlayState extends ConsumerState<RouteOptionsOverlay> {
       );
       print(
         "[RouteOptionsOverlay] Loaded $STOP_ICON_IMAGE_ID from stop_icon.png",
+      );
+
+      // Cargar icono de bus
+      final MbxImage busImage = await _loadIconImageFromAsset(
+        'incoming_bus.png',
+      );
+      await widget.mapboxMap!.style.addStyleImage(
+        BUS_ICON_IMAGE_ID,
+        1.0,
+        busImage,
+        false,
+        [],
+        [],
+        null,
+      );
+      print(
+        "[RouteOptionsOverlay] Loaded $BUS_ICON_IMAGE_ID from incoming_bus.png",
       );
 
       _iconsLoaded = true;
@@ -398,7 +431,10 @@ class _RouteOptionsOverlayState extends ConsumerState<RouteOptionsOverlay> {
         }
       }
 
-      // FASE 3: Iniciar animación de flechas
+      // FASE 3: Mostrar buses en tiempo real si hay información disponible
+      await _displayRealtimeBusesForPreview(ruta);
+
+      // FASE 4: Iniciar animación de flechas
       _startArrowAnimation();
 
       // Zoom a la ruta completa
@@ -786,22 +822,20 @@ class _RouteOptionsOverlayState extends ConsumerState<RouteOptionsOverlay> {
   Future<void> _clearRoutePreview() async {
     if (widget.mapboxMap == null) return;
 
-    // Detener animación
+    // Detener animación de flechas
     _stopArrowAnimation();
     _animatedArrowLayerIds.clear();
 
-    // Hacer copias de las listas para evitar concurrent modification
     final layerIdsCopy = List<String>.from(_activeRouteLayerIds);
     final sourceIdsCopy = List<String>.from(_activeRouteSourceIds);
 
-    // Limpiar capas existentes
     for (String layerId in layerIdsCopy) {
       try {
         if (await widget.mapboxMap!.style.styleLayerExists(layerId)) {
           await widget.mapboxMap!.style.removeStyleLayer(layerId);
         }
       } catch (e) {
-        print("[RouteOptionsOverlay] Error removing layer $layerId: $e");
+        print("Error removing layer $layerId: $e");
       }
     }
     for (String sourceId in sourceIdsCopy) {
@@ -810,11 +844,419 @@ class _RouteOptionsOverlayState extends ConsumerState<RouteOptionsOverlay> {
           await widget.mapboxMap!.style.removeStyleSource(sourceId);
         }
       } catch (e) {
-        print("[RouteOptionsOverlay] Error removing source $sourceId: $e");
+        print("Error removing source $sourceId: $e");
       }
     }
     _activeRouteLayerIds.clear();
     _activeRouteSourceIds.clear();
+  }
+
+  Future<void> _displayRealtimeBusesForPreview(
+    OpcionDeRutaMostrable ruta,
+  ) async {
+    if (widget.mapboxMap == null || !_iconsLoaded) return;
+
+    print("[RouteOptionsOverlay] Displaying realtime buses for preview");
+    print(
+      "[RouteOptionsOverlay] Route has ${ruta.tramosParaPreview.length} segments",
+    );
+    print(
+      "[RouteOptionsOverlay] Route ETA info: ${ruta.etaProximoBus != null ? 'Present' : 'Null'}",
+    );
+
+    // Buscar SOLO el primer tramo de bus (más relevante para el usuario en preview)
+    TramoViajeMostrable? primerTramoBus;
+    int indicePrimerTramoBus = -1;
+
+    for (int i = 0; i < ruta.tramosParaPreview.length; i++) {
+      final tramo = ruta.tramosParaPreview[i];
+
+      if (tramo.tipo == TipoTramoViaje.VIAJE_EN_BUS ||
+          tramo.tipo == TipoTramoViaje.ESPERAR_BUS) {
+        primerTramoBus = tramo;
+        indicePrimerTramoBus = i;
+        print(
+          "[RouteOptionsOverlay] First bus segment found at index $i: line=${tramo.nombreLineaBus}",
+        );
+        break; // Solo el primer tramo de bus
+      }
+    }
+
+    int busesAdded = 0;
+
+    if (primerTramoBus != null) {
+      print(
+        "[RouteOptionsOverlay] First bus segment data: position=${primerTramoBus.posicionActualBus != null ? 'Present' : 'Null'}, eta=${primerTramoBus.minutosEstimadosLlegadaBus}, realTime=${primerTramoBus.esTiempoRealBus}",
+      );
+
+      // Verificar si tiene información de bus en tiempo real
+      if (primerTramoBus.posicionActualBus != null &&
+          primerTramoBus.minutosEstimadosLlegadaBus != null &&
+          primerTramoBus.nombreLineaBus != null) {
+        await _addRealtimeBusToPreview(primerTramoBus, indicePrimerTramoBus);
+        busesAdded++;
+        print(
+          "[RouteOptionsOverlay] Added realtime bus for first bus line ${primerTramoBus.nombreLineaBus}",
+        );
+      } else {
+        print(
+          "[RouteOptionsOverlay] First bus segment missing required data: posicion=${primerTramoBus.posicionActualBus != null}, eta=${primerTramoBus.minutosEstimadosLlegadaBus != null}, line=${primerTramoBus.nombreLineaBus != null}",
+        );
+
+        // Si el tramo no tiene datos, usar el ETA general de la ruta como fallback
+        if (ruta.etaProximoBus != null &&
+            ruta.etaProximoBus!.posicionBus != null) {
+          print(
+            "[RouteOptionsOverlay] Using general route ETA as fallback: line=${ruta.etaProximoBus!.linea}, eta=${ruta.etaProximoBus!.minutosParaLlegada}min",
+          );
+          await _addRealtimeBusFromEta(
+            ruta.etaProximoBus!,
+            indicePrimerTramoBus,
+          );
+          busesAdded++;
+          print(
+            "[RouteOptionsOverlay] Added realtime bus from general ETA for line ${ruta.etaProximoBus!.linea}",
+          );
+        }
+      }
+    } else {
+      print("[RouteOptionsOverlay] No bus segments found in route");
+
+      // Como último recurso, usar el ETA general si existe
+      if (ruta.etaProximoBus != null &&
+          ruta.etaProximoBus!.posicionBus != null) {
+        print(
+          "[RouteOptionsOverlay] Using general route ETA as only option: line=${ruta.etaProximoBus!.linea}",
+        );
+        await _addRealtimeBusFromEta(
+          ruta.etaProximoBus!,
+          0, // Usar índice 0 como fallback
+        );
+        busesAdded++;
+        print(
+          "[RouteOptionsOverlay] Added realtime bus from general ETA for line ${ruta.etaProximoBus!.linea}",
+        );
+      }
+    }
+
+    print("[RouteOptionsOverlay] Total buses added to preview: $busesAdded");
+  }
+
+  Future<void> _addRealtimeBusToPreview(
+    TramoViajeMostrable tramo,
+    int segmentIndex,
+  ) async {
+    if (widget.mapboxMap == null ||
+        !_iconsLoaded ||
+        tramo.posicionActualBus == null ||
+        tramo.geometriaPolilinea == null ||
+        tramo.geometriaPolilinea!.isEmpty)
+      return;
+
+    final sourceId = '$PREVIEW_BUS_REALTIME_SOURCE_PREFIX$segmentIndex';
+    final layerId = '$PREVIEW_BUS_REALTIME_LAYER_PREFIX$segmentIndex';
+
+    // Coordenada del bus
+    final busPosition = tramo.posicionActualBus!;
+
+    // Parada de origen (donde el usuario debe subir)
+    final paradaOrigen = tramo.geometriaPolilinea!.first;
+
+    final geoJsonFeature = {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [busPosition.longitud, busPosition.latitud],
+      },
+      "properties": {
+        "linea": tramo.nombreLineaBus,
+        "eta": tramo.minutosEstimadosLlegadaBus,
+        "isRealTime": tramo.esTiempoRealBus ?? false,
+        "destino": tramo.destinoFinalDelBus,
+      },
+    };
+
+    try {
+      // 1. Agregar línea verde de aproximación PRIMERO (para que quede debajo del bus)
+      await _addBusApproachLineToPreview(
+        busPosition,
+        paradaOrigen,
+        segmentIndex,
+        tramo,
+      );
+
+      // 2. Agregar fuente del bus
+      await widget.mapboxMap!.style.addSource(
+        GeoJsonSource(id: sourceId, data: jsonEncode(geoJsonFeature)),
+      );
+      _activeRouteSourceIds.add(sourceId);
+
+      // 3. Agregar capa del bus con tamaño más pequeño para preview
+      await widget.mapboxMap!.style.addLayer(
+        SymbolLayer(
+          id: layerId,
+          sourceId: sourceId,
+          iconImage: BUS_ICON_IMAGE_ID,
+          iconAllowOverlap: true,
+          iconSize: 0.5, // Más pequeño para preview (era 0.7)
+          iconAnchor: IconAnchor.CENTER,
+        ),
+      );
+      _activeRouteLayerIds.add(layerId);
+
+      print(
+        "[RouteOptionsOverlay] Added realtime bus for line ${tramo.nombreLineaBus} with ETA ${tramo.minutosEstimadosLlegadaBus}min and approach line",
+      );
+    } catch (e) {
+      print("[RouteOptionsOverlay] Error adding realtime bus: $e");
+    }
+  }
+
+  Future<void> _addBusApproachLineToPreview(
+    Coordenada busPosition,
+    Coordenada stopPosition,
+    int segmentIndex,
+    TramoViajeMostrable tramo,
+  ) async {
+    if (widget.mapboxMap == null) {
+      print("[RouteOptionsOverlay] Missing mapboxMap for bus approach line");
+      return;
+    }
+
+    final sourceId = '$PREVIEW_BUS_APPROACH_SOURCE_PREFIX$segmentIndex';
+    final shadowLayerId =
+        '$PREVIEW_BUS_APPROACH_LAYER_PREFIX$segmentIndex-shadow';
+    final mainLayerId = '$PREVIEW_BUS_APPROACH_LAYER_PREFIX$segmentIndex';
+
+    print("[RouteOptionsOverlay] Creating bus approach line:");
+    print(
+      "  - Bus position: (${busPosition.latitud}, ${busPosition.longitud})",
+    );
+    print(
+      "  - Stop position: (${stopPosition.latitud}, ${stopPosition.longitud})",
+    );
+    print("  - ShapeId: ${tramo.shapeId}");
+
+    // Cargar geometrías de shapes si no están cargadas
+    await loadShapeGeometries();
+
+    // Obtener la geometría completa de la línea usando el shapeId
+    List<Coordenada>? fullLineGeometry;
+    if (tramo.shapeId != null) {
+      fullLineGeometry = getFullShapeGeometry(tramo.shapeId);
+      print("  - Full line geometry: ${fullLineGeometry?.length ?? 0} points");
+    }
+
+    // Si no tenemos geometría completa, usar la del tramo como fallback
+    if (fullLineGeometry == null || fullLineGeometry.isEmpty) {
+      print(
+        "  - No full line geometry found, using segment geometry as fallback",
+      );
+      fullLineGeometry = tramo.geometriaPolilinea;
+      if (fullLineGeometry == null || fullLineGeometry.isEmpty) {
+        print("  - No geometry available, using straight line");
+        fullLineGeometry = null;
+      }
+    }
+
+    List<List<double>> coordinates;
+
+    if (fullLineGeometry != null && fullLineGeometry.isNotEmpty) {
+      print("  - Using geometry with ${fullLineGeometry.length} points");
+
+      // Encontrar índices en la geometría completa
+      final busIndex = findClosestPointIndexOnShape(
+        fullLineGeometry,
+        busPosition,
+      );
+      final stopIndex = findClosestPointIndexOnShape(
+        fullLineGeometry,
+        stopPosition,
+      );
+
+      print(
+        "[RouteOptionsOverlay] Bus approach indices: busIndex=$busIndex, stopIndex=$stopIndex",
+      );
+
+      if (busIndex != -1) {
+        final closestToBus = fullLineGeometry[busIndex];
+        final distanceToBus = calculateHaversineDistance(
+          busPosition.latitud,
+          busPosition.longitud,
+          closestToBus.latitud,
+          closestToBus.longitud,
+        );
+        print(
+          "  - Closest point to bus: (${closestToBus.latitud}, ${closestToBus.longitud}), distance: ${distanceToBus.toStringAsFixed(1)}m",
+        );
+      }
+
+      if (stopIndex != -1) {
+        final closestToStop = fullLineGeometry[stopIndex];
+        final distanceToStop = calculateHaversineDistance(
+          stopPosition.latitud,
+          stopPosition.longitud,
+          closestToStop.latitud,
+          closestToStop.longitud,
+        );
+        print(
+          "  - Closest point to stop: (${closestToStop.latitud}, ${closestToStop.longitud}), distance: ${distanceToStop.toStringAsFixed(1)}m",
+        );
+      }
+
+      // Si no encontramos ambos puntos, usar línea recta como fallback
+      if (busIndex == -1 || stopIndex == -1) {
+        print(
+          "[RouteOptionsOverlay] Using straight line fallback for bus approach (indices not found)",
+        );
+        coordinates = [
+          [busPosition.longitud, busPosition.latitud],
+          [stopPosition.longitud, stopPosition.latitud],
+        ];
+      } else {
+        // Calcular segmento de la geometría entre bus y parada
+        final segment = getGeometrySegment(
+          fullLineGeometry,
+          busIndex,
+          stopIndex,
+        );
+        print(
+          "[RouteOptionsOverlay] Raw segment from indices $busIndex to $stopIndex: ${segment.length} points",
+        );
+
+        if (segment.length < 2) {
+          print(
+            "[RouteOptionsOverlay] Segment too short (${segment.length}), using straight line",
+          );
+          coordinates = [
+            [busPosition.longitud, busPosition.latitud],
+            [stopPosition.longitud, stopPosition.latitud],
+          ];
+        } else {
+          coordinates = segment.map((c) => [c.longitud, c.latitud]).toList();
+          print(
+            "[RouteOptionsOverlay] ✅ Using geometry segment with ${coordinates.length} points",
+          );
+          print(
+            "  - Segment start: [${coordinates.first[1]}, ${coordinates.first[0]}]",
+          );
+          print(
+            "  - Segment end: [${coordinates.last[1]}, ${coordinates.last[0]}]",
+          );
+        }
+      }
+    } else {
+      // Sin geometría, usar línea recta
+      print("[RouteOptionsOverlay] No geometry available, using straight line");
+      coordinates = [
+        [busPosition.longitud, busPosition.latitud],
+        [stopPosition.longitud, stopPosition.latitud],
+      ];
+    }
+
+    // Crear línea siguiendo la geometría de la ruta
+    final geoJsonFeatureCollection = {
+      "type": "FeatureCollection",
+      "features": [
+        {
+          "type": "Feature",
+          "geometry": {"type": "LineString", "coordinates": coordinates},
+          "properties": {"type": "bus-approach"},
+        },
+      ],
+    };
+
+    try {
+      // Agregar fuente de la línea verde
+      await widget.mapboxMap!.style.addSource(
+        GeoJsonSource(id: sourceId, data: jsonEncode(geoJsonFeatureCollection)),
+      );
+      _activeRouteSourceIds.add(sourceId);
+
+      // 1. Agregar capa de borde (más gruesa, negra, debajo)
+      await widget.mapboxMap!.style.addLayer(
+        LineLayer(
+          id: shadowLayerId,
+          sourceId: sourceId,
+          lineColor: 0xFF000000, // Negro para el borde
+          lineWidth:
+              8.0, // CAMBIO: de 6.0 a 8.0 para consistencia con otros bordes
+          lineOpacity: 0.9,
+          lineJoin: LineJoin.ROUND,
+          lineCap: LineCap.ROUND,
+        ),
+      );
+      _activeRouteLayerIds.add(shadowLayerId);
+
+      // 2. Agregar capa de línea verde principal (encima del borde)
+      await widget.mapboxMap!.style.addLayer(
+        LineLayer(
+          id: mainLayerId,
+          sourceId: sourceId,
+          lineColor: 0xFF4CAF50, // Verde como en el código anterior
+          lineWidth: 5.0, // CAMBIO: de 4.0 a 5.0 para consistencia con BUS
+          lineOpacity: 0.9,
+          lineJoin: LineJoin.ROUND,
+          lineCap: LineCap.ROUND,
+        ),
+      );
+      _activeRouteLayerIds.add(mainLayerId);
+
+      print(
+        "[RouteOptionsOverlay] Added green approach line with border following bus route geometry",
+      );
+    } catch (e) {
+      print("[RouteOptionsOverlay] Error adding approach line: $e");
+    }
+  }
+
+  Future<void> _addRealtimeBusFromEta(EtaMostrable eta, int index) async {
+    if (widget.mapboxMap == null || !_iconsLoaded || eta.posicionBus == null)
+      return;
+
+    final sourceId = '${PREVIEW_BUS_REALTIME_SOURCE_PREFIX}eta_$index';
+    final layerId = '${PREVIEW_BUS_REALTIME_LAYER_PREFIX}eta_$index';
+
+    final geoJsonFeature = {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [eta.posicionBus!.longitud, eta.posicionBus!.latitud],
+      },
+      "properties": {
+        "linea": eta.linea,
+        "eta": eta.minutosParaLlegada,
+        "isRealTime": eta.esTiempoReal,
+        "destino": eta.destino,
+      },
+    };
+
+    try {
+      // Agregar fuente del bus
+      await widget.mapboxMap!.style.addSource(
+        GeoJsonSource(id: sourceId, data: jsonEncode(geoJsonFeature)),
+      );
+      _activeRouteSourceIds.add(sourceId);
+
+      // Agregar capa del bus
+      await widget.mapboxMap!.style.addLayer(
+        SymbolLayer(
+          id: layerId,
+          sourceId: sourceId,
+          iconImage: BUS_ICON_IMAGE_ID,
+          iconAllowOverlap: true,
+          iconSize: 0.7,
+          iconAnchor: IconAnchor.CENTER,
+        ),
+      );
+      _activeRouteLayerIds.add(layerId);
+
+      print(
+        "[RouteOptionsOverlay] Added realtime bus from ETA for line ${eta.linea} with ${eta.minutosParaLlegada}min",
+      );
+    } catch (e) {
+      print("[RouteOptionsOverlay] Error adding realtime bus from ETA: $e");
+    }
   }
 
   Future<void> _addOriginDestinationMarker(

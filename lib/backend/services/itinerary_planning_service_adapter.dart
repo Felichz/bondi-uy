@@ -107,6 +107,7 @@ class _OtpLeg {
   final bool? transitLeg;
   final List<_OtpStep>? steps; // For walk legs
   final String? tripHeadsign; // Nuevo campo parseado de trip.tripHeadsign
+  final String? shapeId; // Agregar shapeId para acceder a geometría completa
 
   _OtpLeg({
     this.startTime,
@@ -137,6 +138,7 @@ class _OtpLeg {
     this.transitLeg,
     this.steps,
     this.tripHeadsign, // Añadido al constructor
+    this.shapeId,
   });
 
   factory _OtpLeg.fromJson(Map<String, dynamic> json) {
@@ -189,6 +191,8 @@ class _OtpLeg {
               .toList(),
       tripHeadsign:
           json['trip']?['tripHeadsign'] as String?, // Parsear trip.tripHeadsign
+      shapeId:
+          json['shapeId'] as String? ?? json['trip']?['shapeId'] as String?,
     );
   }
 }
@@ -463,6 +467,7 @@ class ItineraryPlanningServiceAdapter
               trip { 
                 gtfsId 
                 tripHeadsign # CAMBIADO: de headsign a tripHeadsign
+                shapeId # AÑADIDO para obtener la geometría completa
               }
               legGeometry { 
                 points 
@@ -864,7 +869,7 @@ class ItineraryPlanningServiceAdapter
               nombreParadaDestino:
                   leg.to?.stopNameFromOtp ?? leg.to?.name ?? leg.to?.stopId,
               coordenadasParadaDestino: coordDestinoTramo,
-              // --- Campos de ETA para el primer bus ---
+              shapeId: leg.shapeId,
               minutosEstimadosLlegadaBus: minutosLlegadaBusTramo,
               esTiempoRealBus: esTiempoRealTramo,
               posicionActualBus: posicionBusTramo,

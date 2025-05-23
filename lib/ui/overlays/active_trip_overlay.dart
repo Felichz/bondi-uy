@@ -9,6 +9,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'package:bondi_uy/backend/providers/app_logic_provider.dart';
 import 'package:bondi_uy/backend/contrato_ui/app_ui_state.dart';
+import 'package:bondi_uy/ui/widgets/bus_tooltip_widget.dart';
+import 'package:bondi_uy/utils/geometry_utils.dart';
 
 class ActiveTripOverlay extends ConsumerStatefulWidget {
   final MapboxMap? mapboxMap;
@@ -32,6 +34,15 @@ class _ActiveTripOverlayState extends ConsumerState<ActiveTripOverlay> {
   double _arrowAnimationPhase = 0.0;
   List<String> _animatedArrowLayerIds = [];
 
+  // Sistema de bus en tiempo real
+  Timer? _busTrackingTimer;
+  Coordenada? _currentBusPosition;
+  int? _currentBusEta;
+  bool _isBusEtaRealTime = false;
+  String? _currentBusLine;
+  String? _currentBusDestination;
+  Position? _tooltipScreenPosition;
+
   // Constantes para IDs de capas y fuentes de la ruta activa
   static const String ACTIVE_WALK_SOURCE_PREFIX = 'active-walk-source-';
   static const String ACTIVE_WALK_LAYER_PREFIX = 'active-walk-layer-';
@@ -45,6 +56,10 @@ class _ActiveTripOverlayState extends ConsumerState<ActiveTripOverlay> {
   // Constantes para iconos
   static const String STOP_ICON_IMAGE_ID = 'stop-icon';
   static const String BUS_ICON_IMAGE_ID = 'bus-icon';
+  static const String INCOMING_BUS_SOURCE_ID = 'incoming-bus-source';
+  static const String INCOMING_BUS_LAYER_ID = 'incoming-bus-layer';
+  static const String BUS_APPROACH_LINE_SOURCE_ID = 'bus-approach-line-source';
+  static const String BUS_APPROACH_LINE_LAYER_ID = 'bus-approach-line-layer';
 
   // Propiedades de estilo
   static const Map<String, dynamic> _WALK_LINE_PROPERTIES = {
@@ -89,6 +104,7 @@ class _ActiveTripOverlayState extends ConsumerState<ActiveTripOverlay> {
   @override
   void dispose() {
     _stopArrowAnimation();
+    _stopBusTracking();
     _clearActiveRoute().catchError((e) {
       print("[ActiveTripOverlay] Error clearing route on dispose: $e");
     });
@@ -151,6 +167,9 @@ class _ActiveTripOverlayState extends ConsumerState<ActiveTripOverlay> {
 
       // Zoom inicial al primer tramo específicamente
       await _zoomToCurrentLeg(_currentLegIndex);
+
+      // Iniciar tracking del próximo tramo de bus basado en el paso actual
+      _updateBusTrackingForCurrentLeg();
     }
   }
 
@@ -164,6 +183,20 @@ class _ActiveTripOverlayState extends ConsumerState<ActiveTripOverlay> {
         STOP_ICON_IMAGE_ID,
         1.0,
         stopImage,
+        false,
+        [],
+        [],
+        null,
+      );
+
+      // Cargar icono de bus
+      final MbxImage busImage = await _loadIconImageFromAsset(
+        'incoming_bus.png',
+      );
+      await widget.mapboxMap!.style.addStyleImage(
+        BUS_ICON_IMAGE_ID,
+        1.0,
+        busImage,
         false,
         [],
         [],
@@ -201,6 +234,101 @@ class _ActiveTripOverlayState extends ConsumerState<ActiveTripOverlay> {
     });
     _highlightCurrentLegOnMap(legIndex);
     _zoomToCurrentLeg(legIndex);
+
+    // Actualizar el bus tracking basado en el nuevo tramo seleccionado
+    _updateBusTrackingForCurrentLeg();
+  }
+
+  void _updateBusTrackingForCurrentLeg() {
+    final activeTripState = ref.read(appLogicProvider).datosFaseViajeActivo;
+    if (activeTripState == null || activeTripState.tramosDelViaje.isEmpty) {
+      _stopBusTracking();
+      return;
+    }
+
+    final tramosDelViaje = activeTripState.tramosDelViaje;
+    final tramoActual = tramosDelViaje[_currentLegIndex];
+
+    print(
+      "[ActiveTripOverlay] Updating bus tracking for leg $_currentLegIndex: ${tramoActual.tipo}",
+    );
+
+    // Determinar cuál es el próximo tramo de bus que necesitamos trackear
+    TramoViajeMostrable? proximoTramoBus = _findNextBusSegment(
+      tramosDelViaje,
+      _currentLegIndex,
+    );
+
+    if (proximoTramoBus != null) {
+      print(
+        "[ActiveTripOverlay] Next bus segment found: line=${proximoTramoBus.nombreLineaBus}, type=${proximoTramoBus.tipo}",
+      );
+      _startBusTracking(proximoTramoBus);
+
+      // Si el tramo ya tiene información de bus, mostrarla inmediatamente
+      if (proximoTramoBus.posicionActualBus != null) {
+        _updateBusPosition(
+          proximoTramoBus.posicionActualBus!,
+          proximoTramoBus.minutosEstimadosLlegadaBus ?? 0,
+          proximoTramoBus.esTiempoRealBus ?? false,
+        );
+      }
+    } else {
+      print(
+        "[ActiveTripOverlay] No more bus segments to track, stopping bus tracking",
+      );
+      _stopBusTracking();
+    }
+  }
+
+  TramoViajeMostrable? _findNextBusSegment(
+    List<TramoViajeMostrable> tramos,
+    int currentLegIndex,
+  ) {
+    final tramoActual = tramos[currentLegIndex];
+
+    // Lógica para determinar el próximo tramo de bus a trackear
+    switch (tramoActual.tipo) {
+      case TipoTramoViaje.CAMINAR:
+        // Si estoy caminando, buscar el siguiente tramo de bus
+        for (int i = currentLegIndex + 1; i < tramos.length; i++) {
+          final tramo = tramos[i];
+          if (tramo.tipo == TipoTramoViaje.VIAJE_EN_BUS ||
+              tramo.tipo == TipoTramoViaje.ESPERAR_BUS) {
+            print(
+              "[ActiveTripOverlay] Walking phase: found next bus at index $i",
+            );
+            return tramo;
+          }
+        }
+        break;
+
+      case TipoTramoViaje.ESPERAR_BUS:
+        // Si estoy esperando el bus, trackear el bus actual (el que estoy esperando)
+        print("[ActiveTripOverlay] Waiting phase: tracking current bus");
+        return tramoActual;
+
+      case TipoTramoViaje.VIAJE_EN_BUS:
+        // Si ya estoy EN el bus viajando, buscar el siguiente tramo de bus (transbordo)
+        for (int i = currentLegIndex + 1; i < tramos.length; i++) {
+          final tramo = tramos[i];
+          if (tramo.tipo == TipoTramoViaje.VIAJE_EN_BUS ||
+              tramo.tipo == TipoTramoViaje.ESPERAR_BUS) {
+            print(
+              "[ActiveTripOverlay] On bus phase: found next transfer bus at index $i",
+            );
+            return tramo;
+          }
+        }
+        // Si no hay más buses, esto significa que estoy en el último/único bus
+        print(
+          "[ActiveTripOverlay] On bus phase: this is the last bus, no more tracking needed",
+        );
+        return null;
+    }
+
+    print("[ActiveTripOverlay] No next bus segment found");
+    return null;
   }
 
   Future<void> _zoomToCurrentLeg(int legIndex) async {
@@ -611,8 +739,9 @@ class _ActiveTripOverlayState extends ConsumerState<ActiveTripOverlay> {
   Future<void> _clearActiveRoute() async {
     if (widget.mapboxMap == null) return;
 
-    // Detener animación
+    // Detener animación y bus tracking
     _stopArrowAnimation();
+    _stopBusTracking();
     _animatedArrowLayerIds.clear();
 
     final layerIdsCopy = List<String>.from(_activeRouteLayerIds);
@@ -732,6 +861,336 @@ class _ActiveTripOverlayState extends ConsumerState<ActiveTripOverlay> {
     }
   }
 
+  void _startBusTracking(TramoViajeMostrable tramo) {
+    if (tramo.tipo != TipoTramoViaje.VIAJE_EN_BUS &&
+        tramo.tipo != TipoTramoViaje.ESPERAR_BUS)
+      return;
+
+    _currentBusLine = tramo.nombreLineaBus;
+    _currentBusDestination = tramo.destinoFinalDelBus;
+
+    // Obtener información inicial del bus si está disponible
+    if (tramo.posicionActualBus != null) {
+      _updateBusPosition(
+        tramo.posicionActualBus!,
+        tramo.minutosEstimadosLlegadaBus ?? 0,
+        tramo.esTiempoRealBus ?? false,
+      );
+    }
+
+    // Iniciar timer de actualización cada 15 segundos
+    _busTrackingTimer?.cancel();
+    _busTrackingTimer = Timer.periodic(
+      const Duration(seconds: 15),
+      (timer) => _fetchBusUpdate(tramo),
+    );
+
+    print(
+      "[ActiveTripOverlay] Bus tracking started for line: $_currentBusLine (type: ${tramo.tipo})",
+    );
+  }
+
+  void _stopBusTracking() {
+    _busTrackingTimer?.cancel();
+    _busTrackingTimer = null;
+    _clearBusDisplay();
+
+    _currentBusPosition = null;
+    _currentBusEta = null;
+    _isBusEtaRealTime = false;
+    _currentBusLine = null;
+    _currentBusDestination = null;
+    _tooltipScreenPosition = null;
+
+    print("[ActiveTripOverlay] Bus tracking stopped");
+  }
+
+  Future<void> _fetchBusUpdate(TramoViajeMostrable tramo) async {
+    // TODO: Implementar llamada al backend para obtener posición actualizada del bus
+    // Por ahora usamos los datos del tramo si están disponibles
+    if (tramo.posicionActualBus != null) {
+      _updateBusPosition(
+        tramo.posicionActualBus!,
+        tramo.minutosEstimadosLlegadaBus ?? 0,
+        tramo.esTiempoRealBus ?? false,
+      );
+    }
+  }
+
+  Future<void> _updateBusPosition(
+    Coordenada position,
+    int etaMinutes,
+    bool isRealTime,
+  ) async {
+    _currentBusPosition = position;
+    _currentBusEta = etaMinutes;
+    _isBusEtaRealTime = isRealTime;
+
+    await _displayBusOnMap(position);
+    await _updateTooltipPosition(position);
+
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _displayBusOnMap(Coordenada position) async {
+    if (widget.mapboxMap == null || !_iconsLoaded) return;
+
+    // Remover capas anteriores si existen
+    await _clearBusDisplay();
+
+    // 1. Determinar la parada donde el usuario debe subir al bus
+    Coordenada? paradaDestino = _getTargetBusStop();
+
+    // 2. Agregar línea verde de aproximación si tenemos parada objetivo
+    if (paradaDestino != null) {
+      await _addBusApproachLine(position, paradaDestino);
+    }
+
+    // 3. Crear fuente del bus
+    final geoJsonSource = GeoJsonSource(
+      id: INCOMING_BUS_SOURCE_ID,
+      data: jsonEncode({
+        "type": "Feature",
+        "geometry": {
+          "type": "Point",
+          "coordinates": [position.longitud, position.latitud],
+        },
+        "properties": {
+          "line": _currentBusLine,
+          "eta": _currentBusEta,
+          "isRealTime": _isBusEtaRealTime,
+        },
+      }),
+    );
+
+    // 4. Agregar nueva fuente y capa del bus
+    await widget.mapboxMap!.style.addSource(geoJsonSource);
+    _activeRouteSourceIds.add(INCOMING_BUS_SOURCE_ID);
+
+    final symbolLayer = SymbolLayer(
+      id: INCOMING_BUS_LAYER_ID,
+      sourceId: INCOMING_BUS_SOURCE_ID,
+      iconImage: BUS_ICON_IMAGE_ID,
+      iconAllowOverlap: true,
+      iconSize: 0.6, // Tamaño más apropiado (era 0.8)
+      iconAnchor: IconAnchor.CENTER,
+    );
+
+    await widget.mapboxMap!.style.addLayer(symbolLayer);
+    _activeRouteLayerIds.add(INCOMING_BUS_LAYER_ID);
+  }
+
+  Coordenada? _getTargetBusStop() {
+    final activeTripState = ref.read(appLogicProvider).datosFaseViajeActivo;
+    if (activeTripState == null || activeTripState.tramosDelViaje.isEmpty) {
+      return null;
+    }
+
+    final tramosDelViaje = activeTripState.tramosDelViaje;
+    final tramoActual = tramosDelViaje[_currentLegIndex];
+
+    // Encontrar el próximo tramo de bus que necesitamos trackear
+    TramoViajeMostrable? proximoTramoBus = _findNextBusSegment(
+      tramosDelViaje,
+      _currentLegIndex,
+    );
+
+    if (proximoTramoBus?.geometriaPolilinea != null &&
+        proximoTramoBus!.geometriaPolilinea!.isNotEmpty) {
+      // Retornar la primera parada del tramo de bus (donde debe subir el usuario)
+      return proximoTramoBus.geometriaPolilinea!.first;
+    }
+
+    return null;
+  }
+
+  Future<void> _addBusApproachLine(
+    Coordenada busPosition,
+    Coordenada stopPosition,
+  ) async {
+    if (widget.mapboxMap == null) return;
+
+    // Obtener el tramo de bus actual para acceder a su geometría
+    final activeTripState = ref.read(appLogicProvider).datosFaseViajeActivo;
+    if (activeTripState == null || activeTripState.tramosDelViaje.isEmpty) {
+      print("[ActiveTripOverlay] No active trip state for bus approach line");
+      return;
+    }
+
+    // Encontrar el próximo tramo de bus que estamos trackeando
+    TramoViajeMostrable? proximoTramoBus = _findNextBusSegment(
+      activeTripState.tramosDelViaje,
+      _currentLegIndex,
+    );
+
+    if (proximoTramoBus?.geometriaPolilinea == null ||
+        proximoTramoBus!.geometriaPolilinea!.isEmpty) {
+      print("[ActiveTripOverlay] No geometry available for bus approach line");
+      return;
+    }
+
+    final fullGeometry = proximoTramoBus.geometriaPolilinea!;
+
+    // Encontrar índices en la geometría
+    final busIndex = findClosestPointIndexOnShape(fullGeometry, busPosition);
+    final stopIndex = findClosestPointIndexOnShape(fullGeometry, stopPosition);
+
+    print(
+      "[ActiveTripOverlay] Bus approach: busIndex=$busIndex, stopIndex=$stopIndex, geometry length=${fullGeometry.length}",
+    );
+
+    // Si no encontramos ambos puntos, usar línea recta como fallback
+    List<List<double>> coordinates;
+    if (busIndex == -1 || stopIndex == -1) {
+      print(
+        "[ActiveTripOverlay] Using straight line fallback for bus approach",
+      );
+      coordinates = [
+        [busPosition.longitud, busPosition.latitud],
+        [stopPosition.longitud, stopPosition.latitud],
+      ];
+    } else {
+      // Calcular segmento de la geometría entre bus y parada
+      final segment = getGeometrySegment(fullGeometry, busIndex, stopIndex);
+      if (segment.length < 2) {
+        print("[ActiveTripOverlay] Segment too short, using straight line");
+        coordinates = [
+          [busPosition.longitud, busPosition.latitud],
+          [stopPosition.longitud, stopPosition.latitud],
+        ];
+      } else {
+        coordinates = segment.map((c) => [c.longitud, c.latitud]).toList();
+        print(
+          "[ActiveTripOverlay] Using geometry segment with ${coordinates.length} points",
+        );
+      }
+    }
+
+    // Crear línea siguiendo la geometría de la ruta
+    final geoJsonFeature = {
+      "type": "Feature",
+      "geometry": {"type": "LineString", "coordinates": coordinates},
+      "properties": {"type": "bus-approach"},
+    };
+
+    try {
+      // Agregar fuente de la línea verde
+      await widget.mapboxMap!.style.addSource(
+        GeoJsonSource(
+          id: BUS_APPROACH_LINE_SOURCE_ID,
+          data: jsonEncode(geoJsonFeature),
+        ),
+      );
+      _activeRouteSourceIds.add(BUS_APPROACH_LINE_SOURCE_ID);
+
+      // 1. Agregar capa de borde (más gruesa, negra, debajo)
+      await widget.mapboxMap!.style.addLayer(
+        LineLayer(
+          id: '${BUS_APPROACH_LINE_LAYER_ID}-shadow',
+          sourceId: BUS_APPROACH_LINE_SOURCE_ID,
+          lineColor: 0xFF000000, // Negro para el borde
+          lineWidth:
+              8.0, // CAMBIO: de 7.0 a 8.0 para consistencia con otros bordes
+          lineOpacity: 0.9,
+          lineJoin: LineJoin.ROUND,
+          lineCap: LineCap.ROUND,
+        ),
+      );
+      _activeRouteLayerIds.add('${BUS_APPROACH_LINE_LAYER_ID}-shadow');
+
+      // 2. Agregar capa de línea verde principal (encima del borde)
+      await widget.mapboxMap!.style.addLayer(
+        LineLayer(
+          id: BUS_APPROACH_LINE_LAYER_ID,
+          sourceId: BUS_APPROACH_LINE_SOURCE_ID,
+          lineColor: 0xFF4CAF50, // Verde como en el código anterior
+          lineWidth: 5.0, // Más fina que el borde
+          lineOpacity: 0.9,
+          lineJoin: LineJoin.ROUND,
+          lineCap: LineCap.ROUND,
+        ),
+      );
+      _activeRouteLayerIds.add(BUS_APPROACH_LINE_LAYER_ID);
+
+      print(
+        "[ActiveTripOverlay] Added green approach line with border following bus route geometry",
+      );
+    } catch (e) {
+      print("[ActiveTripOverlay] Error adding approach line: $e");
+    }
+  }
+
+  Future<void> _updateTooltipPosition(Coordenada position) async {
+    if (widget.mapboxMap == null) return;
+
+    try {
+      // Convertir coordenadas del mundo a coordenadas de pantalla
+      final mapPosition = Point(
+        coordinates: Position(position.longitud, position.latitud),
+      );
+
+      final screenCoordinate = await widget.mapboxMap!.pixelForCoordinate(
+        mapPosition,
+      );
+      _tooltipScreenPosition = Position(screenCoordinate.x, screenCoordinate.y);
+    } catch (e) {
+      print("[ActiveTripOverlay] Error updating tooltip position: $e");
+    }
+  }
+
+  Future<void> _clearBusDisplay() async {
+    if (widget.mapboxMap == null) return;
+
+    // Remover capas de bus y línea de aproximación
+    try {
+      // Remover capa del bus
+      if (await widget.mapboxMap!.style.styleLayerExists(
+        INCOMING_BUS_LAYER_ID,
+      )) {
+        await widget.mapboxMap!.style.removeStyleLayer(INCOMING_BUS_LAYER_ID);
+      }
+      // Remover fuente del bus
+      if (await widget.mapboxMap!.style.styleSourceExists(
+        INCOMING_BUS_SOURCE_ID,
+      )) {
+        await widget.mapboxMap!.style.removeStyleSource(INCOMING_BUS_SOURCE_ID);
+      }
+
+      // Remover capa principal de línea de aproximación
+      if (await widget.mapboxMap!.style.styleLayerExists(
+        BUS_APPROACH_LINE_LAYER_ID,
+      )) {
+        await widget.mapboxMap!.style.removeStyleLayer(
+          BUS_APPROACH_LINE_LAYER_ID,
+        );
+      }
+      // Remover capa de borde de línea de aproximación
+      if (await widget.mapboxMap!.style.styleLayerExists(
+        '${BUS_APPROACH_LINE_LAYER_ID}-shadow',
+      )) {
+        await widget.mapboxMap!.style.removeStyleLayer(
+          '${BUS_APPROACH_LINE_LAYER_ID}-shadow',
+        );
+      }
+      // Remover fuente de línea de aproximación
+      if (await widget.mapboxMap!.style.styleSourceExists(
+        BUS_APPROACH_LINE_SOURCE_ID,
+      )) {
+        await widget.mapboxMap!.style.removeStyleSource(
+          BUS_APPROACH_LINE_SOURCE_ID,
+        );
+      }
+
+      _activeRouteLayerIds.remove(INCOMING_BUS_LAYER_ID);
+      _activeRouteSourceIds.remove(INCOMING_BUS_SOURCE_ID);
+      _activeRouteLayerIds.remove(BUS_APPROACH_LINE_LAYER_ID);
+      _activeRouteLayerIds.remove('${BUS_APPROACH_LINE_LAYER_ID}-shadow');
+      _activeRouteSourceIds.remove(BUS_APPROACH_LINE_SOURCE_ID);
+    } catch (e) {
+      print("[ActiveTripOverlay] Error clearing bus display: $e");
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final appUiState = ref.watch(appLogicProvider);
@@ -768,11 +1227,61 @@ class _ActiveTripOverlayState extends ConsumerState<ActiveTripOverlay> {
       );
     }
 
+    // Leer datos de bus en tiempo real del estado del AppLogicNotifier
+    final busPositionFromState = activeTripState.posicionActualBusReal;
+    final busEtaFromState = activeTripState.minutosParaLlegadaBusReal;
+    final isBusRealTimeFromState =
+        activeTripState.seguimientoBusRealDisponibleEnTramoActual;
+
+    // Usar datos del estado si están disponibles, sino usar datos locales como fallback
+    final effectiveBusPosition = busPositionFromState ?? _currentBusPosition;
+    final effectiveBusEta = busEtaFromState ?? _currentBusEta;
+    final effectiveIsRealTime =
+        isBusRealTimeFromState && busEtaFromState != null;
+
+    // Actualizar display del bus en el mapa si hay nueva posición del estado
+    if (busPositionFromState != null &&
+        busPositionFromState != _currentBusPosition) {
+      _currentBusPosition = busPositionFromState;
+      _currentBusEta = busEtaFromState;
+      _isBusEtaRealTime = effectiveIsRealTime;
+
+      // Actualizar posición en el mapa
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _displayBusOnMap(busPositionFromState);
+          _updateTooltipPosition(busPositionFromState);
+        }
+      });
+    }
+
+    // Obtener información de línea del tramo actual
+    String? effectiveBusLine = _currentBusLine;
+    String? effectiveBusDestination = _currentBusDestination;
+
+    if (effectiveBusLine == null && activeTripState.tramosDelViaje.isNotEmpty) {
+      final currentSegment = activeTripState.tramosDelViaje[_currentLegIndex];
+      if (currentSegment.tipo == TipoTramoViaje.VIAJE_EN_BUS ||
+          currentSegment.tipo == TipoTramoViaje.ESPERAR_BUS) {
+        effectiveBusLine = currentSegment.nombreLineaBus;
+        effectiveBusDestination = currentSegment.destinoFinalDelBus;
+        _currentBusLine = effectiveBusLine;
+        _currentBusDestination = effectiveBusDestination;
+      }
+    }
+
     return _ActiveTripInstructionsPanel(
       activeTripState: activeTripState,
       appLogic: appLogic,
       currentLegIndex: _currentLegIndex,
       onLegSelected: _onLegSelected,
+      // Usar datos efectivos (del estado o locales)
+      currentBusPosition: effectiveBusPosition,
+      tooltipScreenPosition: _tooltipScreenPosition,
+      currentBusEta: effectiveBusEta,
+      currentBusLine: effectiveBusLine,
+      isBusEtaRealTime: effectiveIsRealTime,
+      currentBusDestination: effectiveBusDestination,
     );
   }
 }
@@ -783,12 +1292,24 @@ class _ActiveTripInstructionsPanel extends StatelessWidget {
   final IAppLogic appLogic;
   final int currentLegIndex;
   final void Function(int) onLegSelected;
+  final Coordenada? currentBusPosition;
+  final Position? tooltipScreenPosition;
+  final int? currentBusEta;
+  final String? currentBusLine;
+  final bool isBusEtaRealTime;
+  final String? currentBusDestination;
 
   const _ActiveTripInstructionsPanel({
     required this.activeTripState,
     required this.appLogic,
     required this.currentLegIndex,
     required this.onLegSelected,
+    required this.currentBusPosition,
+    required this.tooltipScreenPosition,
+    required this.currentBusEta,
+    required this.currentBusLine,
+    required this.isBusEtaRealTime,
+    required this.currentBusDestination,
   });
 
   @override
@@ -818,6 +1339,22 @@ class _ActiveTripInstructionsPanel extends StatelessWidget {
           right: 12,
           child: _buildNavigationPanel(context, theme),
         ),
+
+        // Tooltip del bus (si está disponible)
+        if (currentBusPosition != null &&
+            tooltipScreenPosition != null &&
+            currentBusEta != null &&
+            currentBusLine != null)
+          Positioned(
+            left: tooltipScreenPosition!.lng - 80, // Centrado sobre el bus
+            top: tooltipScreenPosition!.lat - 120, // Arriba del bus
+            child: BusTooltipWidget(
+              etaMinutes: currentBusEta!,
+              lineNumber: currentBusLine!,
+              isRealTime: isBusEtaRealTime,
+              destination: currentBusDestination,
+            ),
+          ),
       ],
     );
   }

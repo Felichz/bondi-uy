@@ -5,9 +5,6 @@
 
 // --- Definiciones Base (reutilizables en varios estados) ---
 
-// <-- IMPORTAR // Eliminada esta línea
-// import 'package:bondi_uy/backend/services/geocoding_service_adapter.dart'; // <-- IMPORTAR // Eliminada esta línea
-
 class Coordenada {
   final double latitud;
   final double longitud;
@@ -176,6 +173,9 @@ class TramoViajeMostrable {
   final String? nombreParadaOrigen;
   final Coordenada? coordenadasParadaDestino;
   final String? nombreParadaDestino;
+  
+  // Campo para acceder a la geometría completa de la línea de bus
+  final String? shapeId; // Para obtener geometría completa desde shapes.geojson
 
   // Campos para ETA del primer bus en una opción de ruta
   final int? minutosEstimadosLlegadaBus;
@@ -198,7 +198,9 @@ class TramoViajeMostrable {
     this.nombreParadaOrigen,
     this.coordenadasParadaDestino,
     this.nombreParadaDestino,
-    // Nuevos campos para ETA
+    // Nuevo campo para shapeId
+    this.shapeId,
+    // Campos para ETA
     this.minutosEstimadosLlegadaBus,
     this.esTiempoRealBus,
     this.posicionActualBus,
