@@ -1,5 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:bondi_uy/backend/contrato_ui/app_ui_state.dart';
+import 'package:flutter/services.dart' show rootBundle;
+import 'dart:convert';
+import 'dart:async';
+import 'package:bondi_uy/services/geocoding_service.dart';
 
 // Assuming AppUiStateNotifier manages the AppUiState
 class AppUiStateNotifier extends StateNotifier<AppUiState> {
@@ -39,6 +43,9 @@ final appLogicProvider = Provider<IAppLogic>((ref) {
 // Mock implementation of IAppLogic for placeholder purposes
 class _MockAppLogic implements IAppLogic {
   final AppUiStateNotifier _appUiStateNotifier;
+  Timer? _origenDebounceTimer;
+  Timer? _destinoDebounceTimer;
+  final GeocodingService _geocodingService = GeocodingService();
 
   _MockAppLogic(this._appUiStateNotifier);
 
@@ -47,32 +54,80 @@ class _MockAppLogic implements IAppLogic {
     _appUiStateNotifier.updateState(newState);
   }
 
+  // Helper method to load stops from GeoJSON file (based on old project)
+  Future<List<InfoParadaEnMapa>> _cargarParadasDesdeGeoJSON() async {
+    final String geoJsonData = await rootBundle.loadString(
+      'assets/data/stops.geojson',
+    );
+
+    final Map<String, dynamic> geoJson = json.decode(geoJsonData);
+    final List<dynamic> features = geoJson['features'] ?? [];
+
+    final List<InfoParadaEnMapa> paradas = [];
+
+    for (final feature in features) {
+      try {
+        final geometry = feature['geometry'];
+        final properties = feature['properties'];
+
+        if (geometry != null &&
+            geometry['type'] == 'Point' &&
+            geometry['coordinates'] != null &&
+            properties != null) {
+          final List<dynamic> coordinates = geometry['coordinates'];
+          if (coordinates.length >= 2) {
+            final double longitude = coordinates[0].toDouble();
+            final double latitude = coordinates[1].toDouble();
+
+            final String stopId = properties['stop_id']?.toString() ?? '';
+            final String stopName =
+                properties['stop_name']?.toString() ?? 'Parada sin nombre';
+
+            if (stopId.isNotEmpty) {
+              paradas.add(
+                InfoParadaEnMapa(
+                  idParada: stopId,
+                  posicion: Coordenada(latitud: latitude, longitud: longitude),
+                  nombre: stopName,
+                ),
+              );
+            }
+          }
+        }
+      } catch (e) {
+        print("Error procesando feature de parada: $e");
+        // Continue with next feature
+      }
+    }
+
+    print("Cargadas ${paradas.length} paradas desde GeoJSON");
+    return paradas;
+  }
+
   @override
   Future<void> cargarParadasInicialesDelViewport(
     Coordenada centroActual,
     double zoomActual,
   ) async {
     print("_MockAppLogic: cargarParadasInicialesDelViewport called");
-    // Simulate loading stops and updating state
-    final List<InfoParadaEnMapa> simulatedStops = [
-      InfoParadaEnMapa(
-        idParada: '1',
-        posicion: Coordenada(latitud: -34.9, longitud: -56.18),
-        nombre: 'Parada 1',
-      ),
-      InfoParadaEnMapa(
-        idParada: '2',
-        posicion: Coordenada(latitud: -34.91, longitud: -56.17),
-        nombre: 'Parada 2',
-      ),
-    ];
-    _updateState(
-      _appUiStateNotifier.state.copyWith(
-        datosFaseInicial: EstadoFaseInicial(
-          paradasVisiblesEnMapa: simulatedStops,
+    // Based on the old project, load stops from the GeoJSON file
+    try {
+      final List<InfoParadaEnMapa> paradas = await _cargarParadasDesdeGeoJSON();
+      _updateState(
+        _appUiStateNotifier.state.copyWith(
+          datosFaseInicial: EstadoFaseInicial(paradasVisiblesEnMapa: paradas),
         ),
-      ),
-    );
+      );
+    } catch (e) {
+      print("Error cargando paradas: $e");
+      _updateState(
+        _appUiStateNotifier.state.copyWith(
+          datosFaseInicial: EstadoFaseInicial(
+            paradasVisiblesEnMapa: [], // Empty list on error
+          ),
+        ),
+      );
+    }
   }
 
   @override
@@ -138,65 +193,117 @@ class _MockAppLogic implements IAppLogic {
   }
 
   @override
-  Future<void> usuarioEscribioEnCampoOrigen(String textoQuery) async {
-    print("_MockAppLogic: usuarioEscribioEnCampoOrigen: $textoQuery");
+  Future<void> usuarioEscribioEnCampoOrigen(String texto) async {
+    print("_MockAppLogic: usuarioEscribioEnCampoOrigen: $texto");
+
+    // Update the input text immediately
+    _updateState(
+      _appUiStateNotifier.state.copyWith(textoInputOrigenActual: texto),
+    );
+
+    // Cancel previous timer
+    _origenDebounceTimer?.cancel();
+
+    if (texto.length < 3) {
+      // Clear suggestions if text is too short
+      _updateState(
+        _appUiStateNotifier.state.copyWith(
+          sugerenciasOrigen: [],
+          estadoSugerenciasOrigen: EstadoSolicitud.INICIAL,
+        ),
+      );
+      return;
+    }
+
+    // Set loading state
     _updateState(
       _appUiStateNotifier.state.copyWith(
-        textoInputOrigenActual: textoQuery,
         estadoSugerenciasOrigen: EstadoSolicitud.CARGANDO,
-        clearSugerenciasOrigen: true,
       ),
     );
-    await Future.delayed(Duration(milliseconds: 500)); // Simulate network delay
-    final simulatedSuggestions = [
-      SugerenciaLugar(
-        id: 'ori1',
-        nombreCompleto: 'Sugerencia Origen 1',
-        coordenadas: Coordenada(latitud: -34.9, longitud: -56.1),
-      ), // Example coords
-      SugerenciaLugar(
-        id: 'ori2',
-        nombreCompleto: 'Sugerencia Origen 2',
-        coordenadas: Coordenada(latitud: -34.8, longitud: -56.2),
-      ), // Example coords
-    ];
-    _updateState(
-      _appUiStateNotifier.state.copyWith(
-        estadoSugerenciasOrigen: EstadoSolicitud.EXITO,
-        sugerenciasOrigen: simulatedSuggestions,
-      ),
-    );
+
+    // Debounce the geocoding call
+    _origenDebounceTimer = Timer(const Duration(milliseconds: 500), () async {
+      try {
+        final List<SugerenciaLugar> suggestions = await _geocodingService
+            .fetchSuggestions(texto);
+
+        // Only update if this is still the current text input
+        if (_appUiStateNotifier.state.textoInputOrigenActual == texto) {
+          _updateState(
+            _appUiStateNotifier.state.copyWith(
+              sugerenciasOrigen: suggestions,
+              estadoSugerenciasOrigen: EstadoSolicitud.EXITO,
+            ),
+          );
+        }
+      } catch (e) {
+        print("_MockAppLogic: Error fetching origin suggestions: $e");
+        _updateState(
+          _appUiStateNotifier.state.copyWith(
+            sugerenciasOrigen: [],
+            estadoSugerenciasOrigen: EstadoSolicitud.ERROR,
+          ),
+        );
+      }
+    });
   }
 
   @override
-  Future<void> usuarioEscribioEnCampoDestino(String textoQuery) async {
-    print("_MockAppLogic: usuarioEscribioEnCampoDestino: $textoQuery");
+  Future<void> usuarioEscribioEnCampoDestino(String texto) async {
+    print("_MockAppLogic: usuarioEscribioEnCampoDestino: $texto");
+
+    // Update the input text immediately
+    _updateState(
+      _appUiStateNotifier.state.copyWith(textoInputDestinoActual: texto),
+    );
+
+    // Cancel previous timer
+    _destinoDebounceTimer?.cancel();
+
+    if (texto.length < 3) {
+      // Clear suggestions if text is too short
+      _updateState(
+        _appUiStateNotifier.state.copyWith(
+          sugerenciasDestino: [],
+          estadoSugerenciasDestino: EstadoSolicitud.INICIAL,
+        ),
+      );
+      return;
+    }
+
+    // Set loading state
     _updateState(
       _appUiStateNotifier.state.copyWith(
-        textoInputDestinoActual: textoQuery,
         estadoSugerenciasDestino: EstadoSolicitud.CARGANDO,
-        clearSugerenciasDestino: true,
       ),
     );
-    await Future.delayed(Duration(milliseconds: 500)); // Simulate network delay
-    final simulatedSuggestions = [
-      SugerenciaLugar(
-        id: 'dest1',
-        nombreCompleto: 'Sugerencia Destino A',
-        coordenadas: Coordenada(latitud: -34.95, longitud: -56.15),
-      ), // Example coords
-      SugerenciaLugar(
-        id: 'dest2',
-        nombreCompleto: 'Sugerencia Destino B',
-        coordenadas: Coordenada(latitud: -34.85, longitud: -56.25),
-      ), // Example coords
-    ];
-    _updateState(
-      _appUiStateNotifier.state.copyWith(
-        estadoSugerenciasDestino: EstadoSolicitud.EXITO,
-        sugerenciasDestino: simulatedSuggestions,
-      ),
-    );
+
+    // Debounce the geocoding call
+    _destinoDebounceTimer = Timer(const Duration(milliseconds: 500), () async {
+      try {
+        final List<SugerenciaLugar> suggestions = await _geocodingService
+            .fetchSuggestions(texto);
+
+        // Only update if this is still the current text input
+        if (_appUiStateNotifier.state.textoInputDestinoActual == texto) {
+          _updateState(
+            _appUiStateNotifier.state.copyWith(
+              sugerenciasDestino: suggestions,
+              estadoSugerenciasDestino: EstadoSolicitud.EXITO,
+            ),
+          );
+        }
+      } catch (e) {
+        print("_MockAppLogic: Error fetching destination suggestions: $e");
+        _updateState(
+          _appUiStateNotifier.state.copyWith(
+            sugerenciasDestino: [],
+            estadoSugerenciasDestino: EstadoSolicitud.ERROR,
+          ),
+        );
+      }
+    });
   }
 
   @override
@@ -602,30 +709,32 @@ class _MockAppLogic implements IAppLogic {
     print("_MockAppLogic: intercambiarOrigenYDestino called");
     // Simulate swapping origin and destination in state
     final currentState = _appUiStateNotifier.state;
-    _updateState(currentState.copyWith(
-      textoInputOrigenActual: currentState.textoInputDestinoActual,
-      textoInputDestinoActual: currentState.textoInputOrigenActual,
-      puntoOrigenParaBusqueda: currentState.puntoDestinoParaBusqueda,
-      puntoDestinoParaBusqueda: currentState.puntoOrigenParaBusqueda,
-      nombreLugarOrigenSeleccionado: currentState.nombreLugarDestinoSeleccionado,
-      nombreLugarDestinoSeleccionado: currentState.nombreLugarOrigenSeleccionado,
-      // Clear suggestions as they might not be relevant anymore
-      sugerenciasOrigen: [],
-      sugerenciasDestino: [],
-    ));
+    _updateState(
+      currentState.copyWith(
+        textoInputOrigenActual: currentState.textoInputDestinoActual,
+        textoInputDestinoActual: currentState.textoInputOrigenActual,
+        puntoOrigenParaBusqueda: currentState.puntoDestinoParaBusqueda,
+        puntoDestinoParaBusqueda: currentState.puntoOrigenParaBusqueda,
+        nombreLugarOrigenSeleccionado:
+            currentState.nombreLugarDestinoSeleccionado,
+        nombreLugarDestinoSeleccionado:
+            currentState.nombreLugarOrigenSeleccionado,
+        // Clear suggestions as they might not be relevant anymore
+        sugerenciasOrigen: [],
+        sugerenciasDestino: [],
+      ),
+    );
   }
 
   @override
   void setErrorGlobal(String? mensaje) {
     print("_MockAppLogic: setErrorGlobal called with message: $mensaje");
-    _updateState(_appUiStateNotifier.state.copyWith(mensajeErrorGlobal: mensaje));
+    _updateState(
+      _appUiStateNotifier.state.copyWith(mensajeErrorGlobal: mensaje),
+    );
   }
 
-  @override
-  void setPermitirZoomAutomaticoMapa(bool permitir) {
-    print("_MockAppLogic: setPermitirZoomAutomaticoMapa called with: $permitir");
-    _updateState(_appUiStateNotifier.state.copyWith(permitirZoomAutomaticoMapa: permitir));
-  }
+  // setPermitirZoomAutomaticoMapa eliminado como parte del refactor del Ticket 5
 
   @override
   Future<void> limpiarMensajeDeErrorGlobal() async {

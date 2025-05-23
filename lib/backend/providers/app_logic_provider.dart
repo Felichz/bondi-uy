@@ -4,6 +4,7 @@ import '../contrato_ui/app_ui_state.dart';
 import '../services/montevideo_api_service_adapter.dart';
 import '../services/itinerary_planning_service_adapter.dart';
 import '../services/geocoding_service_adapter.dart';
+import 'package:collection/collection.dart';
 
 // El StateNotifierProvider para nuestro AppLogicNotifier.
 // La UI usará este provider para acceder al estado (AppUiState) y a las acciones (métodos de AppLogicNotifier).
@@ -150,9 +151,8 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
     InfoParadaEnMapa? paradaInfo;
     if (state.datosFaseInicial != null) {
       try {
-        paradaInfo = state.datosFaseInicial!.paradasVisiblesEnMapa.firstWhere(
-          (p) => p.idParada == idParada,
-        );
+        paradaInfo = state.datosFaseInicial!.paradasVisiblesEnMapa
+            .firstWhereOrNull((p) => p.idParada == idParada);
       } catch (e) {
         // No encontrada en las visibles, lo cual podría ser un problema de flujo si se permite seleccionar
         // paradas no visibles, o si el viewport cambió y la lista no se actualizó aún.
@@ -288,7 +288,10 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
       if (mounted) {
         OpcionDeRutaMostrable? primeraOpcion;
         if (opciones.isNotEmpty) {
-          primeraOpcion = opciones.firstWhere((opt) => opt.esRecomendada, orElse: () => opciones.first);
+          primeraOpcion = opciones.firstWhere(
+            (opt) => opt.esRecomendada,
+            orElse: () => opciones.first,
+          );
         }
 
         state = state.copyWith(
@@ -332,12 +335,15 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
       final destinoActual = state.puntoDestinoParaBusqueda;
       final nombreDestinoActual = state.nombreLugarDestinoSeleccionado;
       final textoInputDestinoActual = state.textoInputDestinoActual;
-      
-      final paradasVisibles = state.datosFaseInicial?.paradasVisiblesEnMapa ?? [];
+
+      final paradasVisibles =
+          state.datosFaseInicial?.paradasVisiblesEnMapa ?? [];
 
       state = AppUiState.inicial().copyWith(
         // Restaurar paradas visibles
-        datosFaseInicial: EstadoFaseInicial(paradasVisiblesEnMapa: paradasVisibles),
+        datosFaseInicial: EstadoFaseInicial(
+          paradasVisiblesEnMapa: paradasVisibles,
+        ),
         // Mantener O/D si existen
         puntoOrigenParaBusqueda: origenActual,
         nombreLugarOrigenSeleccionado: nombreOrigenActual,
@@ -346,7 +352,7 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
         nombreLugarDestinoSeleccionado: nombreDestinoActual,
         textoInputDestinoActual: textoInputDestinoActual,
       );
-      print("[AppLogicNotifier] Búsqueda o selección de ruta cancelada. ZoomTarget: ${state.zoomTargetActual}");
+      print("[AppLogicNotifier] Búsqueda o selección de ruta cancelada.");
     }
   }
 
@@ -420,8 +426,6 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
       state = state.copyWith(
         clearInfoParadaConsultada: true,
         estadoInfoParadaConsultada: EstadoSolicitud.INICIAL,
-        zoomTargetActual: ZoomTarget.ninguno(), // Al cerrar, no hay zoom específico
-        permitirZoomAutomaticoMapa: false, // Evitar zoom automático no deseado
       );
     }
   }
@@ -532,7 +536,8 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
       state = state.copyWith(
         textoInputOrigenActual: sugerencia.nombreCompleto,
         puntoOrigenParaBusqueda: sugerencia.coordenadas,
-        nombreLugarOrigenSeleccionado: sugerencia.nombreLugar ?? sugerencia.nombreCompleto,
+        nombreLugarOrigenSeleccionado:
+            sugerencia.nombreLugar ?? sugerencia.nombreCompleto,
         clearSugerenciasOrigen: true,
       );
     }
@@ -544,7 +549,8 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
       state = state.copyWith(
         textoInputDestinoActual: sugerencia.nombreCompleto,
         puntoDestinoParaBusqueda: sugerencia.coordenadas,
-        nombreLugarDestinoSeleccionado: sugerencia.nombreLugar ?? sugerencia.nombreCompleto,
+        nombreLugarDestinoSeleccionado:
+            sugerencia.nombreLugar ?? sugerencia.nombreCompleto,
         clearSugerenciasDestino: true,
       );
     }
@@ -626,8 +632,9 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
   void seleccionarOpcionDeRutaParaPrevisualizar(String idOpcionRuta) {
     if (mounted) {
       final opciones = state.datosFaseOpcionesRuta?.opcionesDeRuta ?? [];
-      final opcionSeleccionada =
-          opciones.firstWhereOrNull((opt) => opt.idOpcion == idOpcionRuta);
+      final opcionSeleccionada = opciones.firstWhereOrNull(
+        (opt) => opt.idOpcion == idOpcionRuta,
+      );
 
       if (opcionSeleccionada != null) {
         final List<Coordenada> todosLosPuntosDeLaRuta = [];
@@ -641,9 +648,7 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
         }
 
         if (todosLosPuntosDeLaRuta.isNotEmpty) {
-          state = state.copyWith(
-            idOpcionRutaPrevisualizada: idOpcionRuta,
-          );
+          state = state.copyWith(idOpcionRutaPrevisualizada: idOpcionRuta);
         } else {
           // Si la ruta no tiene puntos, no cambiamos el zoom target
           state = state.copyWith(idOpcionRutaPrevisualizada: idOpcionRuta);
@@ -662,9 +667,7 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
       final origenActual = state.puntoOrigenParaBusqueda;
       final destinoActual = state.puntoDestinoParaBusqueda;
 
-      state = state.copyWith(
-        clearIdOpcionRutaPrevisualizada: true,
-      );
+      state = state.copyWith(clearIdOpcionRutaPrevisualizada: true);
     }
   }
 
@@ -930,6 +933,16 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
   }
 
   @override
+  void setErrorGlobal(String? mensaje) {
+    if (mounted) {
+      state = state.copyWith(
+        mensajeErrorGlobal: mensaje,
+        clearMensajeErrorGlobal: mensaje == null,
+      );
+    }
+  }
+
+  @override
   void dispose() {
     _seguimientoBusTimer?.cancel();
     _origenDebounceTimer?.cancel();
@@ -993,8 +1006,6 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
       state = state.copyWith(
         clearInfoParadaConsultada: true,
         estadoInfoParadaConsultada: EstadoSolicitud.INICIAL,
-        zoomTargetActual: ZoomTarget.ninguno(), // Al cerrar, no hay zoom específico
-        permitirZoomAutomaticoMapa: false, // Evitar zoom automático no deseado
       );
     }
   }
@@ -1040,7 +1051,6 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
       );
     }
   }
-
 }
 
 // Extension para facilitar el acceso a los datos de la fase actual

@@ -1,47 +1,124 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_typeahead/flutter_typeahead.dart';
+import 'dart:async';
 import 'package:bondi_uy/backend/contrato_ui/app_ui_state.dart'; // Para SugerenciaLugar y EstadoSolicitud
 // TODO: Importar IAppLogic y su provider
 // Ejemplo: import 'package:bondi_uy/backend/contrato_ui/app_logic_interface.dart';
 // Ejemplo: import 'package:bondi_uy/backend/providers/app_logic_provider.dart';
 
-class AppComposeWithOrigin extends ConsumerWidget {
-  // TODO: Adaptar los parámetros para recibir del AppUiState:
-  // - Texto inicial del campo (en lugar de TextEditingController interno)
-  // - Lista de sugerencias (SugerenciaLugar)
-  // - Estado de las sugerencias (EstadoSolicitud: CARGANDO, ERROR, EXITO, INICIAL)
-  // - El tipo de campo (origen/destino) para saber qué acción de IAppLogic llamar.
-  // Y para las acciones, recibir callbacks o usar ref.read(appLogicProvider)
-
+class AppComposeWithOrigin extends ConsumerStatefulWidget {
   final String hintText;
-  final String currentText; // Texto actual desde AppUiState
-  final List<SugerenciaLugar> suggestions; // Sugerencias desde AppUiState
-  final EstadoSolicitud suggestionsState; // Estado desde AppUiState (Corregido)
-  final void Function(String) onTextChanged; // Callback para escribir
-  final void Function(SugerenciaLugar)
-  onSuggestionSelected; // Callback para seleccionar
-  final void Function() onClear; // Callback para limpiar
-  final bool autoFocus; // ¿Debería tener autofocus?
-  final FocusNode? focusNode; // Añadir FocusNode aquí
+  final List<SugerenciaLugar> suggestions;
+  final EstadoSolicitud suggestionsState;
+  final void Function(String) onTextChanged;
+  final void Function(SugerenciaLugar) onSuggestionSelected;
+  final void Function() onClear;
+  final bool autoFocus;
+  final FocusNode? focusNode;
+  final String? initialValue;
 
   const AppComposeWithOrigin({
     super.key,
     required this.hintText,
-    required this.currentText,
     required this.suggestions,
     required this.suggestionsState,
     required this.onTextChanged,
     required this.onSuggestionSelected,
     required this.onClear,
     this.autoFocus = false,
-    this.focusNode, // Añadir a constructor
+    this.focusNode,
+    this.initialValue,
   });
 
-  // TODO: Adaptar _buildHighlightedText si es necesario (probablemente no cambie)
+  @override
+  ConsumerState<AppComposeWithOrigin> createState() =>
+      _AppComposeWithOriginState();
+}
+
+class _AppComposeWithOriginState extends ConsumerState<AppComposeWithOrigin> {
+  final TextEditingController _controller = TextEditingController();
+  final SuggestionsController<SugerenciaLugar> _suggestionsController =
+      SuggestionsController<SugerenciaLugar>();
+  late FocusNode _focusNode;
+  Timer? _debounceTimer;
+  String _lastSearchTerm = '';
+  List<SugerenciaLugar> _lastKnownSuggestions = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode = widget.focusNode ?? FocusNode();
+    if (widget.initialValue != null) {
+      _controller.text = widget.initialValue!;
+    }
+  }
+
+  @override
+  void didUpdateWidget(AppComposeWithOrigin oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    // Solo actualizar si viene de una selección externa (el initialValue cambió)
+    if (widget.initialValue != null &&
+        widget.initialValue != oldWidget.initialValue &&
+        widget.initialValue != _controller.text) {
+      _controller.text = widget.initialValue!;
+      _lastSearchTerm = widget.initialValue!;
+    }
+
+    // Si las sugerencias cambiaron y tenemos texto, actualizar el controller manualmente
+    if (widget.suggestions != _lastKnownSuggestions &&
+        _controller.text.length >= 2) {
+      print(
+        "[AppComposeWithOrigin] Suggestions changed (${_lastKnownSuggestions.length} -> ${widget.suggestions.length}) - updating suggestions manually",
+      );
+      _lastKnownSuggestions = List.from(widget.suggestions);
+
+      // Refreshar las sugerencias manualmente sin rebuild completo
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _focusNode.hasFocus && _controller.text.length >= 2) {
+          print(
+            "[AppComposeWithOrigin] Refreshing suggestions for current text: '${_controller.text}'",
+          );
+          _suggestionsController.refresh();
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _debounceTimer?.cancel();
+    _suggestionsController.dispose();
+    if (widget.focusNode == null) {
+      _focusNode.dispose();
+    }
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onTextChanged(String value) {
+    // Cancelar el timer anterior
+    _debounceTimer?.cancel();
+
+    // Solo hacer búsqueda si el texto es diferente y tiene al menos 2 caracteres
+    if (value != _lastSearchTerm && value.length >= 2) {
+      _debounceTimer = Timer(const Duration(milliseconds: 300), () {
+        if (mounted) {
+          _lastSearchTerm = value;
+          widget.onTextChanged(value);
+          print("[AppComposeWithOrigin] Debounced search for: '$value'");
+        }
+      });
+    } else if (value.length < 2 && _lastSearchTerm.isNotEmpty) {
+      // Limpiar si el texto es muy corto
+      _lastSearchTerm = '';
+      widget.onClear();
+    }
+  }
+
   Widget _buildHighlightedText(String text, String query) {
-    // Implementación copiada de old/lib/widgets/compose_with_origin.dart
-    if (query.length < 3) return Text(text);
+    if (query.length < 2) return Text(text);
 
     try {
       final RegExp regExp = RegExp(RegExp.escape(query), caseSensitive: false);
@@ -56,7 +133,7 @@ class AppComposeWithOrigin extends ConsumerWidget {
           spans.add(
             TextSpan(
               text: text.substring(lastEnd, start),
-              style: TextStyle(color: Colors.black),
+              style: const TextStyle(color: Colors.black),
             ),
           );
         }
@@ -64,7 +141,10 @@ class AppComposeWithOrigin extends ConsumerWidget {
         spans.add(
           TextSpan(
             text: text.substring(start, end),
-            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black),
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              color: Colors.black,
+            ),
           ),
         );
 
@@ -75,140 +155,112 @@ class AppComposeWithOrigin extends ConsumerWidget {
         spans.add(
           TextSpan(
             text: text.substring(lastEnd),
-            style: TextStyle(color: Colors.black),
+            style: const TextStyle(color: Colors.black),
           ),
         );
       }
 
       return RichText(
-        text: TextSpan(children: spans, style: TextStyle(fontSize: 14.0)),
+        text: TextSpan(children: spans, style: const TextStyle(fontSize: 14.0)),
         overflow: TextOverflow.ellipsis,
       );
     } catch (e) {
-      print("[BondiUY_Debug] Error resaltando texto: $e");
       return Text(text);
     }
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    // No necesitamos TextEditingController interno, TypeAheadField puede manejarlo con initialValue
-    // Pero usaremos el builder para tener control del TextField.
-
-    // TODO: Leer IAppLogic provider
-    // final appLogic = ref.read(appLogicProvider);
-
+  Widget build(BuildContext context) {
     return TypeAheadField<SugerenciaLugar>(
-      // Usar initialValue si es necesario o manejar a través del builder controller
-      // initialValue: currentText, // Considerar usar esto si TypeAheadField lo soporta bien con un controller externo/builder
+      controller: _controller,
+      focusNode: _focusNode,
+      suggestionsController: _suggestionsController,
 
-      // Usamos el builder para pasar nuestro currentText y manejar los cambios
       builder: (context, controller, focusNode) {
-        // Sincronizar el controller interno con el texto que viene del estado
-        // Solo actualizar si el texto del estado es diferente para evitar loops
-        if (controller.text != currentText) {
-          controller.text =
-              currentText; // Esto puede causar problemas de selección/cursor si no se maneja bien
-          // Una alternativa es usar un TextEditingController pasado desde el padre que observe el estado
-        }
-
         return TextField(
-          controller:
-              controller, // Usar el controller proporcionado por TypeAheadField
-          focusNode:
-              this.focusNode ??
-              focusNode, // Usar el focusNode pasado si existe, sino el del builder
-          autofocus: autoFocus,
+          controller: controller,
+          focusNode: focusNode,
+          autofocus: widget.autoFocus,
           style: const TextStyle(fontSize: 16),
           decoration: InputDecoration(
-            hintText: hintText,
-            border:
-                OutlineInputBorder(), // Mantener el estilo original o adaptar
+            hintText: widget.hintText,
+            border: const OutlineInputBorder(),
             isDense: true,
-            contentPadding: EdgeInsets.symmetric(
+            contentPadding: const EdgeInsets.symmetric(
               vertical: 12.0,
               horizontal: 10.0,
             ),
             suffixIcon: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Indicador de carga
-                if (suggestionsState == EstadoSolicitud.CARGANDO) // Corregido
+                if (widget.suggestionsState == EstadoSolicitud.CARGANDO)
                   Container(
                     width: 24,
                     height: 24,
                     padding: const EdgeInsets.all(4.0),
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                    child: const CircularProgressIndicator(strokeWidth: 2),
                   ),
-                // Botón de limpiar
-                if (currentText.isNotEmpty &&
-                    suggestionsState !=
-                        EstadoSolicitud
-                            .CARGANDO) // Mostrar limpiar solo si hay texto y no cargando (Corregido)
+                if (controller.text.isNotEmpty &&
+                    widget.suggestionsState != EstadoSolicitud.CARGANDO)
                   IconButton(
-                    icon: Icon(Icons.clear),
+                    icon: const Icon(Icons.clear),
                     onPressed: () {
                       controller.clear();
-                      onClear(); // Llamar al callback de limpiar que notificará a la lógica
-                      // No necesitamos focusNode.requestFocus() aquí, la lógica decidirá
+                      _lastSearchTerm = '';
+                      widget.onClear();
                     },
                   ),
               ],
             ),
           ),
-          // Listener para cuando el texto cambia
-          onChanged:
-              onTextChanged, // Llamar al callback que notificará a la lógica
+          onChanged: _onTextChanged, // Usar nuestro método con debounce
         );
       },
 
-      // suggestionsCallback ya no necesita hacer el fetch, solo retornar las sugerencias del estado
       suggestionsCallback: (pattern) async {
-        // El pattern ya está implícito en currentText, pero TypeAheadField lo requiere.
-        // Simplemente retornamos las sugerencias actuales del estado.
-        // No necesitamos async si no hay fetch.
-        return suggestions; // Retornar la lista de SugerenciaLugar del estado
+        print(
+          "[AppComposeWithOrigin] suggestionsCallback with pattern='$pattern', available: ${widget.suggestions.length}",
+        );
+
+        // Si el pattern es muy corto, no mostrar sugerencias
+        if (pattern.length < 2) {
+          return <SugerenciaLugar>[];
+        }
+
+        // Si el pattern corresponde exactamente a alguna sugerencia conocida (selección previa),
+        // no mostrar dropdown para evitar dropdown vacío
+        final isExactMatch = widget.suggestions.any(
+          (sug) => sug.nombreCompleto == pattern,
+        );
+        if (isExactMatch) {
+          print(
+            "[AppComposeWithOrigin] Pattern is exact match - hiding dropdown",
+          );
+          return <SugerenciaLugar>[];
+        }
+
+        // Devolver las sugerencias que tenemos disponibles
+        print(
+          "[AppComposeWithOrigin] Returning ${widget.suggestions.length} suggestions",
+        );
+        return widget.suggestions;
       },
 
       itemBuilder: (context, SugerenciaLugar suggestion) {
-        // Usar la SugerenciaLugar para construir el ListTile
         return ListTile(
-          // Mostrar el place_name o la descripción de la sugerencia
           title: _buildHighlightedText(
-            suggestion.nombreCompleto, // Corregido: usar nombreCompleto
-            currentText, // Texto actual para resaltar
+            suggestion.nombreCompleto,
+            _controller.text,
           ),
-          // subtitle: Text(suggestion.direccion ?? ''), // Si existe y se quiere mostrar
         );
       },
 
       onSelected: (SugerenciaLugar suggestion) {
-        // Al seleccionar, notificar a la lógica con la sugerencia completa
-        onSuggestionSelected(suggestion);
-        // La lógica actualizará el estado y el texto del campo a través de currentText
-        // No necesitamos setear controller.text = suggestion.placeName aquí, ya que viene del estado.
-        // Ni ocultar el overlay o unfocus; la lógica lo maneja al actualizar el estado.
+        print("[AppComposeWithOrigin] Selected: ${suggestion.nombreCompleto}");
+        // El controller se actualizará automáticamente con el texto de la sugerencia
+        _lastSearchTerm = suggestion.nombreCompleto;
+        widget.onSuggestionSelected(suggestion);
       },
-
-      // Opcional: para mostrar un indicador de no sugerencias o error
-      // Comentados temporalmente por posibles problemas de compatibilidad de la versión de TypeAheadField
-      // noItemsFoundBuilder: (context) {
-      //    if (suggestionsState == EstadoSolicitud.ERROR) {
-      //       return Padding(padding: const EdgeInsets.all(8.0), child: Text('Error al cargar sugerencias.', style: TextStyle(color: Colors.red)));
-      //    } else if (suggestionsState == EstadoSolicitud.EXITO && suggestions.isEmpty && currentText.length >= 3) {
-      //       return Padding(padding: const EdgeInsets.all(8.0), child: Text('No se encontraron sugerencias.'));
-      //    }
-      //    return SizedBox.shrink(); // No mostrar nada en otros estados
-      // },
-      //  loadingBuilder: (context) {
-      //    // El indicador de carga ya está en el suffixIcon, así que no mostramos otro aquí
-      //    return SizedBox.shrink();
-      //  },
     );
   }
-
-  // Helper para convertir SugerenciaLugar a texto para el campo (si TypeAheadField lo necesitara)
-  // String _suggestionToText(SugerenciaLugar suggestion) {
-  //   return suggestion.nombreCompleto; // O la representación deseada
-  // }
 }

@@ -1,3 +1,8 @@
+Mejoras UX
+    - Evaluar una iconografia de paradas que ilustre si es un punto de subida o uno de bajada
+
+======= PARA REVISAR (proyecto viejo) =======
+
 Simulacion de movimiento
     - El bus simulado nunca debe moverse hacia atras, no debe estar permitido para el mismo bus
     - Arreglar animacion tooltip

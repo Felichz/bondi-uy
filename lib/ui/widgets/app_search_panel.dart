@@ -6,7 +6,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:bondi_uy/providers/app_providers.dart';
+import 'package:bondi_uy/backend/providers/app_logic_provider.dart';
 import 'package:bondi_uy/backend/contrato_ui/app_ui_state.dart';
 // TODO: Importar IAppLogic y el provider de IAppLogic
 // Ejemplo: import 'package:bondi_uy/backend/contrato_ui/app_logic_interface.dart';
@@ -27,6 +27,7 @@ class AppSearchPanel extends ConsumerStatefulWidget {
 class _AppSearchPanelState extends ConsumerState<AppSearchPanel> {
   late FocusNode _origenFocusNode;
   late FocusNode _destinoFocusNode;
+  bool _isPanelExpanded = false; // Estado interno de la UI
 
   @override
   void initState() {
@@ -44,19 +45,18 @@ class _AppSearchPanelState extends ConsumerState<AppSearchPanel> {
 
   @override
   Widget build(BuildContext context) {
-    final appUiState = ref.watch(appUiStateProvider);
-    final appLogic = ref.read(appLogicProvider);
-    final bool isPanelExpanded = appUiState.panelDeBusquedaExpandido;
+    final appUiState = ref.watch(appLogicProvider);
+    final appLogic = ref.read(appLogicProvider.notifier);
+    final bool isPanelExpanded = _isPanelExpanded;
 
     void _handleSearchRoute() {
       if (appUiState.puntoOrigenParaBusqueda != null &&
           appUiState.puntoDestinoParaBusqueda != null) {
         appLogic.iniciarBusquedaDeRutas();
         // Colapsar el panel después de iniciar la búsqueda
-        final notifier = ref.read(appUiStateProvider.notifier);
-        notifier.state = notifier.state.copyWith(
-          panelDeBusquedaExpandido: false,
-        );
+        setState(() {
+          _isPanelExpanded = false;
+        });
         // Quitar foco de los campos
         _origenFocusNode.unfocus();
         _destinoFocusNode.unfocus();
@@ -74,37 +74,32 @@ class _AppSearchPanelState extends ConsumerState<AppSearchPanel> {
       }
     }
 
-    return AnimatedCrossFade(
+    return AnimatedSwitcher(
       duration: const Duration(milliseconds: 300),
-      firstChild: _buildCompactSearchPanelUI(
-        context,
-        ref,
-        appUiState,
-        appLogic,
-      ),
-      secondChild: _buildExpandedSearchPanelUI(
-        context,
-        ref,
-        appUiState,
-        appLogic,
-        _handleSearchRoute,
-      ),
-      crossFadeState:
-          isPanelExpanded
-              ? CrossFadeState.showSecond
-              : CrossFadeState.showFirst,
-      layoutBuilder: (topChild, topChildKey, bottomChild, bottomChildKey) {
-        return Stack(
-          alignment: Alignment.topCenter,
-          children: <Widget>[
-            // Asegurar que el panel expandido (secondChild) esté detrás del compacto (firstChild)
-            // si ambos estuvieran visibles durante la animación, o ajustar según el efecto deseado.
-            // Con AnimatedCrossFade, usualmente solo uno es visible y medido a la vez.
-            Positioned(key: bottomChildKey, child: bottomChild),
-            Positioned(key: topChildKey, child: topChild),
-          ],
-        );
+      transitionBuilder: (Widget child, Animation<double> animation) {
+        return FadeTransition(opacity: animation, child: child);
       },
+      child:
+          isPanelExpanded
+              ? Container(
+                key: const ValueKey('expanded'),
+                child: _buildExpandedSearchPanelUI(
+                  context,
+                  ref,
+                  appUiState,
+                  appLogic,
+                  _handleSearchRoute,
+                ),
+              )
+              : Container(
+                key: const ValueKey('compact'),
+                child: _buildCompactSearchPanelUI(
+                  context,
+                  ref,
+                  appUiState,
+                  appLogic,
+                ),
+              ),
     );
   }
 
@@ -112,7 +107,7 @@ class _AppSearchPanelState extends ConsumerState<AppSearchPanel> {
     BuildContext context,
     WidgetRef ref,
     AppUiState appUiState,
-    IAppLogic appLogic,
+    AppLogicNotifier appLogic,
   ) {
     final origenText =
         appUiState.nombreLugarOrigenSeleccionado ??
@@ -132,10 +127,9 @@ class _AppSearchPanelState extends ConsumerState<AppSearchPanel> {
         ),
         child: InkWell(
           onTap: () {
-            final notifier = ref.read(appUiStateProvider.notifier);
-            notifier.state = notifier.state.copyWith(
-              panelDeBusquedaExpandido: true,
-            );
+            setState(() {
+              _isPanelExpanded = true;
+            });
           },
           borderRadius: BorderRadius.circular(10.0),
           child: Padding(
@@ -162,14 +156,27 @@ class _AppSearchPanelState extends ConsumerState<AppSearchPanel> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                IconButton(
-                  icon: const Icon(Icons.swap_horiz, size: 22),
-                  tooltip: "Intercambiar Origen/Destino",
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                  onPressed: () {
-                    appLogic.intercambiarOrigenYDestino();
-                  },
+                AnimatedScale(
+                  scale: 1.0,
+                  duration: const Duration(milliseconds: 150),
+                  child: IconButton(
+                    icon: const Icon(Icons.swap_horiz, size: 22),
+                    tooltip: "Intercambiar Origen/Destino",
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    style: IconButton.styleFrom(
+                      backgroundColor: Theme.of(
+                        context,
+                      ).colorScheme.primaryContainer.withOpacity(0.3),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    onPressed: () {
+                      // Trigger scale animation
+                      appLogic.intercambiarOrigenYDestino();
+                    },
+                  ),
                 ),
                 const SizedBox(width: 8),
                 Icon(
@@ -195,10 +202,9 @@ class _AppSearchPanelState extends ConsumerState<AppSearchPanel> {
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
                   onPressed: () {
-                    final notifier = ref.read(appUiStateProvider.notifier);
-                    notifier.state = notifier.state.copyWith(
-                      panelDeBusquedaExpandido: true,
-                    );
+                    setState(() {
+                      _isPanelExpanded = true;
+                    });
                   },
                 ),
               ],
@@ -213,7 +219,7 @@ class _AppSearchPanelState extends ConsumerState<AppSearchPanel> {
     BuildContext context,
     WidgetRef ref,
     AppUiState appUiState,
-    IAppLogic appLogic,
+    AppLogicNotifier appLogic,
     VoidCallback onSearchRouteCallback,
   ) {
     final bool puedeBuscar =
@@ -256,10 +262,9 @@ class _AppSearchPanelState extends ConsumerState<AppSearchPanel> {
                     icon: const Icon(Icons.keyboard_arrow_up),
                     tooltip: "Colapsar",
                     onPressed: () {
-                      final notifier = ref.read(appUiStateProvider.notifier);
-                      notifier.state = notifier.state.copyWith(
-                        panelDeBusquedaExpandido: false,
-                      );
+                      setState(() {
+                        _isPanelExpanded = false;
+                      });
                       _origenFocusNode.unfocus();
                       _destinoFocusNode.unfocus();
                     },
@@ -271,7 +276,6 @@ class _AppSearchPanelState extends ConsumerState<AppSearchPanel> {
               // Campo de Origen
               AppComposeWithOrigin(
                 hintText: "Punto de Origen",
-                currentText: appUiState.textoInputOrigenActual ?? "",
                 suggestions: appUiState.sugerenciasOrigen ?? [],
                 suggestionsState: appUiState.estadoSugerenciasOrigen,
                 onTextChanged:
@@ -281,23 +285,17 @@ class _AppSearchPanelState extends ConsumerState<AppSearchPanel> {
                   _destinoFocusNode.requestFocus(); // Mover foco al destino
                 },
                 onClear: () {
-                  appLogic
-                      .limpiarOrigenSeleccionado(); // Llama a la acción de limpiar en la lógica
-                  appLogic
-                      .limpiarSugerenciasOrigen(); // Limpia también las sugerencias si es necesario
-                  // Podríamos querer que la lógica también limpie el textoInputOrigenActual.
+                  appLogic.limpiarOrigenSeleccionado();
                 },
                 focusNode: _origenFocusNode,
-                autoFocus:
-                    appUiState.puntoOrigenParaBusqueda ==
-                    null, // Autofoco si no hay origen
+                autoFocus: appUiState.puntoOrigenParaBusqueda == null,
+                initialValue: appUiState.textoInputOrigenActual,
               ),
               const SizedBox(height: 12),
 
               // Campo de Destino
               AppComposeWithOrigin(
                 hintText: "Punto de Destino",
-                currentText: appUiState.textoInputDestinoActual ?? "",
                 suggestions: appUiState.sugerenciasDestino ?? [],
                 suggestionsState: appUiState.estadoSugerenciasDestino,
                 onTextChanged:
@@ -306,16 +304,12 @@ class _AppSearchPanelState extends ConsumerState<AppSearchPanel> {
                   appLogic.seleccionarSugerenciaDestino(sug);
                   _destinoFocusNode
                       .unfocus(); // Quitar foco después de seleccionar destino
-                  // Opcional: si ambos están listos, iniciar búsqueda automáticamente
-                  // if (appUiState.puntoOrigenParaBusqueda != null) {
-                  //   onSearchRouteCallback();
-                  // }
                 },
                 onClear: () {
                   appLogic.limpiarDestinoSeleccionado();
-                  appLogic.limpiarSugerenciasDestino();
                 },
                 focusNode: _destinoFocusNode,
+                initialValue: appUiState.textoInputDestinoActual,
               ),
               const SizedBox(height: 16),
 
@@ -331,30 +325,82 @@ class _AppSearchPanelState extends ConsumerState<AppSearchPanel> {
                     },
                   ),
                   const Spacer(),
-                  ElevatedButton.icon(
-                    icon:
-                        buscandoRutas
-                            ? Container(
-                              width: 20,
-                              height: 20,
-                              padding: const EdgeInsets.all(2.0),
-                              child: const CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    curve: Curves.easeInOut,
+                    child: TweenAnimationBuilder<double>(
+                      tween: Tween(begin: 1.0, end: puedeBuscar ? 1.0 : 0.95),
+                      duration: const Duration(milliseconds: 200),
+                      builder: (context, scale, child) {
+                        return Transform.scale(
+                          scale: scale,
+                          child: ElevatedButton.icon(
+                            icon: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 300),
+                              child:
+                                  buscandoRutas
+                                      ? Container(
+                                        key: const ValueKey('loading'),
+                                        width: 20,
+                                        height: 20,
+                                        padding: const EdgeInsets.all(2.0),
+                                        child: const CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white,
+                                        ),
+                                      )
+                                      : const Icon(
+                                        Icons.search,
+                                        key: ValueKey('search'),
+                                      ),
+                            ),
+                            label: AnimatedDefaultTextStyle(
+                              duration: const Duration(milliseconds: 200),
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight:
+                                    puedeBuscar
+                                        ? FontWeight.w600
+                                        : FontWeight.normal,
+                                color:
+                                    puedeBuscar
+                                        ? Theme.of(
+                                          context,
+                                        ).colorScheme.onPrimary
+                                        : Theme.of(context)
+                                            .colorScheme
+                                            .onSurface
+                                            .withOpacity(0.6),
                               ),
-                            )
-                            : const Icon(Icons.search),
-                    label: const Text("Buscar Rutas"),
-                    onPressed:
-                        puedeBuscar && !buscandoRutas
-                            ? onSearchRouteCallback
-                            : null,
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 24,
-                        vertical: 12,
-                      ),
-                      textStyle: const TextStyle(fontSize: 16),
+                              child: const Text("Buscar Rutas"),
+                            ),
+                            onPressed:
+                                puedeBuscar && !buscandoRutas
+                                    ? onSearchRouteCallback
+                                    : null,
+                            style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 24,
+                                vertical: 12,
+                              ),
+                              elevation: puedeBuscar ? 6 : 2,
+                              backgroundColor:
+                                  puedeBuscar
+                                      ? Theme.of(context).colorScheme.primary
+                                      : Theme.of(context).colorScheme.surface,
+                              foregroundColor:
+                                  puedeBuscar
+                                      ? Theme.of(context).colorScheme.onPrimary
+                                      : Theme.of(
+                                        context,
+                                      ).colorScheme.onSurface.withOpacity(0.6),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ),
                 ],

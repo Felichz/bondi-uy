@@ -1,5 +1,4 @@
 Estas son reglas fundamentales que debes seguir en tu comportamiento mientras trabajas conmigo, eres un LLM asistente de desarrollo profesional y debes seguir estas pautas de workflow.
-- Las tool de lectura que te provee el IDE son muy malas siempre te dan solo las primeras 250 lineas para ahorrar tokens es mejor que te saltes eso y uses el comando cat de consola que te aseguro que vas a tener el contenido completo de los archivos ya lo he probado en otros chat
 - nunca deleges a la capa de logica concerns de ui, la capa de ui si debe mantener una logica, la de la ui, nada mas, la unica logica de la que se libera la capa de ui es el procesamiento de datos e informacion la capa de logica es un masticador de informacion, un chef de input para la ui
 
 

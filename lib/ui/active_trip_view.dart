@@ -15,7 +15,8 @@ class ActiveTripView extends ConsumerStatefulWidget {
 }
 
 class _ActiveTripViewState extends ConsumerState<ActiveTripView> {
-  int _currentLegIndex = 0; // Manages the currently selected/highlighted instruction index
+  int _currentLegIndex =
+      0; // Manages the currently selected/highlighted instruction index
   bool _isAutoZoomEnabled = true; // For initial zoom to route bounds
   bool _followUserLocation = true; // To toggle user location tracking
   MapboxMap? mapboxMap;
@@ -36,38 +37,72 @@ class _ActiveTripViewState extends ConsumerState<ActiveTripView> {
   // TODO: Podríamos necesitar íconos para inicio/fin de tramos o paradas específicas del viaje activo.
   // Properties for route lines
   static const Map<String, dynamic> _WALK_LINE_PROPERTIES = {
-    'line-color': '#8888FF', // Light blue-ish grey for walking
-    'line-width': 3.0,
-    'line-dasharray': [2, 2],
+    'line-color':
+        0xFF448AFF, // Colors.blueAccent.value - EXACTO del código viejo
+    'line-width': 4.0, // AUMENTADO para más visibilidad
+    'line-opacity': 0.9, // EXACTO del código viejo
+    'line-join': 'round',
+    'line-cap': 'round',
+    // NO line-dasharray - líneas SÓLIDAS como en código viejo
   };
   static const Map<String, dynamic> _BUS_LINE_PROPERTIES = {
-    'line-color': '#FF0000', // Primary color (e.g., red) for bus
-    'line-width': 5.0,
+    'line-color':
+        0xFFFF5722, // Colors.deepOrangeAccent.value - EXACTO del código viejo
+    'line-width': 5.0, // AUMENTADO para más visibilidad
+    'line-opacity': 0.9, // EXACTO del código viejo
+    'line-join': 'round',
+    'line-cap': 'round',
   };
   static const Map<String, dynamic> _WAIT_CIRCLE_PROPERTIES = {
-    'circle-color': '#FFA500', // Orange for waiting
+    'circle-color': 0xFFFFA500, // Colors.orange.value - EXACTO del código viejo
     'circle-radius': 8.0,
     'circle-stroke-width': 2.0,
-    'circle-stroke-color': '#FFFFFF',
+    'circle-stroke-color': 0xFFFFFFFF, // Colors.white.value
+    'circle-opacity': 0.9,
   };
 
+  // BORDES - Líneas más gruesas y opacas por debajo para crear efecto de borde sólido
+  static const Map<String, dynamic> _BORDER_PROPERTIES = {
+    'line-color': 0xFF000000, // Negro completamente opaco para borde sólido
+    'line-width': 8.0, // Más gruesa que la línea principal
+    'line-opacity': 1.0, // Completamente opaca para borde sólido
+    'line-join': 'round',
+    'line-cap': 'round',
+  };
+
+  // Estados highlighted (más gruesos cuando están seleccionados)
   static const Map<String, dynamic> _HIGHLIGHTED_WALK_LINE_PROPERTIES = {
-    'line-color': '#5050D0', // Darker blue for highlighted walk
-    'line-width': 5.0,
-    'line-dasharray': [1, 0], // Solid or very short dash
+    'line-color': 0xFF448AFF, // Colors.blueAccent.value
+    'line-width': 6.0, // EXACTO del código viejo cuando isSelected
+    'line-opacity': 0.9,
+    'line-join': 'round',
+    'line-cap': 'round',
   };
   static const Map<String, dynamic> _HIGHLIGHTED_BUS_LINE_PROPERTIES = {
-    'line-color': '#CC0000', // Darker/brighter red for highlighted bus
-    'line-width': 7.0,
+    'line-color': 0xFFFF5722, // Colors.deepOrangeAccent.value
+    'line-width': 6.0, // EXACTO del código viejo cuando isSelected
+    'line-opacity': 0.9,
+    'line-join': 'round',
+    'line-cap': 'round',
   };
   static const Map<String, dynamic> _HIGHLIGHTED_WAIT_CIRCLE_PROPERTIES = {
-    'circle-color': '#FF8C00', // Darker orange for highlighted waiting
+    'circle-color': 0xFFFFA500, // Colors.orange.value
     'circle-radius': 10.0,
     'circle-stroke-width': 2.5,
-    'circle-stroke-color': '#FFFFFF',
+    'circle-stroke-color': 0xFFFFFFFF,
+    'circle-opacity': 0.9,
   };
 
-Future<void> _highlightCurrentLegOnMap(int legIndex) async {
+  // Estados highlighted para bordes
+  static const Map<String, dynamic> _HIGHLIGHTED_BORDER_PROPERTIES = {
+    'line-color': 0xFF000000, // Negro completamente opaco
+    'line-width': 12.0, // Más grueso para highlighting
+    'line-opacity': 0.8, // Completamente opaco para borde sólido
+    'line-join': 'round',
+    'line-cap': 'round',
+  };
+
+  Future<void> _highlightCurrentLegOnMap(int legIndex) async {
     if (mapboxMap == null) return;
     final activeTripState = ref.read(appUiStateProvider).datosFaseViajeActivo;
     if (activeTripState == null) return;
@@ -81,15 +116,24 @@ Future<void> _highlightCurrentLegOnMap(int legIndex) async {
       switch (tramo.tipo) {
         case TipoTramoViaje.CAMINAR:
           layerId = '$ACTIVE_WALK_LAYER_PREFIX$i';
-          properties = isCurrent ? _HIGHLIGHTED_WALK_LINE_PROPERTIES : _WALK_LINE_PROPERTIES;
+          properties =
+              isCurrent
+                  ? _HIGHLIGHTED_WALK_LINE_PROPERTIES
+                  : _WALK_LINE_PROPERTIES;
           break;
         case TipoTramoViaje.VIAJE_EN_BUS:
           layerId = '$ACTIVE_BUS_LAYER_PREFIX$i';
-          properties = isCurrent ? _HIGHLIGHTED_BUS_LINE_PROPERTIES : _BUS_LINE_PROPERTIES;
+          properties =
+              isCurrent
+                  ? _HIGHLIGHTED_BUS_LINE_PROPERTIES
+                  : _BUS_LINE_PROPERTIES;
           break;
         case TipoTramoViaje.ESPERAR_BUS:
           layerId = '$ACTIVE_WAIT_LAYER_PREFIX$i';
-          properties = isCurrent ? _HIGHLIGHTED_WAIT_CIRCLE_PROPERTIES : _WAIT_CIRCLE_PROPERTIES;
+          properties =
+              isCurrent
+                  ? _HIGHLIGHTED_WAIT_CIRCLE_PROPERTIES
+                  : _WAIT_CIRCLE_PROPERTIES;
           break;
         default:
           continue; // Skip unknown types
@@ -98,7 +142,11 @@ Future<void> _highlightCurrentLegOnMap(int legIndex) async {
         if (await mapboxMap?.style.styleLayerExists(layerId) ?? false) {
           // Iterate over properties and update them one by one
           for (var entry in properties.entries) {
-            await mapboxMap?.style.setStyleLayerProperty(layerId, entry.key, entry.value);
+            await mapboxMap?.style.setStyleLayerProperty(
+              layerId,
+              entry.key,
+              entry.value,
+            );
           }
         }
       } catch (e) {
@@ -106,7 +154,6 @@ Future<void> _highlightCurrentLegOnMap(int legIndex) async {
       }
     }
   }
-
 
   @override
   void initState() {
@@ -126,7 +173,11 @@ Future<void> _highlightCurrentLegOnMap(int legIndex) async {
     await _displayActiveRouteAndHighlightInitialLeg();
 
     // Add user location marker if available on style load
-    final initialUserLocation = ref.read(appUiStateProvider).datosFaseViajeActivo?.ubicacionActualUsuario;
+    final initialUserLocation =
+        ref
+            .read(appUiStateProvider)
+            .datosFaseViajeActivo
+            ?.ubicacionActualUsuario;
     if (initialUserLocation != null) {
       await _updateUserLocationOnMap(initialUserLocation);
     }
@@ -147,16 +198,18 @@ Future<void> _highlightCurrentLegOnMap(int legIndex) async {
       return;
     }
 
-    final point = Point(coordinates: Position(userLocation.longitud, userLocation.latitud));
+    final point = Point(
+      coordinates: Position(userLocation.longitud, userLocation.latitud),
+    );
     final geoJsonSource = {
       'type': 'FeatureCollection',
       'features': [
         {
           'type': 'Feature',
           'geometry': point.toJson(),
-          'properties': {} // Add any properties if needed
-        }
-      ]
+          'properties': {}, // Add any properties if needed
+        },
+      ],
     };
 
     try {
@@ -169,7 +222,12 @@ Future<void> _highlightCurrentLegOnMap(int legIndex) async {
       }
 
       // Add the new source with updated data
-      await mapboxMap!.style.addSource(GeoJsonSource(id: USER_LOCATION_SOURCE_ID, data: jsonEncode(geoJsonSource)));
+      await mapboxMap!.style.addSource(
+        GeoJsonSource(
+          id: USER_LOCATION_SOURCE_ID,
+          data: jsonEncode(geoJsonSource),
+        ),
+      );
 
       // Add the new layer
       await mapboxMap!.style.addLayer(
@@ -195,8 +253,10 @@ Future<void> _highlightCurrentLegOnMap(int legIndex) async {
     if (mapboxMap == null || !mounted) return;
     mapboxMap!.flyTo(
       CameraOptions(
-        center: Point(coordinates: Position(userLocation.longitud, userLocation.latitud)),
-        zoom: 16.0, 
+        center: Point(
+          coordinates: Position(userLocation.longitud, userLocation.latitud),
+        ),
+        zoom: 16.0,
         pitch: 0.0,
         bearing: 0.0,
       ),
@@ -208,15 +268,18 @@ Future<void> _highlightCurrentLegOnMap(int legIndex) async {
     if (mapboxMap == null || !mounted) return;
     final activeTripState = ref.read(appUiStateProvider).datosFaseViajeActivo;
     if (activeTripState != null && activeTripState.tramosDelViaje.isNotEmpty) {
-      List<Coordenada> todasLasCoordenadasDeLaRuta = activeTripState.tramosDelViaje
-          .expand((tramo) => tramo.coordenadasDelTramo)
-          .toList();
+      List<Coordenada> todasLasCoordenadasDeLaRuta =
+          activeTripState.tramosDelViaje
+              .expand((tramo) => tramo.coordenadasDelTramo)
+              .toList();
 
       await _displayActiveRoute(
         activeTripState.tramosDelViaje,
-        _currentLegIndex, 
+        _currentLegIndex,
       );
-      await _highlightCurrentLegOnMap(_currentLegIndex); // Highlight initial leg
+      await _highlightCurrentLegOnMap(
+        _currentLegIndex,
+      ); // Highlight initial leg
 
       if (_isAutoZoomEnabled && todasLasCoordenadasDeLaRuta.isNotEmpty) {
         // Realizar el zoom inicial a los límites de la ruta mostrada.
@@ -226,7 +289,9 @@ Future<void> _highlightCurrentLegOnMap(int legIndex) async {
         if (mounted) {
           setState(() {
             _isAutoZoomEnabled = false;
-            print("[_ActiveTripViewState] Initial auto zoom completed, _isAutoZoomEnabled set to false.");
+            print(
+              "[_ActiveTripViewState] Initial auto zoom completed, _isAutoZoomEnabled set to false.",
+            );
           });
         }
       }
@@ -254,21 +319,17 @@ Future<void> _highlightCurrentLegOnMap(int legIndex) async {
 
     for (int i = 0; i < tramos.length; i++) {
       final tramo = tramos[i];
-      String sourceId = '';
-      String layerId = '';
-      Map<String, dynamic> geoJsonFeature;
-      // Highlighting is now handled by _highlightCurrentLegOnMap, so direct style changes here are less critical
-      // but we keep the original properties for initial drawing.
-      // bool esTramoActual = i == tramoActualIndex; // This variable is not directly used for styling here anymore.
 
       switch (tramo.tipo) {
         case TipoTramoViaje.CAMINAR:
-          sourceId = '$ACTIVE_WALK_SOURCE_PREFIX$i';
-          layerId = '$ACTIVE_WALK_LAYER_PREFIX$i';
+          final sourceId = '$ACTIVE_WALK_SOURCE_PREFIX$i';
+          final shadowLayerId = '$ACTIVE_WALK_LAYER_PREFIX$i-shadow';
+          final mainLayerId = '$ACTIVE_WALK_LAYER_PREFIX$i';
+
           if (tramo.geometriaPolilinea != null &&
               tramo.geometriaPolilinea!.isNotEmpty) {
             todasLasCoordenadasDeLaRuta.addAll(tramo.geometriaPolilinea!);
-            geoJsonFeature = {
+            final geoJsonFeature = {
               "type": "Feature",
               "geometry": {
                 "type": "LineString",
@@ -277,31 +338,56 @@ Future<void> _highlightCurrentLegOnMap(int legIndex) async {
                 ),
               },
             };
+
+            // Agregar fuente
             await mapboxMap!.style.addSource(
               GeoJsonSource(id: sourceId, data: jsonEncode(geoJsonFeature)),
             );
+            _activeRouteSourceIds.add(sourceId);
+
+            // Agregar capa de sombra (PRIMERO, para que quede atrás)
             await mapboxMap!.style.addLayer(
               LineLayer(
-                id: layerId,
+                id: shadowLayerId,
                 sourceId: sourceId,
-                lineColor: _parseColor(_WALK_LINE_PROPERTIES['line-color'] as String?),
-                lineWidth: (_WALK_LINE_PROPERTIES['line-width'] as num?)?.toDouble(),
-                lineDasharray: (_WALK_LINE_PROPERTIES['line-dasharray'] as List<dynamic>?)
-                    ?.map((e) => (e as num).toDouble())
-                    .toList(),
+                lineColor: _BORDER_PROPERTIES['line-color'] as int,
+                lineWidth: (_BORDER_PROPERTIES['line-width'] as num).toDouble(),
+                lineOpacity:
+                    (_BORDER_PROPERTIES['line-opacity'] as num).toDouble(),
+                lineJoin: LineJoin.ROUND,
+                lineCap: LineCap.ROUND,
               ),
             );
-            _activeRouteSourceIds.add(sourceId);
-            _activeRouteLayerIds.add(layerId);
+            _activeRouteLayerIds.add(shadowLayerId);
+
+            // Agregar capa principal (ENCIMA de la sombra)
+            await mapboxMap!.style.addLayer(
+              LineLayer(
+                id: mainLayerId,
+                sourceId: sourceId,
+                lineColor: _WALK_LINE_PROPERTIES['line-color'] as int,
+                lineWidth:
+                    (_WALK_LINE_PROPERTIES['line-width'] as num).toDouble(),
+                lineOpacity:
+                    (_WALK_LINE_PROPERTIES['line-opacity'] as num).toDouble(),
+                lineJoin: LineJoin.ROUND,
+                lineCap: LineCap.ROUND,
+                // NO lineDasharray - líneas sólidas como en código viejo
+              ),
+            );
+            _activeRouteLayerIds.add(mainLayerId);
           }
           break;
+
         case TipoTramoViaje.VIAJE_EN_BUS:
-          sourceId = '$ACTIVE_BUS_SOURCE_PREFIX$i';
-          layerId = '$ACTIVE_BUS_LAYER_PREFIX$i';
+          final sourceId = '$ACTIVE_BUS_SOURCE_PREFIX$i';
+          final shadowLayerId = '$ACTIVE_BUS_LAYER_PREFIX$i-shadow';
+          final mainLayerId = '$ACTIVE_BUS_LAYER_PREFIX$i';
+
           if (tramo.geometriaPolilinea != null &&
               tramo.geometriaPolilinea!.isNotEmpty) {
             todasLasCoordenadasDeLaRuta.addAll(tramo.geometriaPolilinea!);
-            geoJsonFeature = {
+            final geoJsonFeature = {
               "type": "Feature",
               "geometry": {
                 "type": "LineString",
@@ -310,27 +396,53 @@ Future<void> _highlightCurrentLegOnMap(int legIndex) async {
                 ),
               },
             };
+
+            // Agregar fuente
             await mapboxMap!.style.addSource(
               GeoJsonSource(id: sourceId, data: jsonEncode(geoJsonFeature)),
             );
+            _activeRouteSourceIds.add(sourceId);
+
+            // Agregar capa de sombra (PRIMERO, para que quede atrás)
             await mapboxMap!.style.addLayer(
               LineLayer(
-                id: layerId,
+                id: shadowLayerId,
                 sourceId: sourceId,
-                lineColor: _parseColor(_BUS_LINE_PROPERTIES['line-color'] as String?),
-                lineWidth: (_BUS_LINE_PROPERTIES['line-width'] as num?)?.toDouble(),
+                lineColor: _BORDER_PROPERTIES['line-color'] as int,
+                lineWidth: (_BORDER_PROPERTIES['line-width'] as num).toDouble(),
+                lineOpacity:
+                    (_BORDER_PROPERTIES['line-opacity'] as num).toDouble(),
+                lineJoin: LineJoin.ROUND,
+                lineCap: LineCap.ROUND,
               ),
             );
-            _activeRouteSourceIds.add(sourceId);
-            _activeRouteLayerIds.add(layerId);
+            _activeRouteLayerIds.add(shadowLayerId);
+
+            // Agregar capa principal (ENCIMA de la sombra)
+            await mapboxMap!.style.addLayer(
+              LineLayer(
+                id: mainLayerId,
+                sourceId: sourceId,
+                lineColor: _BUS_LINE_PROPERTIES['line-color'] as int,
+                lineWidth:
+                    (_BUS_LINE_PROPERTIES['line-width'] as num).toDouble(),
+                lineOpacity:
+                    (_BUS_LINE_PROPERTIES['line-opacity'] as num).toDouble(),
+                lineJoin: LineJoin.ROUND,
+                lineCap: LineCap.ROUND,
+              ),
+            );
+            _activeRouteLayerIds.add(mainLayerId);
           }
           break;
+
         case TipoTramoViaje.ESPERAR_BUS:
-          sourceId = '$ACTIVE_WAIT_SOURCE_PREFIX$i';
-          layerId = '$ACTIVE_WAIT_LAYER_PREFIX$i';
+          final sourceId = '$ACTIVE_WAIT_SOURCE_PREFIX$i';
+          final layerId = '$ACTIVE_WAIT_LAYER_PREFIX$i';
+
           if (tramo.posicionPunto != null) {
             todasLasCoordenadasDeLaRuta.add(tramo.posicionPunto!);
-            geoJsonFeature = {
+            final geoJsonFeature = {
               "type": "Feature",
               "geometry": {
                 "type": "Point",
@@ -339,20 +451,32 @@ Future<void> _highlightCurrentLegOnMap(int legIndex) async {
                 ),
               },
             };
+
+            // Agregar fuente
             await mapboxMap!.style.addSource(
               GeoJsonSource(id: sourceId, data: jsonEncode(geoJsonFeature)),
             );
+            _activeRouteSourceIds.add(sourceId);
+
+            // Agregar capa del círculo
             await mapboxMap!.style.addLayer(
               CircleLayer(
                 id: layerId,
                 sourceId: sourceId,
-                circleColor: _parseColor(_WAIT_CIRCLE_PROPERTIES['circle-color'] as String?),
-                circleRadius: (_WAIT_CIRCLE_PROPERTIES['circle-radius'] as num?)?.toDouble(),
-                circleStrokeWidth: (_WAIT_CIRCLE_PROPERTIES['circle-stroke-width'] as num?)?.toDouble(),
-                circleStrokeColor: _parseColor(_WAIT_CIRCLE_PROPERTIES['circle-stroke-color'] as String?),
+                circleColor: _WAIT_CIRCLE_PROPERTIES['circle-color'] as int,
+                circleRadius:
+                    (_WAIT_CIRCLE_PROPERTIES['circle-radius'] as num)
+                        .toDouble(),
+                circleStrokeWidth:
+                    (_WAIT_CIRCLE_PROPERTIES['circle-stroke-width'] as num)
+                        .toDouble(),
+                circleStrokeColor:
+                    _WAIT_CIRCLE_PROPERTIES['circle-stroke-color'] as int,
+                circleOpacity:
+                    (_WAIT_CIRCLE_PROPERTIES['circle-opacity'] as num)
+                        .toDouble(),
               ),
             );
-            _activeRouteSourceIds.add(sourceId);
             _activeRouteLayerIds.add(layerId);
           }
           break;
@@ -370,7 +494,9 @@ Future<void> _highlightCurrentLegOnMap(int legIndex) async {
           MbxEdgeInsets(
             top: 80.0,
             left: 40.0,
-            bottom: (MediaQuery.of(context).size.height * 0.35), // Ajustar padding para panel de instrucciones
+            bottom:
+                (MediaQuery.of(context).size.height *
+                    0.35), // Ajustar padding para panel de instrucciones
             right: 40.0,
           ), // Ajustar padding para panel de instrucciones
           null,
@@ -414,21 +540,15 @@ Future<void> _highlightCurrentLegOnMap(int legIndex) async {
   // TODO: Función para resaltar el tramo actual en el mapa.
   // Future<void> _highlightCurrentLeg(int tramoIndex) async { ... }
 
-  int? _parseColor(String? hexColor) {
-    if (hexColor == null) return null;
-    final buffer = StringBuffer();
-    if (hexColor.length == 6 || hexColor.length == 7) buffer.write('ff'); // Add alpha if missing
-    buffer.write(hexColor.replaceFirst('#', ''));
-    return int.tryParse(buffer.toString(), radix: 16);
-  }
-
   void _handleMapIdle(MapIdleEventData data) {
     // Cuando el usuario interactúa manualmente con el mapa, desactivamos el auto-zoom inicial y el seguimiento de usuario.
     if (mounted && (_isAutoZoomEnabled || _followUserLocation)) {
       setState(() {
         _isAutoZoomEnabled = false;
         _followUserLocation = false;
-        print("[_ActiveTripViewState] Map idle detected, _isAutoZoomEnabled and _followUserLocation set to false.");
+        print(
+          "[_ActiveTripViewState] Map idle detected, _isAutoZoomEnabled and _followUserLocation set to false.",
+        );
       });
     }
   }
@@ -437,7 +557,9 @@ Future<void> _highlightCurrentLegOnMap(int legIndex) async {
   // El antiguo _performAutomaticZoom(ZoomTarget target) se reemplaza por este método más específico.
   Future<void> _zoomToRouteBounds(List<Coordenada> routeCoordinates) async {
     if (!mounted || mapboxMap == null || routeCoordinates.isEmpty) {
-      print("[_ActiveTripViewState] Zoom to route bounds skipped: map not ready, or no coordinates.");
+      print(
+        "[_ActiveTripViewState] Zoom to route bounds skipped: map not ready, or no coordinates.",
+      );
       return;
     }
     print("[_ActiveTripViewState] Performing zoom to route bounds.");
@@ -446,13 +568,18 @@ Future<void> _highlightCurrentLegOnMap(int legIndex) async {
       // Si solo hay una coordenada, centrar el mapa en ella con un zoom razonable.
       final singlePoint = routeCoordinates.first;
       final cameraOptions = CameraOptions(
-        center: Point(coordinates: Position(singlePoint.longitud, singlePoint.latitud)),
+        center: Point(
+          coordinates: Position(singlePoint.longitud, singlePoint.latitud),
+        ),
         zoom: 16.0, // Zoom predeterminado para un solo punto
         padding: MbxEdgeInsets(
-            top: 80.0, 
-            left: 40.0, 
-            bottom: (MediaQuery.of(context).size.height * 0.33), // Considerar panel de instrucciones
-            right: 40.0),
+          top: 80.0,
+          left: 40.0,
+          bottom:
+              (MediaQuery.of(context).size.height *
+                  0.33), // Considerar panel de instrucciones
+          right: 40.0,
+        ),
       );
       if (mounted) {
         try {
@@ -490,18 +617,26 @@ Future<void> _highlightCurrentLegOnMap(int legIndex) async {
       final MbxEdgeInsets padding = MbxEdgeInsets(
         top: 80.0, // Espacio para posible AppBar o notificaciones
         left: 40.0,
-        bottom: (MediaQuery.of(context).size.height * 0.35), // 33% del panel + pequeño margen
+        bottom:
+            (MediaQuery.of(context).size.height *
+                0.35), // 33% del panel + pequeño margen
         right: 40.0,
       );
       cameraOptions = await mapboxMap!.cameraForCoordinateBounds(
-        CoordinateBounds(southwest: southwest, northeast: northeast, infiniteBounds: false),
-        padding, 
-        null, 
+        CoordinateBounds(
+          southwest: southwest,
+          northeast: northeast,
+          infiniteBounds: false,
+        ),
+        padding,
+        null,
         null,
         null, // maxZoom
-        null  // offset
+        null, // offset
       );
-      print("[_ActiveTripViewState] Calculated camera for bounds: ${cameraOptions.encode()}");
+      print(
+        "[_ActiveTripViewState] Calculated camera for bounds: ${cameraOptions.encode()}",
+      );
     } catch (e) {
       print("[_ActiveTripViewState] Error calculating camera for bounds: $e");
       return;
@@ -513,13 +648,75 @@ Future<void> _highlightCurrentLegOnMap(int legIndex) async {
           cameraOptions,
           MapAnimationOptions(duration: 1200, startDelay: 0),
         );
-        print("[_ActiveTripViewState] flyTo to route bounds executed successfully.");
+        print(
+          "[_ActiveTripViewState] flyTo to route bounds executed successfully.",
+        );
       } catch (e) {
         print("[_ActiveTripViewState] Error during flyTo to route bounds: $e");
       }
     }
     // No se deshabilita _isAutoZoomEnabled aquí. Se deshabilita en _onStyleLoaded después del primer zoom,
     // o en _handleMapIdle si el usuario interactúa.
+  }
+
+  void _onLegSelected(int legIndex) {
+    setState(() {
+      _currentLegIndex = legIndex;
+    });
+    _highlightCurrentLegOnMap(legIndex);
+    // Zoom automático al tramo seleccionado para mejor UX
+    _zoomToCurrentLeg(legIndex);
+  }
+
+  Future<void> _zoomToCurrentLeg(int legIndex) async {
+    if (mapboxMap == null) return;
+    final activeTripState = ref.read(appUiStateProvider).datosFaseViajeActivo;
+    if (activeTripState == null ||
+        legIndex >= activeTripState.tramosDelViaje.length)
+      return;
+
+    final tramo = activeTripState.tramosDelViaje[legIndex];
+
+    try {
+      if (tramo.geometriaPolilinea != null &&
+          tramo.geometriaPolilinea!.isNotEmpty) {
+        // Zoom a la geometría del tramo
+        final coordinates = tramo.geometriaPolilinea!;
+        final mapboxPoints =
+            coordinates
+                .map((c) => Point(coordinates: Position(c.longitud, c.latitud)))
+                .toList();
+
+        final cameraOptions = await mapboxMap!.cameraForCoordinates(
+          mapboxPoints,
+          MbxEdgeInsets(
+            top: 80.0,
+            left: 50.0,
+            bottom: 300.0, // Espacio para el panel
+            right: 50.0,
+          ),
+          null,
+          null,
+        );
+
+        await mapboxMap!.flyTo(
+          cameraOptions,
+          MapAnimationOptions(duration: 800),
+        );
+      } else if (tramo.posicionPunto != null) {
+        // Para puntos de espera, zoom al punto específico
+        final punto = tramo.posicionPunto!;
+        await mapboxMap!.flyTo(
+          CameraOptions(
+            center: Point(coordinates: Position(punto.longitud, punto.latitud)),
+            zoom: 16.0,
+          ),
+          MapAnimationOptions(duration: 800),
+        );
+      }
+    } catch (e) {
+      print("[ActiveTripView] Error zooming to current leg: $e");
+    }
   }
 
   @override
@@ -566,12 +763,17 @@ Future<void> _highlightCurrentLegOnMap(int legIndex) async {
             key: const ValueKey("active_trip_map"),
             cameraOptions: CameraOptions(
               center: Point(
-                coordinates: Position(-56.164532, -34.901112), // Montevideo default
+                coordinates: Position(
+                  -56.164532,
+                  -34.901112,
+                ), // Montevideo default
               ),
               zoom: 12.0,
             ),
             onMapCreated: _onMapCreated,
-            onStyleLoadedListener: (_) async => await _onStyleLoaded(), // Corrected to call the new _onStyleLoaded
+            onStyleLoadedListener:
+                (_) async =>
+                    await _onStyleLoaded(), // Corrected to call the new _onStyleLoaded
           ),
           // ...
           // Panel de Instrucciones Mejorado
@@ -579,16 +781,7 @@ Future<void> _highlightCurrentLegOnMap(int legIndex) async {
             activeTripState: activeTripState,
             appLogic: appLogic,
             currentLegIndex: _currentLegIndex,
-            onLegSelected: (newIndex) {
-              setState(() {
-                _currentLegIndex = newIndex;
-                _highlightCurrentLegOnMap(newIndex);
-                // Si el seguimiento de usuario está activo, podríamos querer desactivarlo al seleccionar manualmente un tramo
-                // o ajustar el zoom al tramo seleccionado.
-                // if (_followUserLocation) _followUserLocation = false;
-                // TODO: Considerar ajustar el zoom del mapa al tramo seleccionado if _followUserLocation is false or _isAutoZoomEnabled is false
-              });
-            },
+            onLegSelected: _onLegSelected,
           ),
         ],
       ),
@@ -597,25 +790,47 @@ Future<void> _highlightCurrentLegOnMap(int legIndex) async {
           setState(() {
             _followUserLocation = !_followUserLocation;
             if (_followUserLocation) {
-              _isAutoZoomEnabled = false; // Si activamos seguir usuario, el zoom inicial ya no aplica
-              final currentUserLocation = ref.read(appUiStateProvider).datosFaseViajeActivo?.ubicacionActualUsuario;
+              _isAutoZoomEnabled =
+                  false; // Si activamos seguir usuario, el zoom inicial ya no aplica
+              final currentUserLocation =
+                  ref
+                      .read(appUiStateProvider)
+                      .datosFaseViajeActivo
+                      ?.ubicacionActualUsuario;
               if (currentUserLocation != null) {
                 _centerMapOnUserLocation(currentUserLocation);
               }
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Siguiendo ubicación del usuario.'), duration: Duration(seconds: 2)),
+                const SnackBar(
+                  content: Text('Siguiendo ubicación del usuario.'),
+                  duration: Duration(seconds: 2),
+                ),
               );
             } else {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Seguimiento de ubicación desactivado.'), duration: Duration(seconds: 2)),
+                const SnackBar(
+                  content: Text('Seguimiento de ubicación desactivado.'),
+                  duration: Duration(seconds: 2),
+                ),
               );
             }
           });
         },
-        tooltip: _followUserLocation ? 'Dejar de seguir ubicación' : 'Seguir ubicación',
-        backgroundColor: _followUserLocation ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.surface,
-        foregroundColor: _followUserLocation ? Theme.of(context).colorScheme.onPrimary : Theme.of(context).colorScheme.onSurface,
-        child: Icon(_followUserLocation ? Icons.my_location : Icons.location_searching),
+        tooltip:
+            _followUserLocation
+                ? 'Dejar de seguir ubicación'
+                : 'Seguir ubicación',
+        backgroundColor:
+            _followUserLocation
+                ? Theme.of(context).colorScheme.primary
+                : Theme.of(context).colorScheme.surface,
+        foregroundColor:
+            _followUserLocation
+                ? Theme.of(context).colorScheme.onPrimary
+                : Theme.of(context).colorScheme.onSurface,
+        child: Icon(
+          _followUserLocation ? Icons.my_location : Icons.location_searching,
+        ),
       ),
     );
   }
@@ -630,16 +845,12 @@ class _ActiveTripInstructionsPanel extends StatelessWidget {
   final IAppLogic appLogic;
   final int currentLegIndex;
   final void Function(int) onLegSelected;
-  final VoidCallback? onPreviousLeg;
-  final VoidCallback? onNextLeg;
 
   const _ActiveTripInstructionsPanel({
     required this.activeTripState,
     required this.appLogic,
     required this.currentLegIndex,
     required this.onLegSelected,
-    this.onPreviousLeg,
-    this.onNextLeg,
   });
 
   @override
@@ -649,9 +860,13 @@ class _ActiveTripInstructionsPanel extends StatelessWidget {
     }
 
     // Determinar información del tramo actual para mostrar en la parte superior del panel (cuando esté colapsado)
-    final TramoViajeMostrable tramoActual = (currentLegIndex >= 0 && currentLegIndex < activeTripState.tramosDelViaje.length) 
-                                            ? activeTripState.tramosDelViaje[currentLegIndex] 
-                                            : activeTripState.tramosDelViaje.first; // Fallback al primer tramo si el índice es inválido
+    final TramoViajeMostrable tramoActual =
+        (currentLegIndex >= 0 &&
+                currentLegIndex < activeTripState.tramosDelViaje.length)
+            ? activeTripState.tramosDelViaje[currentLegIndex]
+            : activeTripState
+                .tramosDelViaje
+                .first; // Fallback al primer tramo si el índice es inválido
 
     return Positioned(
       bottom: 0,
@@ -663,7 +878,9 @@ class _ActiveTripInstructionsPanel extends StatelessWidget {
           return Card(
             // ...
             child: Column(
-              mainAxisSize: MainAxisSize.min, // Important for DraggableScrollableSheet content
+              mainAxisSize:
+                  MainAxisSize
+                      .min, // Important for DraggableScrollableSheet content
               children: [
                 // Handle para arrastrar
                 Container(
@@ -676,42 +893,159 @@ class _ActiveTripInstructionsPanel extends StatelessWidget {
                   ),
                 ),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(16.0, 0, 8.0, 8.0), // Added bottom padding
+                  padding: const EdgeInsets.fromLTRB(
+                    16.0,
+                    0,
+                    8.0,
+                    8.0,
+                  ), // Added bottom padding
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      IconButton(
-                        icon: const Icon(Icons.arrow_back_ios),
-                        onPressed: onPreviousLeg,
-                        tooltip: 'Anterior',
-                      ),
-                      Expanded(
-                        child: Text(
-                          tramoActual.descripcion, // Mostrar descripción del tramo actual
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.center,
+                      // Botón "Anterior" más grande y claro
+                      AnimatedScale(
+                        scale: currentLegIndex > 0 ? 1.0 : 0.8,
+                        duration: const Duration(milliseconds: 200),
+                        child: ElevatedButton.icon(
+                          icon: const Icon(Icons.arrow_back, size: 20),
+                          label: const Text('Anterior'),
+                          onPressed:
+                              currentLegIndex > 0
+                                  ? () => onLegSelected(currentLegIndex - 1)
+                                  : null,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor:
+                                currentLegIndex > 0
+                                    ? Theme.of(
+                                      context,
+                                    ).colorScheme.primaryContainer
+                                    : Theme.of(
+                                      context,
+                                    ).colorScheme.surfaceVariant,
+                            foregroundColor:
+                                currentLegIndex > 0
+                                    ? Theme.of(
+                                      context,
+                                    ).colorScheme.onPrimaryContainer
+                                    : Theme.of(context).disabledColor,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
                         ),
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.arrow_forward_ios),
-                        onPressed: onNextLeg,
-                        tooltip: 'Siguiente',
+
+                      // Texto central más grande y claro
+                      Expanded(
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 12),
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Column(
+                            children: [
+                              Text(
+                                'Paso ${currentLegIndex + 1} de ${activeTripState.tramosDelViaje.length}',
+                                style: Theme.of(
+                                  context,
+                                ).textTheme.titleSmall?.copyWith(
+                                  color: Theme.of(context).colorScheme.primary,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                tramoActual.descripcion,
+                                style: Theme.of(context).textTheme.bodyMedium
+                                    ?.copyWith(fontWeight: FontWeight.w500),
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: TextAlign.center,
+                                maxLines: 2,
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
-                      TextButton.icon(
-                        icon: const Icon(Icons.close, size: 20),
-                        label: const Text("Finalizar"),
-                        onPressed: () => appLogic.detenerSeguimientoActivo(),
-                        style: TextButton.styleFrom(
-                          foregroundColor: Theme.of(context).colorScheme.error,
-                          padding: const EdgeInsets.symmetric(horizontal: 8.0) // Adjust padding
+
+                      // Botón "Siguiente" más grande y claro
+                      AnimatedScale(
+                        scale:
+                            currentLegIndex <
+                                    activeTripState.tramosDelViaje.length - 1
+                                ? 1.0
+                                : 0.8,
+                        duration: const Duration(milliseconds: 200),
+                        child: ElevatedButton.icon(
+                          icon: const Icon(Icons.arrow_forward, size: 20),
+                          label: const Text('Siguiente'),
+                          onPressed:
+                              currentLegIndex <
+                                      activeTripState.tramosDelViaje.length - 1
+                                  ? () => onLegSelected(currentLegIndex + 1)
+                                  : null,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor:
+                                currentLegIndex <
+                                        activeTripState.tramosDelViaje.length -
+                                            1
+                                    ? Theme.of(
+                                      context,
+                                    ).colorScheme.primaryContainer
+                                    : Theme.of(
+                                      context,
+                                    ).colorScheme.surfaceVariant,
+                            foregroundColor:
+                                currentLegIndex <
+                                        activeTripState.tramosDelViaje.length -
+                                            1
+                                    ? Theme.of(
+                                      context,
+                                    ).colorScheme.onPrimaryContainer
+                                    : Theme.of(context).disabledColor,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
                         ),
                       ),
                     ],
                   ),
                 ),
+                // Botón "Finalizar Viaje" separado y más prominente
+                Container(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      icon: const Icon(Icons.check_circle, size: 24),
+                      label: const Text(
+                        'Finalizar Viaje',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      onPressed: () => appLogic.detenerSeguimientoActivo(),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor:
+                            Theme.of(context).colorScheme.errorContainer,
+                        foregroundColor:
+                            Theme.of(context).colorScheme.onErrorContainer,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
                 const Divider(height: 1),
-                // ...
                 Expanded(
                   child: ListView.separated(
                     controller: scrollController,
@@ -749,16 +1083,230 @@ class _TramoInstruccionListItem extends StatelessWidget {
     this.onTap,
   });
 
-  IconData _getIconForTramo(TipoTramoViaje tipo) {
-    switch (tipo) {
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+    Color tileColor =
+        esTramoActual
+            ? colorScheme.primary.withOpacity(0.15)
+            : Colors.transparent;
+    Color iconColor =
+        esTramoActual ? colorScheme.primary : colorScheme.onSurface;
+    FontWeight titleFontWeight =
+        esTramoActual ? FontWeight.bold : FontWeight.w500;
+
+    // Iconos más descriptivos y claros
+    IconData icon;
+    Color iconBackgroundColor;
+    switch (tramo.tipo) {
       case TipoTramoViaje.CAMINAR:
-        return Icons.directions_walk;
+        icon = Icons.directions_walk;
+        iconBackgroundColor = Colors.blue.withOpacity(0.1);
+        break;
       case TipoTramoViaje.ESPERAR_BUS:
-        return Icons.time_to_leave;
+        icon = Icons.schedule;
+        iconBackgroundColor = Colors.orange.withOpacity(0.1);
+        break;
       case TipoTramoViaje.VIAJE_EN_BUS:
-        return Icons.directions_bus;
+        icon = Icons.directions_bus;
+        iconBackgroundColor = Colors.green.withOpacity(0.1);
+        break;
       default:
-        return Icons.device_unknown; // Icono por defecto
+        icon = Icons.help_outline;
+        iconBackgroundColor = Colors.grey.withOpacity(0.1);
+    }
+
+    return InkWell(
+      onTap: onTap,
+      splashColor: colorScheme.primary.withOpacity(0.2),
+      child: Container(
+        color: tileColor,
+        padding: const EdgeInsets.all(16.0),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Icono más grande y en un contenedor circular
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: iconBackgroundColor,
+                shape: BoxShape.circle,
+                border:
+                    esTramoActual
+                        ? Border.all(color: colorScheme.primary, width: 2)
+                        : null,
+              ),
+              child: Icon(icon, size: 28, color: iconColor),
+            ),
+            const SizedBox(width: 16.0),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Descripción más clara
+                  Text(
+                    _getSimplifiedDescription(tramo),
+                    style: textTheme.titleMedium?.copyWith(
+                      fontWeight: titleFontWeight,
+                      fontSize: 16,
+                      height: 1.3,
+                    ),
+                  ),
+                  const SizedBox(height: 8.0),
+
+                  // Información de duración y distancia más clara
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.access_time,
+                        size: 16,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        _formatDuration(tramo.duracionEstimadaSegundos),
+                        style: textTheme.bodyMedium?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      if (tramo.distanciaMetros > 0) ...[
+                        const SizedBox(width: 16),
+                        Icon(
+                          Icons.straighten,
+                          size: 16,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${tramo.distanciaMetros} m',
+                          style: textTheme.bodyMedium?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+
+                  // Información de la línea de bus más prominente
+                  if (tramo.nombreLineaBus != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8.0),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: colorScheme.secondaryContainer,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.directions_bus,
+                              size: 16,
+                              color: colorScheme.onSecondaryContainer,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Línea ${tramo.nombreLineaBus}',
+                              style: textTheme.bodyMedium?.copyWith(
+                                color: colorScheme.onSecondaryContainer,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            if (tramo.destinoFinalDelBus != null) ...[
+                              const SizedBox(width: 8),
+                              Text(
+                                '→ ${tramo.destinoFinalDelBus}',
+                                style: textTheme.bodySmall?.copyWith(
+                                  color: colorScheme.onSecondaryContainer,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+
+                  // ETA del bus más prominente
+                  if (tramo.minutosEstimadosLlegadaBus != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8.0),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color:
+                              tramo.esTiempoRealBus == true
+                                  ? Colors.green.withOpacity(0.1)
+                                  : Colors.orange.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color:
+                                tramo.esTiempoRealBus == true
+                                    ? Colors.green
+                                    : Colors.orange,
+                            width: 1,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color:
+                                    tramo.esTiempoRealBus == true
+                                        ? Colors.green
+                                        : Colors.orange,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              tramo.esTiempoRealBus == true
+                                  ? 'En tiempo real: ${tramo.minutosEstimadosLlegadaBus} min'
+                                  : 'Estimado: ${tramo.minutosEstimadosLlegadaBus} min',
+                              style: textTheme.bodyMedium?.copyWith(
+                                color:
+                                    tramo.esTiempoRealBus == true
+                                        ? Colors.green[700]
+                                        : Colors.orange[700],
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _getSimplifiedDescription(TramoViajeMostrable tramo) {
+    switch (tramo.tipo) {
+      case TipoTramoViaje.CAMINAR:
+        return 'Caminar hasta la parada';
+      case TipoTramoViaje.ESPERAR_BUS:
+        return 'Esperar el bus en la parada';
+      case TipoTramoViaje.VIAJE_EN_BUS:
+        return 'Viajar en el bus';
+      default:
+        return tramo.descripcion;
     }
   }
 
@@ -767,72 +1315,5 @@ class _TramoInstruccionListItem extends StatelessWidget {
     final minutes = duration.inMinutes;
     if (minutes < 1) return "< 1 min";
     return '$minutes min';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    final colorScheme = Theme.of(context).colorScheme;
-    Color tileColor = esTramoActual ? colorScheme.primary.withOpacity(0.1) : Colors.transparent;
-    Color iconColor = esTramoActual ? colorScheme.primary : colorScheme.secondary;
-    FontWeight titleFontWeight = esTramoActual ? FontWeight.bold : FontWeight.w500;
-
-
-    return InkWell(
-      onTap: onTap,
-      splashColor: colorScheme.primary.withOpacity(0.2),
-      child: Container(
-        color: tileColor, // Resaltar tramo actual
-        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(_getIconForTramo(tramo.tipo), size: 32, color: iconColor),
-            const SizedBox(width: 16.0),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    tramo.descripcion,
-                    style: textTheme.titleMedium?.copyWith(
-                      fontWeight: titleFontWeight,
-                      height: 1.2,
-                    ),
-                  ),
-                  const SizedBox(height: 4.0),
-                  Text(
-                    "Duración: ${_formatDuration(tramo.duracionEstimadaSegundos)}${tramo.distanciaMetros > 0 ? '  •  Distancia: ${tramo.distanciaMetros} m' : ''}",
-                    style: textTheme.bodyMedium?.copyWith(
-                      color: textTheme.bodySmall?.color,
-                      height: 1.2,
-                    ),
-                  ),
-                  if (tramo.tipo == TipoTramoViaje.VIAJE_EN_BUS &&
-                      tramo.nombreLineaBus != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2.0),
-                      child: Text(
-                        "Línea: ${tramo.nombreLineaBus}${tramo.destinoFinalDelBus != null ? ' (Destino: ${tramo.destinoFinalDelBus})' : ''}",
-                        style: textTheme.bodySmall?.copyWith(height: 1.2),
-                      ),
-                    ),
-                  if (tramo.tipo == TipoTramoViaje.ESPERAR_BUS &&
-                      tramo.nombreLineaBus != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2.0),
-                      child: Text(
-                        "Esperar Línea: ${tramo.nombreLineaBus}${tramo.destinoFinalDelBus != null ? ' (Destino: ${tramo.destinoFinalDelBus})' : ''}",
-                        style: textTheme.bodySmall?.copyWith(height: 1.2),
-                      ),
-                    ),
-                  // TODO: Mostrar ETA del bus si está disponible para este tramo
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }

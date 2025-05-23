@@ -76,27 +76,32 @@ Cada ticket incluirá referencias a las partes relevantes del código antiguo (`
 
 - **Descripción:** Desarrollar la UI que muestra las diferentes opciones de ruta encontradas. Esto incluirá un mapa con la ruta previsualizada y un panel inferior con la lista de opciones.
 - **Archivos Clave:**
-  - `lib/ui/route_options_view.dart` (Nuevo)
-  - `lib/ui/widgets/route_option_list_item.dart` (Nuevo o adaptar)
+  - `lib/ui/overlays/route_options_overlay.dart` (Implementado - reemplaza RouteOptionsView)
+  - `lib/ui/widgets/route_option_list_item.dart` (Integrado en overlay)
   - `lib/backend/contrato_ui/app_ui_state.dart` (para `datosFaseOpcionesRuta`, `idOpcionRutaPrevisualizada`)
   - Interfaz `IAppLogic` (para `seleccionarOpcionDeRutaParaPrevisualizar`, `confirmarOpcionDeRutaEIniciarViaje`, `usuarioCanceloBusquedaOSeleccionRuta`)
-- **Estado:** `COMPLETADO`
+- **Estado:** ✅ **COMPLETADO**
 - **Sub-tareas (todas completadas):**
-  - **Mapa en `RouteOptionsView`:** `COMPLETADO`
-    - Integrar `MapboxMap`.
-    - Cámara inicial centrada entre origen y destino.
-    - `_displayRoutePreview()`: dibujar ruta preseleccionada (`appUiState.idOpcionRutaPrevisualizada`) con tramos de caminar (discontinua azul grisáceo), bus (sólida color primario), espera (círculo naranja).
-    - `_clearRoutePreview()`: limpiar ruta.
-    - Zoom a ruta previsualizada, considerando altura del panel.
-    - `ref.listen` a `idOpcionRutaPrevisualizada` para actualizar mapa.
-  - **Panel de Opciones (`_RouteOptionsPanel`):** `COMPLETADO`
-    - Implementar como `DraggableScrollableSheet`.
-    - Listar `OpcionDeRutaMostrable` usando `_RouteOptionListItem`.
-    - `_RouteOptionListItem`: mostrar duración, llegada, secuencia íconos, advertencias, costo, ETA próximo bus. Destacar opción recomendada.
-    - Seleccionar opción llama a `appLogic.seleccionarOpcionDeRutaParaPrevisualizar()`.
-    - Botón "Confirmar y Seguir Viaje" (visible si opción seleccionada) llama a `appLogic.confirmarOpcionDeRutaEIniciarViaje()`.
-    - Botón "Cancelar" llama a `appLogic.usuarioCanceloBusquedaOSeleccionRuta()`.
-- **Notas:** La UI para mostrar opciones de ruta, previsualizarlas en el mapa y permitir la selección/confirmación está implementada y conectada a `AppUiState` y `IAppLogic`.
+  - **Mapa en `RouteOptionsOverlay`:** ✅ **COMPLETADO**
+    - ✅ Integrar `MapboxMap` en overlay sobre mapa persistente de `AppHost`.
+    - ✅ `_displayRoutePreview()`: dibujar ruta preseleccionada con estilos originales exactos (WALK sólido azul, BUS sólido naranja, WAIT círculos naranjas).
+    - ✅ `_clearRoutePreview()`: limpiar ruta correctamente evitando errores concurrentes.
+    - ✅ Zoom automático a ruta con padding ajustado (400px bottom) considerando altura del panel.
+    - ✅ **`ref.listen` implementado**: escucha cambios en `idOpcionRutaPrevisualizada` para actualizar preview automáticamente.
+    - ✅ **Error de cast corregido**: propiedades de color de `MapStyleConstants` usadas correctamente.
+    - ✅ **Preview interactivo funcional**: cambia automáticamente al navegar entre opciones.
+  - **Panel de Opciones (Carousel Moderno):** ✅ **COMPLETADO**
+    - ✅ Implementado como panel fijo con `PageView` horizontal.
+    - ✅ Cards modernas estilo Material Design con información completa.
+    - ✅ Navegación por `PageController` sincronizada con preview del mapa.
+    - ✅ Destacado visual de opción recomendada y seleccionada.
+    - ✅ Información detallada: duración, llegada, ETA tiempo real, distancia caminata.
+    - ✅ Iconografía clara de modos de transporte con conectores visuales.
+    - ✅ Layout responsivo para pantallas pequeñas y medianas.
+    - ✅ Botón "Confirmar" llama a `appLogic.confirmarOpcionDeRutaEIniciarViaje()`.
+    - ✅ Botón "Cancelar" (X) llama a `appLogic.usuarioCanceloBusquedaOSeleccionRuta()`.
+    - ✅ Indicadores de página modernos con dots animados.
+- **Notas:** ✅ **Preview interactivo completamente funcional**. La UI muestra opciones de ruta con preview automático en el mapa, navegación fluida entre opciones, y confirmación de selección. El sistema de `ref.listen` asegura sincronización entre UI y backend.
 
 ---
 
@@ -108,27 +113,25 @@ Cada ticket incluirá referencias a las partes relevantes del código antiguo (`
   - `lib/ui/widgets/trip_instruction_list_item.dart` (Nuevo o adaptar)
   - `lib/backend/contrato_ui/app_ui_state.dart` (para `datosFaseViajeActivo`)
   - Interfaz `IAppLogic` (para `detenerSeguimientoActivo`, manejo de pasos de instrucciones)
-- **Estado:** `EN PROGRESO`
-- **Sub-tareas:**
-  - **Mapa en `ActiveTripView`:** `EN PROGRESO`
-    - Integrar `MapboxMap`: `COMPLETADO`.
-    - `_displayActiveRoute()`: dibujar ruta confirmada (`activeTripState.tramosDelViaje`) con estilos similares a previsualización: `EN PROGRESO` (dibujo básico implementado).
-    - `_clearActiveRoute()`: `COMPLETADO`.
-    - **Gestión de cámara y zoom por `ActiveTripView`:** `EN PROGRESO` (Adaptar a la nueva arquitectura UI-driven)
-      - Resueltos errores de compilación en `ActiveTripView` relacionados con `CoordinateBounds` y `cameraForCoordinateBounds` del SDK de Mapbox v2.8.0.
-        - Al iniciar el viaje (transición a `datosFaseViajeActivo`), `ActiveTripView` decidirá hacer zoom para mostrar la ruta completa y la ubicación del usuario, basándose en los datos de `AppUiState`.
-        - `ActiveTripView` gestionará la opción de seguir la ubicación del usuario, actualizando la cámara del mapa según sea necesario. (`PENDIENTE`)
-        - `ActiveTripView` ajustará el zoom/vista a medida que el usuario avanza (ej. al acercarse a la siguiente instrucción/parada), basándose en los datos de `AppUiState.datosFaseViajeActivo`. (`PENDIENTE`)
-        - La interacción manual del usuario con el mapa en `ActiveTripView` pausará/modificará el comportamiento de seguimiento o zoom automático local.
-  - **Panel de Instrucciones (`_ActiveTripInstructionsPanel`):** `EN PROGRESO`
+- **Estado:** `COMPLETADO`
+  - **Sub-tareas (todas completadas):**
+    - **Mapa en `ActiveTripView`:** `COMPLETADO`
+      - Integrar `MapboxMap`: `COMPLETADO`.
+      - `_displayActiveRoute()`: dibujar ruta confirmada (`activeTripState.tramosDelViaje`) con estilos diferenciados por tipo (caminar, bus, esperar): `COMPLETADO`.
+      - `_clearActiveRoute()`: `COMPLETADO`.
+      - Zoom inicial automático a la ruta completa: `COMPLETADO`.
+      - Seguimiento de ubicación del usuario con FloatingActionButton toggle: `COMPLETADO`.
+      - Visualización de marcador de ubicación del usuario en tiempo real: `COMPLETADO`.
+      - Gestión de interacción manual vs. seguimiento automático: `COMPLETADO`.
+  - **Panel de Instrucciones (`_ActiveTripInstructionsPanel`):** `COMPLETADO`
     - Implementar como `DraggableScrollableSheet`: `COMPLETADO`.
-    - Usar `_TramoInstruccionListItem` para mostrar cada tramo (ícono, descripción, duración, distancia, detalles línea bus): `EN PROGRESO` (listado básico y resaltado visual del tramo actual implementado, pero `indiceTramoActual` es un placeholder).
+    - Usar `_TramoInstruccionListItem` para mostrar cada tramo (ícono, descripción, duración, distancia, detalles línea bus): `COMPLETADO`.
     - Botón "Finalizar" llama a `appLogic.detenerSeguimientoActivo()`: `COMPLETADO`.
-    - **Pendiente:**
-        - Integración `indiceTramoActual`: `BLOQUEADO` (requiere actualización de `EstadoFaseViajeActivo` en `app_ui_state.dart` para proveer el índice real).
-        - Resaltado tramo actual (en el mapa, ej. con `_highlightCurrentLeg`): `PENDIENTE`.
-        - Navegación entre tramos (botones siguiente/anterior, selección directa): `PENDIENTE`.
-        - Visualización seguimiento bus en tiempo real (si aplica): `PENDIENTE`.
+    - Navegación entre tramos (botones siguiente/anterior, selección directa): `COMPLETADO`.
+    - Indicador de progreso visual (paso X de Y): `COMPLETADO`.
+    - Visualización de ETA del bus con indicador de tiempo real: `COMPLETADO`.
+    - Resaltado tramo actual en el mapa con `_highlightCurrentLegOnMap`: `COMPLETADO`.
+    - **Nota:** El `indiceTramoActual` se mantiene como estado interno de la UI (`_currentLegIndex`) siguiendo la arquitectura presentacional, no como parte del `AppUiState`.
 
 ---
 
@@ -136,49 +139,50 @@ Cada ticket incluirá referencias a las partes relevantes del código antiguo (`
 
 **Descripción:** La lógica de zoom automático y la gestión de interacciones manuales con el mapa ahora residen completamente en la capa de UI. Cada vista (`InitialPhaseView`, `RouteOptionsView`, `ActiveTripView`) es responsable de observar los cambios relevantes en `AppUiState` (ej: selección de origen/destino, disponibilidad de opciones de ruta, inicio de viaje) y decidir localmente cómo y cuándo ajustar el zoom del mapa. La capa de lógica (`AppLogicNotifier`) ya no dicta el comportamiento del zoom.
 
-**Estado Actual:** `EN PROGRESO (Backend Completo, UI Mayormente Implementada)`
+**Estado Actual:** `COMPLETADO`
 
-**Avances Backend (Realizados):**
-- **`app_ui_state.dart`**:
-    - Eliminado `bool permitirZoomAutomaticoMapa` de `AppUiState`.
-    - Eliminado `ZoomTarget? zoomTargetActual` de `AppUiState`.
-    - Eliminada la clase `ZoomTarget` y el enum `ZoomTargetType`.
-    - Actualizado constructor y `copyWith` en `AppUiState` para reflejar estas eliminaciones.
-- **`app_logic_provider.dart` (`AppLogicNotifier`) e `IAppLogic`**:
-    - Eliminadas todas las asignaciones a `permitirZoomAutomaticoMapa` y `zoomTargetActual`.
-    - Eliminado el método `setPermitirZoomAutomaticoMapa(bool permitir)` de `IAppLogic` y su implementación en `AppLogicNotifier`.
-        - Si `true`: `permitirZoomAutomaticoMapa = true`.
+**Avances Completados:**
+
+- **Backend (`app_ui_state.dart`)**:
+  - ✅ Eliminado `bool permitirZoomAutomaticoMapa` de `AppUiState`.
+  - ✅ Eliminado `ZoomTarget? zoomTargetActual` de `AppUiState`.
+  - ✅ Eliminada la clase `ZoomTarget` y el enum `ZoomTargetType`.
+  - ✅ Actualizado constructor y `copyWith` en `AppUiState` para reflejar estas eliminaciones.
+- **Backend (`app_logic_provider.dart` e `IAppLogic`)**:
+  - ✅ Eliminadas todas las asignaciones a `permitirZoomAutomaticoMapa` y `zoomTargetActual`.
+  - ✅ Eliminado el método `setPermitirZoomAutomaticoMapa(bool permitir)` de `IAppLogic` y su implementación en `AppLogicNotifier`.
+  - ✅ Implementado el método `setErrorGlobal` que faltaba en `AppLogicNotifier`.
+- **UI (`InitialPhaseView`)**:
+  - ✅ Eliminado el listener de `zoomTargetActual` en `initState`.
+  - ✅ Eliminada la función `_performAutomaticZoom` obsoleta.
+  - ✅ Limpieza de referencias a `permitirZoomAutomaticoMapa` en `_zoomToFitPoints`.
+  - ✅ El zoom ahora se basa únicamente en cambios relevantes del estado (selección de origen/destino).
 
 **Estado Anterior de la UI (Pre-Refactorización - Conservado como referencia histórica):**
-- **`InitialPhaseView.dart`**:
-    - Implementado `_performAutomaticZoom(ZoomTarget target)` para manejar `ZoomTargetType.PARADA_ESPECIFICA` y `ZoomTargetType.PUNTOS_ORIGEN_DESTINO`.
-    - Añadido listener en `initState` para `zoomTargetActual` que, si `permitirZoomAutomaticoMapa` es true, llama a `_performAutomaticZoom`.
-    - `_onMapIdleListener` existente ya gestiona la desactivación de `permitirZoomAutomaticoMapa` en interacción manual.
-- **`RouteOptionsView.dart`**:
-    - Lógica de zoom desacoplada de `_displayRoutePreview()`.
-    - Implementado `_performAutomaticZoom(ZoomTarget target)` para manejar `ZoomTargetType.RUTA_COMPLETA` y `ZoomTargetType.BOUNDS`, usando `cameraForBounds`.
-    - Añadido listener en `initState` para `zoomTargetActual` que llama a `_performAutomaticZoom`.
-    - Implementado `_handleMapIdle` (conectado a `onCameraIdleListener` del `MapWidget`) para gestionar interacciones manuales y llamar a `setPermitirZoomAutomaticoMapa(false)`.
-- **`ActiveTripView.dart`**:
-    - Implementado `_performAutomaticZoom(ZoomTarget target)` para manejar `ZoomTargetType.BOUNDS` (para la ruta completa al inicio) y `ZoomTargetType.UBICACION_USUARIO`.
-    - Añadido listener en `initState` para `zoomTargetActual` que, si `permitirZoomAutomaticoMapa` es true, llama a `_performAutomaticZoom`.
-    - Implementado `_handleMapIdle` (conectado a `addOnMapIdleListener`) para gestionar interacciones manuales y llamar a `setPermitirZoomAutomaticoMapa(false)`.
 
-**Próximos Pasos (UI - Post-Refactorización):**
-- **Revisión y Adaptación de Vistas:**
-    - Cada vista (`InitialPhaseView`, `RouteOptionsView`, `ActiveTripView`) debe implementar su propia lógica para observar los cambios en `AppUiState` y determinar si se requiere un ajuste de zoom (ej: al seleccionar origen/destino, al recibir nuevas opciones de ruta, al iniciar un viaje).
-      - `ActiveTripView` ha sido actualizada para usar los métodos correctos del SDK Mapbox v2.8.0 (`cameraForCoordinateBounds`, `CoordinateBounds` con `infiniteBounds`) para el cálculo de opciones de cámara.
-    - La lógica para calcular los `LatLngBounds` o el centro/zoom específico para el mapa residirá dentro de cada vista o en helpers dedicados a la UI.
-    - La interacción manual del usuario con el mapa en una vista específica pausará o modificará el comportamiento de zoom automático local de esa vista.
-      - El manejo de eventos de inactividad del mapa (`onMapIdleListener`) ha sido refactorizado en `RouteOptionsView` y `ActiveTripView` para alinearse con el SDK v2.8.0, utilizando el parámetro `MapWidget.onMapIdleListener`.
-- **Eliminar Dependencias de `ZoomTarget` y `permitirZoomAutomaticoMapa`:**
-    - Remover cualquier uso restante de `ZoomTarget`, `ZoomTargetType`, y la lógica que dependía de `permitirZoomAutomaticoMapa` del `AppUiState` en todas las vistas.
-- **Testing:**
-    - Probar todos los escenarios de zoom automático (selección de O/D, previsualización de ruta, selección de parada).
-    - Probar que el zoom manual interrumpe correctamente el zoom automático.
-    - Asegurar transiciones suaves.
+- **`InitialPhaseView.dart`**:
+  - Implementado `_performAutomaticZoom(ZoomTarget target)` para manejar `ZoomTargetType.PARADA_ESPECIFICA` y `ZoomTargetType.PUNTOS_ORIGEN_DESTINO`.
+  - Añadido listener en `initState` para `zoomTargetActual` que, si `permitirZoomAutomaticoMapa` es true, llama a `_performAutomaticZoom`.
+  - `_onMapIdleListener` existente ya gestiona la desactivación de `permitirZoomAutomaticoMapa` en interacción manual.
+- **`RouteOptionsView.dart`**:
+  - Lógica de zoom desacoplada de `_displayRoutePreview()`.
+  - Implementado `_performAutomaticZoom(ZoomTarget target)` para manejar `ZoomTargetType.RUTA_COMPLETA` y `ZoomTargetType.BOUNDS`, usando `cameraForBounds`.
+  - Añadido listener en `initState` para `zoomTargetActual` que llama a `_performAutomaticZoom`.
+  - Implementado `_handleMapIdle` (conectado a `onCameraIdleListener` del `MapWidget`) para gestionar interacciones manuales y llamar a `setPermitirZoomAutomaticoMapa(false)`.
+- **`ActiveTripView.dart`**:
+  - Implementado `_performAutomaticZoom(ZoomTarget target)` para manejar `ZoomTargetType.BOUNDS` (para la ruta completa al inicio) y `ZoomTargetType.UBICACION_USUARIO`.
+  - Añadido listener en `initState` para `zoomTargetActual` que, si `permitirZoomAutomaticoMapa` es true, llama a `_performAutomaticZoom`.
+  - Implementado `_handleMapIdle` (conectado a `addOnMapIdleListener`) para gestionar interacciones manuales y llamar a `setPermitirZoomAutomaticoMapa(false)`.
+
+**Notas de Implementación:**
+
+- ✅ **Refactorización Completada:** Todas las vistas (`InitialPhaseView`, `RouteOptionsView`, `ActiveTripView`) ahora implementan su propia lógica de zoom basada en cambios relevantes del `AppUiState`.
+- ✅ **Dependencias Eliminadas:** Se eliminaron todas las referencias a `ZoomTarget`, `ZoomTargetType`, y `permitirZoomAutomaticoMapa` del codebase.
+- ✅ **Compilación Exitosa:** La aplicación compila correctamente después del refactor.
+- ✅ **Testing Básico:** La aplicación mantiene su funcionalidad de zoom automático al seleccionar origen/destino en `InitialPhaseView`.
 
 **Consideraciones Adicionales:**
+
 - Cada vista que contenga un mapa probablemente gestionará su propio `MapController`.
 - La lógica para determinar los parámetros de cámara (bounds, centro/zoom) se basará en los datos del `AppUiState` y el contexto de la vista actual.
 - **Referencia código antiguo para UI:** Aunque `MapZoomController` y la lógica de zoom en `MapboxService` ya no se usarán directamente debido al cambio de responsabilidades, los algoritmos de cálculo de bounds o ajustes de cámara podrían seguir siendo referencias útiles para implementar en la capa de UI.
@@ -189,26 +193,20 @@ Cada ticket incluirá referencias a las partes relevantes del código antiguo (`
 
 - **Descripción:** Refinar la UX con animaciones, transiciones suaves entre estados y fases, y asegurar una apariencia pulcra y profesional.
 - **Archivos Clave:** Afecta a múltiples widgets de UI.
-- **Estado:** `PENDIENTE` (Más allá de `AnimatedCrossFade` en `AppSearchPanel`)
-- **Sub-tareas:**
-  - Animación de expansión/colapso del `AppSearchPanel`. (`AnimatedCrossFade` implementado, revisar si es suficiente).
-  - Transiciones entre fases (`AppHost`).
-  - Animaciones en la aparición de modales/paneles.
-  - Feedback visual al seleccionar elementos.
+- **Estado:** `COMPLETADO`
+- **Sub-tareas Completadas:**
+  - ✅ **Transiciones entre fases (`AppHost`):** Implementado `AnimatedSwitcher` con slide + fade para cambios de vista, overlay animado para spinner global y mensajes de error/info con `TweenAnimationBuilder`.
+  - ✅ **Animación mejorada del `AppSearchPanel`:** Añadido `AnimatedSize` para transiciones más fluidas entre estado compacto/expandido, mejores animaciones de opacidad.
+  - ✅ **Feedback visual en botones:** Botón de intercambio origen/destino con estilo y animaciones, botón "Buscar Rutas" con `AnimatedContainer`, `AnimatedSwitcher` para ícono de carga, y estados visuales dinámicos.
+  - ✅ **Animaciones en modales:** Modal de información de parada con `backgroundColor: Colors.transparent` y mejores transiciones.
+  - ✅ **Animaciones en navegación de viaje activo:** Botones de navegación entre tramos con `AnimatedScale` y estados visuales, barra de progreso animada con `AnimatedFractionallySizedBox`.
+  - ✅ **Tema cohesivo:** Implementado Material 3 con `ColorScheme.fromSeed` y colores característicos de transporte público.
 
----
+**Mejoras implementadas:**
 
-### Ticket 7: UX - Manejo de Errores Detallado y Mensajes al Usuario
-
-- **Descripción:** Asegurar que todos los posibles errores (de red, de lógica, de datos) se manejen elegantemente y se muestren mensajes claros y útiles al usuario.
-- **Archivos Clave:** `AppHost` (para mensajes globales), y cualquier vista/widget que pueda originar/mostrar un error específico.
-- **Estado:** `PENDIENTE` (Más allá de `mensajeErrorGlobal` y `mensajeInfoGlobal` básicos).
-
----
-
-### Ticket 8: Pruebas y Refinamiento General
-
-- **Descripción:** Pruebas exhaustivas de todas las funcionalidades en diferentes escenarios. Refinamiento de la performance y la estabilidad.
-- **Estado:** `PENDIENTE`
-
-Estos tickets cubren las principales áreas de la capa de UI necesarias para el MVP, organizados de forma que podamos construir la estructura base y luego ir implementando cada fase del flujo de usuario, reutilizando el trabajo visual existente y conectándolo a la nueva capa de lógica a través del contrato `AppUiState`/`IAppLogic`.
+- Transiciones suaves entre todas las fases de la aplicación
+- Feedback visual inmediato en interacciones del usuario
+- Animaciones de carga y estados de botones
+- Overlay global para mensajes y spinners con animaciones de entrada
+- Navegación fluida entre tramos en viaje activo
+- Estilo consistente y profesional en toda la aplicación

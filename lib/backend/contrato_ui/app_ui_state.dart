@@ -1,7 +1,4 @@
 // lib/backend/contrato_ui/app_ui_state.dart
-// lib/backend/contrato_ui/app_ui_state.dart
-import 'package:bondi_uy/utils/map_types.dart'; // Added import for ZoomTarget and ZoomTargetType
-import 'package:collection/collection.dart' show listEquals;
 
 // Este archivo define el contrato de datos y estados que la capa de lógica (backend)
 // proveerá a la capa de UI. La UI consumirá este estado para renderizarse.
@@ -473,13 +470,8 @@ class AppUiState {
   final String? mensajeErrorGlobal;
   final String? mensajeInfoGlobal; // Para mensajes no críticos
 
-  // Nuevo campo para el estado de expansión del panel de búsqueda
-  final bool panelDeBusquedaExpandido;
-
   // Nuevo campo para el estado de cálculo de ruta
   final EstadoSolicitud estadoCalculoRuta;
-  final bool permitirZoomAutomaticoMapa;
-  final ZoomTarget? zoomTargetActual;
 
   AppUiState({
     required this.faseActual,
@@ -502,10 +494,8 @@ class AppUiState {
     this.mostrandoSpinnerGlobal = false,
     this.mensajeErrorGlobal,
     this.mensajeInfoGlobal,
-    this.panelDeBusquedaExpandido = true, // Por defecto expandido al inicio
+
     this.estadoCalculoRuta = EstadoSolicitud.INICIAL,
-    this.permitirZoomAutomaticoMapa = true,
-    this.zoomTargetActual,
   }) {
     // Validaciones de consistencia de estado
     if (faseActual == FaseApp.INICIAL_SIN_BUSQUEDA &&
@@ -546,10 +536,8 @@ class AppUiState {
       mostrandoSpinnerGlobal: false,
       mensajeErrorGlobal: null,
       mensajeInfoGlobal: null,
-      panelDeBusquedaExpandido: true,
+
       estadoCalculoRuta: EstadoSolicitud.INICIAL,
-      permitirZoomAutomaticoMapa: true,
-      zoomTargetActual: ZoomTarget(tipo: ZoomTargetType.initial),
     );
   }
 
@@ -587,10 +575,7 @@ class AppUiState {
     bool clearMensajeErrorGlobal = false,
     String? mensajeInfoGlobal,
     bool clearMensajeInfoGlobal = false,
-    bool? panelDeBusquedaExpandido,
     EstadoSolicitud? estadoCalculoRuta,
-    bool? permitirZoomAutomaticoMapa,
-    ZoomTarget? zoomTargetActual,
   }) {
     return AppUiState(
       faseActual: faseActual ?? this.faseActual,
@@ -660,13 +645,9 @@ class AppUiState {
           clearMensajeInfoGlobal
               ? null
               : mensajeInfoGlobal ?? this.mensajeInfoGlobal,
-      panelDeBusquedaExpandido:
-        panelDeBusquedaExpandido ?? this.panelDeBusquedaExpandido,
-    estadoCalculoRuta: estadoCalculoRuta ?? this.estadoCalculoRuta,
-      permitirZoomAutomaticoMapa: permitirZoomAutomaticoMapa ?? this.permitirZoomAutomaticoMapa,
-      zoomTargetActual: zoomTargetActual ?? this.zoomTargetActual,
-  );
-}
+      estadoCalculoRuta: estadoCalculoRuta ?? this.estadoCalculoRuta,
+    );
+  }
 
   @override
   String toString() {
@@ -736,7 +717,6 @@ abstract class IAppLogic {
   // --- Acciones Generales ---
   Future<void> limpiarMensajeDeErrorGlobal();
   void setErrorGlobal(String? mensaje);
-  void setPermitirZoomAutomaticoMapa(bool permitir);
 
   // --- Acciones Adicionales (Asegurar que estén) ---
   void pantallaDeInicioCargada();
