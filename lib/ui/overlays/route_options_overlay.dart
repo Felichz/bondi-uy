@@ -4,7 +4,7 @@ import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'package:bondi_uy/backend/contrato_ui/app_ui_state.dart';
 import 'dart:convert';
 import 'dart:async';
-import 'dart:math';
+import 'dart:math' show sin, pi;
 import 'package:bondi_uy/backend/providers/app_logic_provider.dart';
 import 'package:bondi_uy/ui/map_style_constants.dart';
 import 'package:flutter/services.dart';
@@ -35,6 +35,12 @@ class _RouteOptionsOverlayState extends ConsumerState<RouteOptionsOverlay> {
   double _arrowAnimationPhase = 0.0;
   List<String> _animatedArrowLayerIds = [];
 
+  // Variables para la animación del tooltip flotante
+  Timer? _tooltipFloatTimer;
+  double _tooltipFloatPhase = 0.0;
+  double _lastTooltipOffset =
+      -5.0; // Offset base para posicionar arriba del bus (ajustado para estar más cerca)
+
   // Constantes para IDs de capas y fuentes de previsualización de ruta
   static const String PREVIEW_WALK_SOURCE_PREFIX = 'preview-walk-source-';
   static const String PREVIEW_WALK_LAYER_PREFIX = 'preview-walk-layer-';
@@ -46,6 +52,12 @@ class _RouteOptionsOverlayState extends ConsumerState<RouteOptionsOverlay> {
   // Constantes para iconos (igual que InitialPhaseView)
   static const String STOP_ICON_IMAGE_ID = 'stop-icon'; // stop_icon.png
   static const String BUS_ICON_IMAGE_ID = 'bus-icon'; // incoming_bus.png
+
+  // Constantes para el tooltip de "Voy en camino!" en preview
+  static const String PREVIEW_BUS_TOOLTIP_ICON_ID =
+      "incoming-bus-tooltip-preview";
+  static const String PREVIEW_BUS_TOOLTIP_LAYER_PREFIX =
+      "preview-bus-tooltip-layer-";
 
   // Constantes para buses en tiempo real en preview
   static const String PREVIEW_BUS_REALTIME_SOURCE_PREFIX =
@@ -62,40 +74,116 @@ class _RouteOptionsOverlayState extends ConsumerState<RouteOptionsOverlay> {
   @override
   void initState() {
     super.initState();
-
-    // Inicializar el índice de la opción recomendada antes de crear el PageController
-    final appUiState = ref.read(appLogicProvider);
-    final routeOptionsState = appUiState.datosFaseOpcionesRuta;
-
-    print(
-      "[RouteOptionsOverlay] initState - routeOptionsState: ${routeOptionsState?.opcionesDeRuta.length ?? 'null'}",
-    );
-
-    if (routeOptionsState != null &&
-        routeOptionsState.opcionesDeRuta.isNotEmpty) {
-      final recommendedIndex = routeOptionsState.opcionesDeRuta.indexWhere(
-        (opt) => opt.esRecomendada,
-      );
-      _currentOptionIndex = recommendedIndex >= 0 ? recommendedIndex : 0;
-      print(
-        "[RouteOptionsOverlay] initState - índice recomendado encontrado: $_currentOptionIndex",
-      );
-    } else {
-      print(
-        "[RouteOptionsOverlay] initState - opciones no disponibles, usando índice 0",
-      );
-      _currentOptionIndex = 0;
-    }
-
-    // Crear PageController con la página inicial correcta
     _pageController = PageController(initialPage: _currentOptionIndex);
-    print(
-      "[RouteOptionsOverlay] initState - PageController creado con página inicial: $_currentOptionIndex",
-    );
-
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _clearPreviousPhaseElements();
+      _loadMapIcons();
+      _hideCityLabels();
       _initializeCarousel();
     });
+  }
+
+  Future<void> _clearPreviousPhaseElements() async {
+    if (widget.mapboxMap == null) return;
+
+    print("[RouteOptionsOverlay] Clearing previous phase elements");
+
+    // Limpiar elementos de InitialPhaseOverlay y otras fases
+    final previousLayerIds = [
+      // Initial phase bus stops layers
+      'stops-layer',
+      'highlighted-stops-layer',
+      // Active trip layers que puedan quedar si se regresa de viaje activo
+      'active-walk-layer-0',
+      'active-walk-layer-0-shadow',
+      'active-bus-layer-0',
+      'active-bus-layer-0-shadow',
+      'active-wait-layer-0',
+      'user-location-layer',
+      // Bus real-time layers de active trip
+      'active-bus-realtime',
+      'active-bus-approach-line',
+      'active-bus-approach-line-border',
+      'active-bus-tooltip',
+    ];
+
+    final previousSourceIds = [
+      // Initial phase sources
+      'stops-source',
+      'highlighted-stops-source',
+      // Active trip sources
+      'active-walk-source-0',
+      'active-bus-source-0',
+      'active-wait-source-0',
+      'user-location-source',
+      // Bus real-time sources
+      'active-bus-realtime-source',
+      'active-bus-approach-line-source',
+      'active-bus-tooltip-source',
+    ];
+
+    // Limpiar capas
+    for (String layerId in previousLayerIds) {
+      try {
+        if (await widget.mapboxMap!.style.styleLayerExists(layerId)) {
+          await widget.mapboxMap!.style.removeStyleLayer(layerId);
+          print("[RouteOptionsOverlay] Removed previous layer: $layerId");
+        }
+      } catch (e) {
+        print("[RouteOptionsOverlay] Error removing layer $layerId: $e");
+      }
+    }
+
+    // Limpiar fuentes
+    for (String sourceId in previousSourceIds) {
+      try {
+        if (await widget.mapboxMap!.style.styleSourceExists(sourceId)) {
+          await widget.mapboxMap!.style.removeStyleSource(sourceId);
+          print("[RouteOptionsOverlay] Removed previous source: $sourceId");
+        }
+      } catch (e) {
+        print("[RouteOptionsOverlay] Error removing source $sourceId: $e");
+      }
+    }
+
+    print("[RouteOptionsOverlay] Finished clearing previous phase elements");
+  }
+
+  Future<void> _hideCityLabels() async {
+    if (widget.mapboxMap == null) return;
+
+    try {
+      // Intentar ocultar diferentes tipos de labels que pueden interferir
+      final labelLayerIds = [
+        'settlement-major-label',
+        'settlement-minor-label',
+        'state-label',
+        'country-label',
+        'place-city-large-s',
+        'place-city-medium-s',
+        'place-city-small-s',
+        'admin-1-boundary-label',
+        'admin-0-boundary-label',
+      ];
+
+      for (String layerId in labelLayerIds) {
+        try {
+          if (await widget.mapboxMap!.style.styleLayerExists(layerId)) {
+            await widget.mapboxMap!.style.setStyleLayerProperty(
+              layerId,
+              'visibility',
+              'none',
+            );
+            print("[RouteOptionsOverlay] Hidden city label layer: $layerId");
+          }
+        } catch (e) {
+          // Continuar con el siguiente layer si este falla
+          print("[RouteOptionsOverlay] Could not hide layer $layerId: $e");
+        }
+      }
+    } catch (e) {
+      print("[RouteOptionsOverlay] Error hiding city labels: $e");
+    }
   }
 
   void _initializeCarousel() {
@@ -214,14 +302,8 @@ class _RouteOptionsOverlayState extends ConsumerState<RouteOptionsOverlay> {
 
   @override
   void dispose() {
-    // Detener animación de flechas
-    _stopArrowAnimation();
-
-    // Limpiar capas del preview al desmontar el overlay
-    _clearRoutePreview().catchError((e) {
-      print("[RouteOptionsOverlay] Error clearing preview on dispose: $e");
-    });
-
+    _arrowAnimationTimer?.cancel();
+    _tooltipFloatTimer?.cancel(); // Limpiar timer del tooltip
     _pageController.dispose();
     super.dispose();
   }
@@ -332,6 +414,23 @@ class _RouteOptionsOverlayState extends ConsumerState<RouteOptionsOverlay> {
         "[RouteOptionsOverlay] Loaded $BUS_ICON_IMAGE_ID from incoming_bus.png",
       );
 
+      // Cargar icono del tooltip del bus
+      final MbxImage tooltipImage = await _loadIconImageFromAsset(
+        'incoming_bus_tooltip.png',
+      );
+      await widget.mapboxMap!.style.addStyleImage(
+        PREVIEW_BUS_TOOLTIP_ICON_ID,
+        1.0,
+        tooltipImage,
+        false,
+        [],
+        [],
+        null,
+      );
+      print(
+        "[RouteOptionsOverlay] Loaded $PREVIEW_BUS_TOOLTIP_ICON_ID from incoming_bus_tooltip.png",
+      );
+
       _iconsLoaded = true;
       print("[RouteOptionsOverlay] All icons loaded successfully.");
     } catch (e, s) {
@@ -434,10 +533,13 @@ class _RouteOptionsOverlayState extends ConsumerState<RouteOptionsOverlay> {
       // FASE 3: Mostrar buses en tiempo real si hay información disponible
       await _displayRealtimeBusesForPreview(ruta);
 
-      // FASE 4: Iniciar animación de flechas
+      // FASE 4: Agregar coordenadas del bus en tiempo real para el zoom
+      _addBusCoordinatesToZoom(ruta, todasLasCoordenadasDeLaRuta);
+
+      // FASE 5: Iniciar animación de flechas
       _startArrowAnimation();
 
-      // Zoom a la ruta completa
+      // Zoom a la ruta completa incluyendo el bus
       if (todasLasCoordenadasDeLaRuta.isNotEmpty) {
         await _zoomToRoute(todasLasCoordenadasDeLaRuta);
       }
@@ -446,6 +548,53 @@ class _RouteOptionsOverlayState extends ConsumerState<RouteOptionsOverlay> {
     } catch (e) {
       print("[RouteOptionsOverlay] Error en _displayRoutePreview: $e");
     }
+  }
+
+  /// Agrega las coordenadas del bus en tiempo real a la lista para incluirlo en el zoom
+  void _addBusCoordinatesToZoom(
+    OpcionDeRutaMostrable ruta,
+    List<Coordenada> todasLasCoordenadasDeLaRuta,
+  ) {
+    print("[RouteOptionsOverlay] Adding bus coordinates for zoom calculation");
+
+    int busesAddedToZoom = 0;
+
+    // Buscar el primer tramo de bus con posición en tiempo real
+    for (int i = 0; i < ruta.tramosParaPreview.length; i++) {
+      final tramo = ruta.tramosParaPreview[i];
+
+      if ((tramo.tipo == TipoTramoViaje.VIAJE_EN_BUS ||
+              tramo.tipo == TipoTramoViaje.ESPERAR_BUS) &&
+          tramo.posicionActualBus != null) {
+        todasLasCoordenadasDeLaRuta.add(tramo.posicionActualBus!);
+        busesAddedToZoom++;
+
+        print(
+          "[RouteOptionsOverlay] Added bus coordinates for line ${tramo.nombreLineaBus}: "
+          "(${tramo.posicionActualBus!.latitud}, ${tramo.posicionActualBus!.longitud})",
+        );
+
+        // Solo agregar el primer bus encontrado (más relevante para preview)
+        break;
+      }
+    }
+
+    // Si no encontramos bus en los tramos, intentar con el ETA general
+    if (busesAddedToZoom == 0 &&
+        ruta.etaProximoBus != null &&
+        ruta.etaProximoBus!.posicionBus != null) {
+      todasLasCoordenadasDeLaRuta.add(ruta.etaProximoBus!.posicionBus!);
+      busesAddedToZoom++;
+
+      print(
+        "[RouteOptionsOverlay] Added bus coordinates from general ETA for line ${ruta.etaProximoBus!.linea}: "
+        "(${ruta.etaProximoBus!.posicionBus!.latitud}, ${ruta.etaProximoBus!.posicionBus!.longitud})",
+      );
+    }
+
+    print(
+      "[RouteOptionsOverlay] Total bus coordinates added to zoom: $busesAddedToZoom",
+    );
   }
 
   Future<void> _addBusStopsForSegment(
@@ -822,8 +971,9 @@ class _RouteOptionsOverlayState extends ConsumerState<RouteOptionsOverlay> {
   Future<void> _clearRoutePreview() async {
     if (widget.mapboxMap == null) return;
 
-    // Detener animación de flechas
+    // Detener animaciones
     _stopArrowAnimation();
+    _stopTooltipFloatingAnimation(); // Detener animación del tooltip
     _animatedArrowLayerIds.clear();
 
     final layerIdsCopy = List<String>.from(_activeRouteLayerIds);
@@ -1004,8 +1154,29 @@ class _RouteOptionsOverlayState extends ConsumerState<RouteOptionsOverlay> {
       );
       _activeRouteLayerIds.add(layerId);
 
+      // 4. Agregar capa del tooltip flotante
+      final tooltipLayerId = '$PREVIEW_BUS_TOOLTIP_LAYER_PREFIX$segmentIndex';
+      await widget.mapboxMap!.style.addLayer(
+        SymbolLayer(
+          id: tooltipLayerId,
+          sourceId: sourceId, // Usar la misma fuente que el bus
+          iconImage: PREVIEW_BUS_TOOLTIP_ICON_ID,
+          iconAllowOverlap: true,
+          iconSize: 0.5, // Mismo tamaño que el bus
+          iconAnchor: IconAnchor.CENTER,
+          iconOffset: [
+            0.0,
+            _lastTooltipOffset,
+          ], // Posición inicial arriba del bus
+        ),
+      );
+      _activeRouteLayerIds.add(tooltipLayerId);
+
+      // 5. Iniciar animación flotante del tooltip
+      _startTooltipFloatingAnimation();
+
       print(
-        "[RouteOptionsOverlay] Added realtime bus for line ${tramo.nombreLineaBus} with ETA ${tramo.minutosEstimadosLlegadaBus}min and approach line",
+        "[RouteOptionsOverlay] Added realtime bus for line ${tramo.nombreLineaBus} with ETA ${tramo.minutosEstimadosLlegadaBus}min and tooltip",
       );
     } catch (e) {
       print("[RouteOptionsOverlay] Error adding realtime bus: $e");
@@ -1251,8 +1422,29 @@ class _RouteOptionsOverlayState extends ConsumerState<RouteOptionsOverlay> {
       );
       _activeRouteLayerIds.add(layerId);
 
+      // Agregar capa del tooltip flotante
+      final tooltipLayerId = '${PREVIEW_BUS_TOOLTIP_LAYER_PREFIX}eta_$index';
+      await widget.mapboxMap!.style.addLayer(
+        SymbolLayer(
+          id: tooltipLayerId,
+          sourceId: sourceId, // Usar la misma fuente que el bus
+          iconImage: PREVIEW_BUS_TOOLTIP_ICON_ID,
+          iconAllowOverlap: true,
+          iconSize: 0.7, // Mismo tamaño que el bus
+          iconAnchor: IconAnchor.CENTER,
+          iconOffset: [
+            0.0,
+            _lastTooltipOffset,
+          ], // Posición inicial arriba del bus
+        ),
+      );
+      _activeRouteLayerIds.add(tooltipLayerId);
+
+      // Iniciar animación flotante del tooltip
+      _startTooltipFloatingAnimation();
+
       print(
-        "[RouteOptionsOverlay] Added realtime bus from ETA for line ${eta.linea} with ${eta.minutosParaLlegada}min",
+        "[RouteOptionsOverlay] Added realtime bus from ETA for line ${eta.linea} with ${eta.minutosParaLlegada}min and tooltip",
       );
     } catch (e) {
       print("[RouteOptionsOverlay] Error adding realtime bus from ETA: $e");
@@ -2025,5 +2217,83 @@ class _RouteOptionsOverlayState extends ConsumerState<RouteOptionsOverlay> {
       return '$hours h ${minutes} min';
     }
     return '$minutes min';
+  }
+
+  void _startTooltipFloatingAnimation() {
+    print("[RouteOptionsOverlay] Starting tooltip floating animation");
+    _stopTooltipFloatingAnimation(); // Detener cualquier animación previa
+
+    // Timer de 60 FPS para animación suave
+    _tooltipFloatTimer = Timer.periodic(const Duration(milliseconds: 16), (
+      timer,
+    ) async {
+      if (widget.mapboxMap == null) return;
+
+      // Parámetros de la animación
+      const double amplitude =
+          4.0; // píxeles de movimiento (más sutil para preview)
+      const double period = 3.0; // segundos por ciclo completo
+      const double baseOffset =
+          -5.0; // offset base para llevarlo arriba del bus (ajustado para estar más cerca)
+
+      // Incrementar la fase de animación
+      _tooltipFloatPhase += (2 * pi) / (period * 1000 / 16);
+      if (_tooltipFloatPhase > 2 * pi) _tooltipFloatPhase -= 2 * pi;
+
+      // Calcular el offset flotante usando función seno
+      final double offsetY = baseOffset - amplitude * sin(_tooltipFloatPhase);
+      _lastTooltipOffset = offsetY;
+
+      try {
+        // Actualizar todas las capas de tooltip que existan
+        for (int i = 0; i < 10; i++) {
+          // Máximo 10 opciones de ruta posibles
+          final layerId = '$PREVIEW_BUS_TOOLTIP_LAYER_PREFIX$i';
+          final bool layerExists = await widget.mapboxMap!.style
+              .styleLayerExists(layerId);
+          if (layerExists) {
+            await widget.mapboxMap!.style.setStyleLayerProperty(
+              layerId,
+              'icon-offset',
+              [0.0, offsetY],
+            );
+          }
+        }
+      } catch (e) {
+        print("[RouteOptionsOverlay] Error updating tooltip animation: $e");
+      }
+    });
+  }
+
+  void _stopTooltipFloatingAnimation() {
+    print("[RouteOptionsOverlay] Stopping tooltip floating animation");
+    _tooltipFloatTimer?.cancel();
+    _tooltipFloatTimer = null;
+    _tooltipFloatPhase = 0.0;
+
+    // Resetear offset de todos los tooltips a posición base
+    if (widget.mapboxMap != null) {
+      for (int i = 0; i < 10; i++) {
+        // Máximo 10 opciones de ruta posibles
+        final layerId = '$PREVIEW_BUS_TOOLTIP_LAYER_PREFIX$i';
+        widget.mapboxMap!.style
+            .styleLayerExists(layerId)
+            .then((exists) {
+              if (exists) {
+                widget.mapboxMap!.style.setStyleLayerProperty(
+                  layerId,
+                  'icon-offset',
+                  [
+                    0.0,
+                    -5.0,
+                  ], // Posición base arriba del bus (ajustado para estar más cerca)
+                );
+              }
+            })
+            .catchError((e) {
+              print("[RouteOptionsOverlay] Error resetting tooltip offset: $e");
+            });
+      }
+    }
   }
 }

@@ -17,10 +17,19 @@ class AppHost extends ConsumerStatefulWidget {
 
 class _AppHostState extends ConsumerState<AppHost> {
   MapboxMap? mapboxMap;
+  FaseApp? _lastPhase;
 
   @override
   Widget build(BuildContext context) {
     final appUiState = ref.watch(appLogicProvider);
+
+    // Detectar cambios de fase para debug
+    if (_lastPhase != null && _lastPhase != appUiState.faseActual) {
+      print(
+        "[AppHost] Phase changing from $_lastPhase to ${appUiState.faseActual}",
+      );
+    }
+    _lastPhase = appUiState.faseActual;
 
     return MaterialApp(
       title: 'BondiUY',
@@ -56,7 +65,7 @@ class _AppHostState extends ConsumerState<AppHost> {
                     .setErrorGlobal("Error cargando el mapa: ${data.message}");
               },
               onStyleLoadedListener: (_) {
-                print("[AppHost] Map style loaded - ready for layers");
+                print("[AppHost] Map style loaded - ready for overlays");
               },
             ),
 
