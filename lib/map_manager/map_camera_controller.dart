@@ -88,7 +88,7 @@ class MapCameraController {
 
         await mapboxMap!.flyTo(
           cameraOptions,
-          MapAnimationOptions(duration: 800),
+          MapAnimationOptions(duration: 1500),
         );
       } else if (tramo.posicionPunto != null) {
         final punto = tramo.posicionPunto!;
@@ -97,7 +97,7 @@ class MapCameraController {
             center: Point(coordinates: Position(punto.longitud, punto.latitud)),
             zoom: 16.0,
           ),
-          MapAnimationOptions(duration: 800),
+          MapAnimationOptions(duration: 1200),
         );
       }
     } catch (e) {

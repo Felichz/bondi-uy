@@ -25,6 +25,9 @@ class MapManager {
   List<String> _activeSources = [];
   List<String> _activeLayers = [];
 
+  // Trackear la opción actualmente en preview para optimizar transiciones
+  String? _currentPreviewOptionId;
+
   MapManager(this.mapboxMap) {
     _routeRenderer = MapRouteRenderer(mapboxMap, this);
     _busRealtime = MapBusRealtime(mapboxMap, this);
@@ -55,16 +58,38 @@ class MapManager {
     if (!_isInitialized) await initialize();
 
     print("[MapManager] Showing route preview for: ${route.idOpcion}");
+    print("[MapManager] Current preview option: $_currentPreviewOptionId");
+    print("[MapManager] Current phase: $_currentPhase");
 
-    // Limpiar preview anterior si existe
-    await _cleanup.clearRoutePreview();
+    // Solo limpiar si es una opción diferente a la actual
+    bool needsRedraw = false;
+    if (_currentPreviewOptionId != route.idOpcion) {
+      print(
+        "[MapManager] Different option ($_currentPreviewOptionId → ${route.idOpcion}), clearing previous preview",
+      );
+      await _cleanup.clearRoutePreview();
+      needsRedraw = true;
+    } else {
+      print(
+        "[MapManager] Same option (${route.idOpcion}), keeping existing preview",
+      );
+    }
+
     _currentPhase = 'route_preview';
+    _currentPreviewOptionId = route.idOpcion;
 
-    // Renderizar nueva ruta
-    await _routeRenderer.renderRoutePreview(route);
+    // Renderizar nueva ruta (solo si cambió o no hay capas)
+    if (needsRedraw || _activeLayers.isEmpty) {
+      print(
+        "[MapManager] Rendering route (needsRedraw: $needsRedraw, activeLayers: ${_activeLayers.length})",
+      );
+      await _routeRenderer.renderRoutePreview(route);
 
-    // Mostrar buses en tiempo real
-    await _busRealtime.displayRealtimeBusesForPreview(route);
+      // Mostrar buses en tiempo real
+      await _busRealtime.displayRealtimeBusesForPreview(route);
+    } else {
+      print("[MapManager] Skipping route rendering (already displayed)");
+    }
 
     // Ajustar zoom
     await _cameraController.zoomToRoutePreview(route);
@@ -75,16 +100,63 @@ class MapManager {
     if (!_isInitialized) await initialize();
 
     print("[MapManager] Showing active trip");
+    print("[MapManager] Current phase: $_currentPhase");
 
-    // Limpiar elementos anteriores
-    await _cleanup.clearAll();
+    // OPTIMIZACIÓN: Si venimos del preview, no limpiar (siempre es la misma opción)
+    final isTransitionFromPreview = _currentPhase == 'route_preview';
+
+    if (isTransitionFromPreview) {
+      print(
+        "[MapManager] ✅ OPTIMIZED TRANSITION: Keeping preview elements (route_preview → active_trip)",
+      );
+      // Solo convertir de preview a active trip sin limpiar
+      await _convertPreviewToActiveTrip(activeTripState);
+    } else {
+      print(
+        "[MapManager] 🔄 FULL REDRAW: Coming from different phase ($_currentPhase → active_trip)",
+      );
+
+      // Limpiar elementos anteriores
+      await _cleanup.clearAll();
+
+      // Renderizar ruta activa desde cero
+      await _routeRenderer.renderActiveTrip(activeTripState.tramosDelViaje);
+
+      // Configurar tracking inicial
+      await _busRealtime.initializeActiveTripTracking(activeTripState);
+    }
+
     _currentPhase = 'active_trip';
+    _currentPreviewOptionId = null; // Limpiar preview tracking
+  }
 
-    // Renderizar ruta activa
-    await _routeRenderer.renderActiveTrip(activeTripState.tramosDelViaje);
+  /// Convertir elementos de preview a active trip sin limpiar
+  Future<void> _convertPreviewToActiveTrip(
+    EstadoFaseViajeActivo activeTripState,
+  ) async {
+    print("[MapManager] Converting preview elements to active trip style");
 
-    // Configurar tracking inicial
-    await _busRealtime.initializeActiveTripTracking(activeTripState);
+    try {
+      // 1. Actualizar estilos de líneas y elementos existentes para active trip
+      await _routeRenderer.convertPreviewStylesToActiveTrip(
+        activeTripState.tramosDelViaje,
+      );
+
+      // 2. Configurar tracking de bus manteniendo los elementos visuales existentes
+      await _busRealtime.initializeActiveTripTracking(activeTripState);
+
+      // 3. Ajustar zoom para active trip
+      await _cameraController.zoomToActiveTrip(activeTripState.tramosDelViaje);
+
+      print("[MapManager] Successfully converted preview to active trip");
+    } catch (e) {
+      print("[MapManager] Error converting preview to active trip: $e");
+      // Si falla la conversión, hacer fallback a cleanup completo
+      print("[MapManager] Falling back to full cleanup and redraw");
+      await _cleanup.clearAll();
+      await _routeRenderer.renderActiveTrip(activeTripState.tramosDelViaje);
+      await _busRealtime.initializeActiveTripTracking(activeTripState);
+    }
   }
 
   /// Actualizar tramo actual en viaje activo
@@ -118,6 +190,7 @@ class MapManager {
 
     await _cleanup.clearAll();
     _currentPhase = 'initial';
+    _currentPreviewOptionId = null;
 
     // TODO: Implementar renderizado de paradas de bus para fase inicial
     // await _routeRenderer.renderBusStops();
@@ -128,6 +201,7 @@ class MapManager {
     print("[MapManager] Clearing all map content");
     await _cleanup.clearAll();
     _currentPhase = null;
+    _currentPreviewOptionId = null;
   }
 
   /// Registrar fuente activa para tracking

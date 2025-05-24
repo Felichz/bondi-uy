@@ -225,6 +225,10 @@ class _ActiveTripOverlayState extends ConsumerState<ActiveTripOverlay> {
       try {
         await mapManager.showActiveTrip(activeTripState);
 
+        // Hacer zoom al primer paso del viaje (paso 0)
+        print("[ActiveTripOverlay] Making initial zoom to leg 0");
+        await mapManager.updateCurrentLeg(0, activeTripState.tramosDelViaje);
+
         // Iniciar tracking del próximo tramo de bus basado en el paso actual
         _updateBusTrackingForCurrentLeg();
       } catch (e) {
@@ -295,8 +299,16 @@ class _ActiveTripOverlayState extends ConsumerState<ActiveTripOverlay> {
       _currentLegIndex = legIndex;
     });
 
-    // TODO: Implementar highlight y zoom cuando estén disponibles en MapManager
-    // Por ahora solo actualizamos el estado local
+    // Obtener MapManager del provider y actualizar tramo actual
+    final mapManager = ref.read(mapManagerProvider);
+    final activeTripState = ref.read(appLogicProvider).datosFaseViajeActivo;
+
+    if (mapManager != null && activeTripState != null) {
+      print(
+        "[ActiveTripOverlay] Updating current leg in MapManager: $legIndex",
+      );
+      mapManager.updateCurrentLeg(legIndex, activeTripState.tramosDelViaje);
+    }
 
     // Actualizar el bus tracking basado en el nuevo tramo seleccionado
     _updateBusTrackingForCurrentLeg();

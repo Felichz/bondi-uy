@@ -186,6 +186,39 @@ class MapRouteRenderer {
     }
   }
 
+  /// Convertir elementos de preview a active trip manteniendo geometrías
+  Future<void> convertPreviewStylesToActiveTrip(
+    List<TramoViajeMostrable> tramos,
+  ) async {
+    if (mapboxMap == null) return;
+
+    print("[MapRouteRenderer] Converting preview styles to active trip styles");
+
+    try {
+      // Los elementos de preview ya están dibujados con los IDs de preview
+      // Solo necesitamos ajustar algunos estilos si es necesario
+      // En este caso, mantener los mismos estilos porque preview y active trip
+      // usan prácticamente los mismos estilos visuales
+
+      // Actualizar animación de flechas si es necesario
+      // Las capas de flechas ya están en _animatedArrowLayerIds desde el preview
+
+      // TODO: Si en el futuro queremos estilos diferentes entre preview y active trip,
+      // aquí es donde actualizaríamos las propiedades de las capas existentes
+      // Por ejemplo:
+      // - Cambiar line-width para resaltar más
+      // - Cambiar colores para indicar que es viaje activo
+      // - Añadir efectos de pulsación, etc.
+
+      print(
+        "[MapRouteRenderer] Successfully converted preview to active trip styles",
+      );
+    } catch (e) {
+      print("[MapRouteRenderer] Error converting preview to active trip: $e");
+      rethrow;
+    }
+  }
+
   // ========== MÉTODOS PARA PREVIEW ==========
 
   Future<void> _drawWalkSegmentPreview(

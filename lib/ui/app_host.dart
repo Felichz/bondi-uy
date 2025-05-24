@@ -307,10 +307,24 @@ class _AppHostState extends ConsumerState<AppHost> {
 
     print("[AppHost] Handling phase change from $from to $to");
 
-    // Limpiar estado anterior según la fase
+    // OPTIMIZACIÓN: Si la transición es de preview a active trip,
+    // dejar que MapManager maneje la optimización internamente
+    final isOptimizedTransition =
+        from == FaseApp.MOSTRANDO_OPCIONES_RUTA &&
+        to == FaseApp.VIAJE_ACTIVO_EN_CURSO;
+
+    if (isOptimizedTransition) {
+      print(
+        "[AppHost] ✅ OPTIMIZED TRANSITION: Letting MapManager handle route_preview → active_trip transition",
+      );
+      // No hacer cleanup aquí, MapManager.showActiveTrip() maneja la optimización
+      return;
+    }
+
+    // Limpiar estado anterior según la fase (solo si no es transición optimizada)
     switch (from) {
       case FaseApp.MOSTRANDO_OPCIONES_RUTA:
-        // Saliendo de preview de rutas
+        // Saliendo de preview de rutas (pero no hacia active trip)
         mapManager!.cleanup.clearRoutePreview();
         break;
       case FaseApp.VIAJE_ACTIVO_EN_CURSO:
