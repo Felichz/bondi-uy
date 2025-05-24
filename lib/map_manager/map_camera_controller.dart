@@ -69,29 +69,29 @@ class MapCameraController {
     print("[MapCameraController] Zooming to current leg: $legIndex");
 
     final tramo = tramos[legIndex];
+    List<Coordenada> coordinatesForZoom = [];
 
     try {
+      // Agregar coordenadas del tramo actual
       if (tramo.geometriaPolilinea != null &&
           tramo.geometriaPolilinea!.isNotEmpty) {
-        final coordinates = tramo.geometriaPolilinea!;
-        final mapboxPoints =
-            coordinates
-                .map((c) => Point(coordinates: Position(c.longitud, c.latitud)))
-                .toList();
-
-        final cameraOptions = await mapboxMap!.cameraForCoordinates(
-          mapboxPoints,
-          _getCurrentLegPadding(),
-          null,
-          null,
-        );
-
-        await mapboxMap!.flyTo(
-          cameraOptions,
-          MapAnimationOptions(duration: 1500),
-        );
+        coordinatesForZoom.addAll(tramo.geometriaPolilinea!);
       } else if (tramo.posicionPunto != null) {
-        final punto = tramo.posicionPunto!;
+        coordinatesForZoom.add(tramo.posicionPunto!);
+      }
+
+      // Si es un tramo ESPERAR_BUS, incluir coordenadas del bus en tiempo real
+      if (tramo.tipo == TipoTramoViaje.ESPERAR_BUS) {
+        _addBusCoordinatesForWaitingLeg(tramos, legIndex, coordinatesForZoom);
+      }
+
+      // Hacer zoom según las coordenadas disponibles
+      if (coordinatesForZoom.length > 1) {
+        // Múltiples coordenadas: usar zoom a región
+        await _zoomToCoordinates(coordinatesForZoom, _getCurrentLegPadding());
+      } else if (coordinatesForZoom.length == 1) {
+        // Una sola coordenada: zoom centrado
+        final punto = coordinatesForZoom.first;
         await mapboxMap!.flyTo(
           CameraOptions(
             center: Point(coordinates: Position(punto.longitud, punto.latitud)),
@@ -212,6 +212,59 @@ class MapCameraController {
       left: 40.0,
       bottom: 120.0, // Un poco más de espacio inferior
       right: 40.0,
+    );
+  }
+
+  /// Agregar coordenadas del bus en tiempo real para tramo de espera
+  void _addBusCoordinatesForWaitingLeg(
+    List<TramoViajeMostrable> tramos,
+    int currentLegIndex,
+    List<Coordenada> coordinatesForZoom,
+  ) {
+    print(
+      "[MapCameraController] Looking for bus coordinates for waiting leg $currentLegIndex",
+    );
+
+    // Primero, intentar obtener coordenadas del sistema centralizado de tracking
+    final busPosition = mapManager.getCurrentBusPosition();
+    if (busPosition != null) {
+      coordinatesForZoom.add(busPosition);
+      print(
+        "[MapCameraController] Added bus coordinates from centralized tracking: "
+        "(${busPosition.latitud}, ${busPosition.longitud})",
+      );
+      return;
+    }
+
+    // Si no hay tracking activo, buscar en los tramos información estática
+    // 1. Verificar si el tramo actual tiene información de bus
+    final tramoActual = tramos[currentLegIndex];
+    if (tramoActual.posicionActualBus != null) {
+      coordinatesForZoom.add(tramoActual.posicionActualBus!);
+      print(
+        "[MapCameraController] Added bus coordinates from current waiting leg: "
+        "(${tramoActual.posicionActualBus!.latitud}, ${tramoActual.posicionActualBus!.longitud})",
+      );
+      return;
+    }
+
+    // 2. Buscar el siguiente tramo VIAJE_EN_BUS que tenga información de bus
+    for (int i = currentLegIndex + 1; i < tramos.length; i++) {
+      final tramo = tramos[i];
+
+      if (tramo.tipo == TipoTramoViaje.VIAJE_EN_BUS &&
+          tramo.posicionActualBus != null) {
+        coordinatesForZoom.add(tramo.posicionActualBus!);
+        print(
+          "[MapCameraController] Added bus coordinates from next bus leg $i: "
+          "(${tramo.posicionActualBus!.latitud}, ${tramo.posicionActualBus!.longitud})",
+        );
+        return;
+      }
+    }
+
+    print(
+      "[MapCameraController] No bus coordinates available for waiting leg zoom",
     );
   }
 }

@@ -189,6 +189,39 @@ class MapCleanup {
     }
   }
 
+  /// Limpiar SOLO elementos de buses en tiempo real del preview
+  /// Usado para evitar duplicación durante transición optimizada a active trip
+  Future<void> clearPreviewBusElements() async {
+    if (mapboxMap == null) return;
+
+    print("[MapCleanup] Clearing preview bus elements to avoid duplication");
+
+    // Limpiar SOLO los elementos que se duplican:
+    // - Iconos de buses (preview-bus-realtime-layer-)
+    // - Tooltips animados (preview-bus-tooltip-layer-)
+    //
+    // NO limpiar líneas verdes (preview-bus-approach-layer-) porque forman
+    // parte de la visualización de la ruta y deben mantenerse
+
+    // Limpiar iconos de buses en tiempo real del preview
+    await _clearLayersWithPrefix('preview-bus-realtime-layer-');
+
+    // Limpiar tooltips animados del preview
+    await _clearLayersWithPrefix('preview-bus-tooltip-layer-');
+
+    // Limpiar fuentes de iconos de buses (pero NO de approach lines)
+    await _clearSourcesWithPrefix('preview-bus-realtime-source-');
+
+    // También limpiar versiones que puedan usar sufijos como 'eta_X'
+    await _clearLayersWithPrefix('preview-bus-realtime-layer-eta_');
+    await _clearLayersWithPrefix('preview-bus-tooltip-layer-eta_');
+    await _clearSourcesWithPrefix('preview-bus-realtime-source-eta_');
+
+    print(
+      "[MapCleanup] Preview bus elements cleared successfully (kept approach lines)",
+    );
+  }
+
   /// Limpiar capas que empiecen con un prefijo específico
   Future<void> _clearLayersWithPrefix(String prefix) async {
     if (mapboxMap == null) return;

@@ -137,15 +137,22 @@ class MapManager {
     print("[MapManager] Converting preview elements to active trip style");
 
     try {
-      // 1. Actualizar estilos de líneas y elementos existentes para active trip
+      // 1. IMPORTANTE: Detener animaciones del preview antes de limpiar
+      _busRealtime.stopPreviewAnimations();
+
+      // 2. Limpiar elementos específicos del preview ANTES de la conversión
+      //    para evitar duplicación de buses en tiempo real y tooltips
+      await _cleanup.clearPreviewBusElements();
+
+      // 3. Actualizar estilos de líneas y elementos existentes para active trip
       await _routeRenderer.convertPreviewStylesToActiveTrip(
         activeTripState.tramosDelViaje,
       );
 
-      // 2. Configurar tracking de bus manteniendo los elementos visuales existentes
+      // 4. Configurar tracking de bus manteniendo los elementos visuales existentes
       await _busRealtime.initializeActiveTripTracking(activeTripState);
 
-      // 3. Ajustar zoom para active trip
+      // 5. Ajustar zoom para active trip
       await _cameraController.zoomToActiveTrip(activeTripState.tramosDelViaje);
 
       print("[MapManager] Successfully converted preview to active trip");
@@ -270,6 +277,11 @@ class MapManager {
 
   /// Obtener la fase actual
   String? get currentPhase => _currentPhase;
+
+  /// Obtener posición actual del bus en tiempo real
+  Coordenada? getCurrentBusPosition() {
+    return _busRealtime.currentBusPosition;
+  }
 
   /// Acceso directo a submódulos para casos específicos
   MapRouteRenderer get routeRenderer => _routeRenderer;

@@ -785,12 +785,16 @@ class ItineraryPlanningServiceAdapter
         final esTramoBus =
             leg.mode!.toUpperCase() == "BUS" ||
             leg.mode!.toUpperCase() == "TRANSIT";
-        if (esTramoBus &&
-            tiempoFinTramoAnterior != null &&
-            tiempoFinTramoAnterior.isBefore(legStartTime)) {
+        if (esTramoBus) {
           final int esperaDuration =
-              legStartTime.difference(tiempoFinTramoAnterior).inSeconds;
-          if (esperaDuration > 5) {
+              (tiempoFinTramoAnterior != null &&
+                      tiempoFinTramoAnterior.isBefore(legStartTime))
+                  ? legStartTime.difference(tiempoFinTramoAnterior).inSeconds
+                  : 60; // Tiempo de espera mínimo por defecto de 1 minuto
+
+          // Crear tramo de espera solo si hay al menos un tramo anterior
+          // (para evitar crear espera al inicio del viaje)
+          if (tramosDelItinerario.isNotEmpty) {
             tramosDelItinerario.add(
               TramoViajeMostrable(
                 idTramo: _generateUniqueId("wait${itineraryOtpIndex}_$i"),

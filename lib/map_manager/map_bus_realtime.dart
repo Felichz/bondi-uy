@@ -63,8 +63,9 @@ class MapBusRealtime {
     for (int i = 0; i < ruta.tramosParaPreview.length; i++) {
       final tramo = ruta.tramosParaPreview[i];
 
-      if (tramo.tipo == TipoTramoViaje.VIAJE_EN_BUS ||
-          tramo.tipo == TipoTramoViaje.ESPERAR_BUS) {
+      // Solo considerar VIAJE_EN_BUS para información de bus en tiempo real
+      // Los tramos ESPERAR_BUS son solo marcadores estáticos
+      if (tramo.tipo == TipoTramoViaje.VIAJE_EN_BUS) {
         primerTramoBus = tramo;
         indicePrimerTramoBus = i;
         print(
@@ -191,11 +192,10 @@ class MapBusRealtime {
     // Lógica para determinar el próximo tramo de bus a trackear
     switch (tramoActual.tipo) {
       case TipoTramoViaje.CAMINAR:
-        // Si estoy caminando, buscar el siguiente tramo de bus
+        // Si estoy caminando, buscar el siguiente tramo de bus (solo VIAJE_EN_BUS)
         for (int i = currentLegIndex + 1; i < tramos.length; i++) {
           final tramo = tramos[i];
-          if (tramo.tipo == TipoTramoViaje.VIAJE_EN_BUS ||
-              tramo.tipo == TipoTramoViaje.ESPERAR_BUS) {
+          if (tramo.tipo == TipoTramoViaje.VIAJE_EN_BUS) {
             print("[MapBusRealtime] Walking phase: found next bus at index $i");
             return tramo;
           }
@@ -203,16 +203,23 @@ class MapBusRealtime {
         break;
 
       case TipoTramoViaje.ESPERAR_BUS:
-        // Si estoy esperando el bus, trackear el bus actual (el que estoy esperando)
-        print("[MapBusRealtime] Waiting phase: tracking current bus");
-        return tramoActual;
+        // Si estoy esperando el bus, buscar el siguiente tramo VIAJE_EN_BUS
+        for (int i = currentLegIndex + 1; i < tramos.length; i++) {
+          final tramo = tramos[i];
+          if (tramo.tipo == TipoTramoViaje.VIAJE_EN_BUS) {
+            print(
+              "[MapBusRealtime] Waiting phase: found bus to track at index $i",
+            );
+            return tramo;
+          }
+        }
+        break;
 
       case TipoTramoViaje.VIAJE_EN_BUS:
         // Si ya estoy EN el bus viajando, buscar el siguiente tramo de bus (transbordo)
         for (int i = currentLegIndex + 1; i < tramos.length; i++) {
           final tramo = tramos[i];
-          if (tramo.tipo == TipoTramoViaje.VIAJE_EN_BUS ||
-              tramo.tipo == TipoTramoViaje.ESPERAR_BUS) {
+          if (tramo.tipo == TipoTramoViaje.VIAJE_EN_BUS) {
             print(
               "[MapBusRealtime] On bus phase: found next transfer bus at index $i",
             );
@@ -232,9 +239,13 @@ class MapBusRealtime {
 
   /// Iniciar tracking de bus
   void _startBusTracking(TramoViajeMostrable tramo) {
-    if (tramo.tipo != TipoTramoViaje.VIAJE_EN_BUS &&
-        tramo.tipo != TipoTramoViaje.ESPERAR_BUS)
+    // Solo trackear buses para tramos VIAJE_EN_BUS
+    if (tramo.tipo != TipoTramoViaje.VIAJE_EN_BUS) {
+      print(
+        "[MapBusRealtime] Skipping tracking for non-bus segment type: ${tramo.tipo}",
+      );
       return;
+    }
 
     _currentBusLine = tramo.nombreLineaBus;
     _currentBusDestination = tramo.destinoFinalDelBus;
@@ -340,7 +351,7 @@ class MapBusRealtime {
             id: INCOMING_BUS_LAYER_ID,
             sourceId: INCOMING_BUS_SOURCE_ID,
             iconImage: MapIconsLoader.BUS_ICON_IMAGE_ID,
-            iconSize: 0.6, // Tamaño para viaje activo
+            iconSize: 0.5, // Más pequeño para viaje activo (antes era 0.6)
             iconAllowOverlap: true,
             iconIgnorePlacement: true,
           ),
@@ -355,7 +366,7 @@ class MapBusRealtime {
             id: BUS_TOOLTIP_LAYER_ID,
             sourceId: INCOMING_BUS_SOURCE_ID, // Usar la misma fuente que el bus
             iconImage: MapIconsLoader.BUS_TOOLTIP_ICON_ID,
-            iconSize: 0.6, // Mismo tamaño que el bus
+            iconSize: 0.5, // Mismo tamaño que el bus (antes era 0.6)
             iconAllowOverlap: true,
             iconIgnorePlacement: true,
             iconOffset: [0.0, -5.0], // Posición base arriba del bus
@@ -461,7 +472,7 @@ class MapBusRealtime {
           sourceId: sourceId,
           iconImage: MapIconsLoader.BUS_ICON_IMAGE_ID,
           iconAllowOverlap: true,
-          iconSize: 0.5, // Más pequeño para preview
+          iconSize: 0.6, // Más grande para preview (antes era 0.5)
           iconAnchor: IconAnchor.CENTER,
         ),
       );
@@ -475,7 +486,7 @@ class MapBusRealtime {
           sourceId: sourceId, // Usar la misma fuente que el bus
           iconImage: MapIconsLoader.PREVIEW_BUS_TOOLTIP_ICON_ID,
           iconAllowOverlap: true,
-          iconSize: 0.5, // Mismo tamaño que el bus
+          iconSize: 0.6, // Mismo tamaño que el bus (antes era 0.5)
           iconAnchor: IconAnchor.CENTER,
           iconOffset: [
             0.0,
@@ -664,7 +675,7 @@ class MapBusRealtime {
           sourceId: sourceId,
           iconImage: MapIconsLoader.BUS_ICON_IMAGE_ID,
           iconAllowOverlap: true,
-          iconSize: 0.7,
+          iconSize: 0.6, // Más grande para preview (antes era 0.7)
           iconAnchor: IconAnchor.CENTER,
         ),
       );
@@ -678,7 +689,7 @@ class MapBusRealtime {
           sourceId: sourceId, // Usar la misma fuente que el bus
           iconImage: MapIconsLoader.PREVIEW_BUS_TOOLTIP_ICON_ID,
           iconAllowOverlap: true,
-          iconSize: 0.7, // Mismo tamaño que el bus
+          iconSize: 0.6, // Mismo tamaño que el bus (antes era 0.7)
           iconAnchor: IconAnchor.CENTER,
           iconOffset: [
             0.0,
@@ -833,6 +844,16 @@ class MapBusRealtime {
             });
       }
     }
+  }
+
+  /// Obtener posición actual del bus en tiempo real (getter público)
+  Coordenada? get currentBusPosition => _currentBusPosition;
+
+  /// Detener animaciones y limpiar recursos del preview
+  /// Usado específicamente durante transición a active trip
+  void stopPreviewAnimations() {
+    print("[MapBusRealtime] Stopping preview animations and resources");
+    _stopTooltipFloatingAnimation();
   }
 
   /// Limpiar recursos y detener animaciones
