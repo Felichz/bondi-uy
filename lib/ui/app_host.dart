@@ -3,10 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'package:bondi_uy/backend/providers/app_logic_provider.dart';
 import 'package:bondi_uy/backend/contrato_ui/app_ui_state.dart';
+import 'package:bondi_uy/map_manager/map_manager.dart';
 
 import 'package:bondi_uy/ui/overlays/initial_phase_overlay.dart';
 import 'package:bondi_uy/ui/overlays/route_options_overlay.dart';
 import 'package:bondi_uy/ui/overlays/active_trip_overlay.dart';
+
+// Provider global para el MapManager
+final mapManagerProvider = StateProvider<MapManager?>((ref) => null);
 
 class AppHost extends ConsumerStatefulWidget {
   const AppHost({super.key});
@@ -17,17 +21,19 @@ class AppHost extends ConsumerStatefulWidget {
 
 class _AppHostState extends ConsumerState<AppHost> {
   MapboxMap? mapboxMap;
+  MapManager? mapManager;
   FaseApp? _lastPhase;
 
   @override
   Widget build(BuildContext context) {
     final appUiState = ref.watch(appLogicProvider);
 
-    // Detectar cambios de fase para debug
+    // Detectar cambios de fase para debug y limpiar el mapa según corresponda
     if (_lastPhase != null && _lastPhase != appUiState.faseActual) {
       print(
         "[AppHost] Phase changing from $_lastPhase to ${appUiState.faseActual}",
       );
+      _handlePhaseChange(_lastPhase!, appUiState.faseActual);
     }
     _lastPhase = appUiState.faseActual;
 
@@ -52,6 +58,8 @@ class _AppHostState extends ConsumerState<AppHost> {
               key: const ValueKey("persistent_map"),
               onMapCreated: (MapboxMap controller) {
                 mapboxMap = controller;
+                // Crear MapManager cuando el mapa esté listo
+                _initializeMapManager();
                 // Notificar a la capa de lógica que el mapa está listo
                 ref.read(appLogicProvider.notifier).pantallaDeInicioCargada();
               },
@@ -66,6 +74,10 @@ class _AppHostState extends ConsumerState<AppHost> {
               },
               onStyleLoadedListener: (_) {
                 print("[AppHost] Map style loaded - ready for overlays");
+                // Reinicializar MapManager cuando el estilo se carga
+                if (mapManager != null) {
+                  _reinitializeMapManager();
+                }
               },
             ),
 
@@ -288,5 +300,70 @@ class _AppHostState extends ConsumerState<AppHost> {
         );
       },
     );
+  }
+
+  void _handlePhaseChange(FaseApp from, FaseApp to) {
+    if (mapManager == null) return;
+
+    print("[AppHost] Handling phase change from $from to $to");
+
+    // Limpiar estado anterior según la fase
+    switch (from) {
+      case FaseApp.MOSTRANDO_OPCIONES_RUTA:
+        // Saliendo de preview de rutas
+        mapManager!.cleanup.clearRoutePreview();
+        break;
+      case FaseApp.VIAJE_ACTIVO_EN_CURSO:
+        // Saliendo de viaje activo
+        mapManager!.cleanup.clearActiveTrip();
+        break;
+      default:
+        // Para otras fases, limpiar todo
+        mapManager!.clearAll();
+        break;
+    }
+
+    // Preparar para nueva fase
+    switch (to) {
+      case FaseApp.INICIAL_SIN_BUSQUEDA:
+        mapManager!.showInitialPhase();
+        break;
+      case FaseApp.MOSTRANDO_OPCIONES_RUTA:
+        // El preview específico se maneja en RouteOptionsOverlay
+        break;
+      case FaseApp.VIAJE_ACTIVO_EN_CURSO:
+        // El viaje específico se maneja en ActiveTripOverlay
+        break;
+    }
+  }
+
+  void _initializeMapManager() {
+    if (mapboxMap == null) return;
+
+    print("[AppHost] Initializing MapManager");
+
+    mapManager = MapManager(mapboxMap);
+
+    // Hacer el MapManager accesible globalmente vía provider
+    ref.read(mapManagerProvider.notifier).state = mapManager;
+
+    // Inicializar de forma asíncrona
+    mapManager!.initialize().catchError((e) {
+      print("[AppHost] Error initializing MapManager: $e");
+      ref
+          .read(appLogicProvider.notifier)
+          .setErrorGlobal("Error inicializando el mapa: $e");
+    });
+  }
+
+  void _reinitializeMapManager() {
+    if (mapManager == null) return;
+
+    print("[AppHost] Reinitializing MapManager after style reload");
+
+    // Reinicializar iconos y configuración
+    mapManager!.initialize().catchError((e) {
+      print("[AppHost] Error reinitializing MapManager: $e");
+    });
   }
 }
