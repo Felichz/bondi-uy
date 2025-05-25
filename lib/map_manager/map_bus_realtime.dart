@@ -20,6 +20,10 @@ class MapBusRealtime {
   int? _currentBusEta;
   bool? _currentBusIsRealTime;
 
+  // Variables para almacenar información necesaria para actualizar la línea de aproximación
+  TramoViajeMostrable? _currentTrackedSegment;
+  Coordenada? _currentStopPosition;
+
   // Variables para la animación del tooltip flotante
   Timer? _tooltipFloatTimer;
   double _tooltipFloatPhase = 0.0;
@@ -153,14 +157,11 @@ class MapBusRealtime {
       );
       _startBusTracking(proximoTramoBus);
 
-      // Si el tramo ya tiene información de bus, mostrarla inmediatamente
-      if (proximoTramoBus.posicionActualBus != null) {
-        await updateBusPosition(
-          proximoTramoBus.posicionActualBus!,
-          proximoTramoBus.minutosEstimadosLlegadaBus ?? 0,
-          proximoTramoBus.esTiempoRealBus ?? false,
-        );
-      }
+      // ELIMINADO: Ya no mostramos datos antiguos del tramo automáticamente
+      // El sistema de sondeo centralizado se encarga de actualizar con datos frescos
+      // if (proximoTramoBus.posicionActualBus != null) {
+      //   await updateBusPosition(...)
+      // }
     } else {
       print(
         "[MapBusRealtime] No more bus segments to track, stopping bus tracking",
@@ -179,7 +180,25 @@ class MapBusRealtime {
     _currentBusEta = etaMinutes;
     _currentBusIsRealTime = isRealTime;
 
-    await _displayBusOnMap(position);
+    // NUEVA LÓGICA: Durante transición optimizada, usar SOLO elementos del preview
+    bool usingPreviewElements = await _tryUpdatePreviewBusElements(
+      position,
+      etaMinutes,
+      isRealTime,
+    );
+
+    if (!usingPreviewElements) {
+      // Solo si NO hay elementos del preview, usar elementos de active trip
+      await _displayBusOnMap(position);
+    }
+
+    // Actualizar línea de aproximación verde
+    if (_currentStopPosition != null && _currentTrackedSegment != null) {
+      await _updateBusApproachLineForActiveTrip(
+        position,
+        _currentStopPosition!,
+      );
+    }
   }
 
   /// Encontrar el próximo tramo de bus a trackear
@@ -250,14 +269,16 @@ class MapBusRealtime {
     _currentBusLine = tramo.nombreLineaBus;
     _currentBusDestination = tramo.destinoFinalDelBus;
 
-    // Obtener información inicial del bus si está disponible
-    if (tramo.posicionActualBus != null) {
-      updateBusPosition(
-        tramo.posicionActualBus!,
-        tramo.minutosEstimadosLlegadaBus ?? 0,
-        tramo.esTiempoRealBus ?? false,
-      );
-    }
+    // NUEVO: Almacenar información para actualizar la línea de aproximación
+    _currentTrackedSegment = tramo;
+    _currentStopPosition =
+        tramo.coordenadasParadaOrigen; // Parada donde el usuario debe subir
+
+    // ELIMINADO: Ya no mostramos datos antiguos del tramo automáticamente
+    // El sistema de sondeo en tiempo real se encargará de actualizar con datos frescos
+    // if (tramo.posicionActualBus != null) {
+    //   updateBusPosition(...)
+    // }
 
     // Iniciar timer de actualización cada 15 segundos
     _busTrackingTimer?.cancel();
@@ -267,7 +288,7 @@ class MapBusRealtime {
     );
 
     print(
-      "[MapBusRealtime] Bus tracking started for line: $_currentBusLine (type: ${tramo.tipo})",
+      "[MapBusRealtime] Bus tracking started for line: $_currentBusLine (type: ${tramo.tipo}) - waiting for real-time updates",
     );
   }
 
@@ -283,20 +304,24 @@ class MapBusRealtime {
     _currentBusLine = null;
     _currentBusDestination = null;
 
+    // NUEVO: Limpiar información de tracking
+    _currentTrackedSegment = null;
+    _currentStopPosition = null;
+
     print("[MapBusRealtime] Bus tracking stopped");
   }
 
   /// Obtener actualización del bus (placeholder para futuras implementaciones)
   Future<void> _fetchBusUpdate(TramoViajeMostrable tramo) async {
     // TODO: Implementar llamada al backend para obtener posición actualizada del bus
-    // Por ahora usamos los datos del tramo si están disponibles
-    if (tramo.posicionActualBus != null) {
-      await updateBusPosition(
-        tramo.posicionActualBus!,
-        tramo.minutosEstimadosLlegadaBus ?? 0,
-        tramo.esTiempoRealBus ?? false,
-      );
-    }
+    // ELIMINADO: Ya no usamos datos antiguos del tramo, el sistema centralizado se encarga
+    // if (tramo.posicionActualBus != null) {
+    //   await updateBusPosition(...)
+    // }
+
+    print(
+      "[MapBusRealtime] _fetchBusUpdate called - delegating to centralized real-time system",
+    );
   }
 
   /// Mostrar bus en el mapa para viaje activo
@@ -409,9 +434,222 @@ class MapBusRealtime {
         await mapboxMap!.style.removeStyleSource(INCOMING_BUS_SOURCE_ID);
       }
 
-      print("[MapBusRealtime] Bus display and tooltip cleared");
+      // NUEVO: Limpiar línea de aproximación verde
+      if (await mapboxMap!.style.styleLayerExists(BUS_APPROACH_LINE_LAYER_ID)) {
+        await mapboxMap!.style.removeStyleLayer(BUS_APPROACH_LINE_LAYER_ID);
+      }
+
+      if (await mapboxMap!.style.styleLayerExists(
+        BUS_APPROACH_LINE_BORDER_LAYER_ID,
+      )) {
+        await mapboxMap!.style.removeStyleLayer(
+          BUS_APPROACH_LINE_BORDER_LAYER_ID,
+        );
+      }
+
+      if (await mapboxMap!.style.styleSourceExists(
+        BUS_APPROACH_LINE_SOURCE_ID,
+      )) {
+        await mapboxMap!.style.removeStyleSource(BUS_APPROACH_LINE_SOURCE_ID);
+      }
+
+      print("[MapBusRealtime] Bus display, tooltip and approach line cleared");
     } catch (e) {
       print("[MapBusRealtime] Error clearing bus display: $e");
+    }
+  }
+
+  /// Actualizar línea de aproximación verde para viaje activo
+  Future<void> _updateBusApproachLineForActiveTrip(
+    Coordenada busPosition,
+    Coordenada stopPosition,
+  ) async {
+    if (mapboxMap == null || _currentTrackedSegment == null) return;
+
+    print("[MapBusRealtime] Updating bus approach line:");
+    print(
+      "  - Bus position: (${busPosition.latitud}, ${busPosition.longitud})",
+    );
+    print(
+      "  - Stop position: (${stopPosition.latitud}, ${stopPosition.longitud})",
+    );
+
+    // Cargar geometrías de shapes si no están cargadas
+    await loadShapeGeometries();
+
+    // Obtener la geometría completa de la línea usando el shapeId
+    List<Coordenada>? fullLineGeometry;
+    if (_currentTrackedSegment!.shapeId != null) {
+      fullLineGeometry = getFullShapeGeometry(_currentTrackedSegment!.shapeId);
+    }
+
+    // Si no tenemos geometría completa, usar la del tramo como fallback
+    if (fullLineGeometry == null || fullLineGeometry.isEmpty) {
+      fullLineGeometry = _currentTrackedSegment!.geometriaPolilinea;
+    }
+
+    List<List<double>> coordinates;
+
+    if (fullLineGeometry != null && fullLineGeometry.isNotEmpty) {
+      // Encontrar índices en la geometría completa
+      final busIndex = findClosestPointIndexOnShape(
+        fullLineGeometry,
+        busPosition,
+      );
+      final stopIndex = findClosestPointIndexOnShape(
+        fullLineGeometry,
+        stopPosition,
+      );
+
+      if (busIndex == -1 || stopIndex == -1) {
+        // Usar línea recta como fallback
+        coordinates = [
+          [busPosition.longitud, busPosition.latitud],
+          [stopPosition.longitud, stopPosition.latitud],
+        ];
+      } else {
+        // Calcular segmento de la geometría entre bus y parada
+        final segment = getGeometrySegment(
+          fullLineGeometry,
+          busIndex,
+          stopIndex,
+        );
+
+        if (segment.length < 2) {
+          coordinates = [
+            [busPosition.longitud, busPosition.latitud],
+            [stopPosition.longitud, stopPosition.latitud],
+          ];
+        } else {
+          coordinates = segment.map((c) => [c.longitud, c.latitud]).toList();
+        }
+      }
+    } else {
+      // Sin geometría, usar línea recta
+      coordinates = [
+        [busPosition.longitud, busPosition.latitud],
+        [stopPosition.longitud, stopPosition.latitud],
+      ];
+    }
+
+    // Crear línea siguiendo la geometría de la ruta
+    final geoJsonFeatureCollection = {
+      "type": "FeatureCollection",
+      "features": [
+        {
+          "type": "Feature",
+          "geometry": {"type": "LineString", "coordinates": coordinates},
+          "properties": {"type": "bus-approach"},
+        },
+      ],
+    };
+
+    try {
+      // NUEVO: Intentar actualizar líneas de aproximación del preview primero
+      bool updatedPreviewLine = await _tryUpdatePreviewApproachLine(
+        geoJsonFeatureCollection,
+      );
+
+      if (!updatedPreviewLine) {
+        // Si no hay líneas del preview, usar las del viaje activo
+        await _updateOrCreateActiveTripApproachLine(geoJsonFeatureCollection);
+      }
+    } catch (e) {
+      print("[MapBusRealtime] Error updating bus approach line: $e");
+    }
+  }
+
+  /// Intentar actualizar líneas de aproximación del preview (durante transición optimizada)
+  Future<bool> _tryUpdatePreviewApproachLine(
+    Map<String, dynamic> geoJsonFeatureCollection,
+  ) async {
+    if (mapboxMap == null) return false;
+
+    // Buscar líneas de aproximación del preview que puedan existir
+    final previewApproachSourceIds = [
+      '${PREVIEW_BUS_APPROACH_SOURCE_PREFIX}0',
+      '${PREVIEW_BUS_APPROACH_SOURCE_PREFIX}1',
+      '${PREVIEW_BUS_APPROACH_SOURCE_PREFIX}2',
+      '${PREVIEW_BUS_APPROACH_SOURCE_PREFIX}3',
+      '${PREVIEW_BUS_APPROACH_SOURCE_PREFIX}4',
+    ];
+
+    for (String sourceId in previewApproachSourceIds) {
+      try {
+        if (await mapboxMap!.style.styleSourceExists(sourceId)) {
+          final source =
+              await mapboxMap!.style.getSource(sourceId) as GeoJsonSource;
+          await source.updateGeoJSON(json.encode(geoJsonFeatureCollection));
+          print(
+            "[MapBusRealtime] Updated preview approach line source: $sourceId",
+          );
+          return true; // Éxito actualizando línea del preview
+        }
+      } catch (e) {
+        print(
+          "[MapBusRealtime] Error updating preview approach line $sourceId: $e",
+        );
+        continue; // Intentar con el siguiente
+      }
+    }
+
+    return false; // No se encontraron líneas del preview para actualizar
+  }
+
+  /// Actualizar o crear líneas de aproximación para viaje activo
+  Future<void> _updateOrCreateActiveTripApproachLine(
+    Map<String, dynamic> geoJsonFeatureCollection,
+  ) async {
+    if (mapboxMap == null) return;
+
+    // Actualizar o crear fuente de la línea verde para viaje activo
+    if (await mapboxMap!.style.styleSourceExists(BUS_APPROACH_LINE_SOURCE_ID)) {
+      final source =
+          await mapboxMap!.style.getSource(BUS_APPROACH_LINE_SOURCE_ID)
+              as GeoJsonSource;
+      await source.updateGeoJSON(json.encode(geoJsonFeatureCollection));
+      print("[MapBusRealtime] Updated active trip approach line source");
+    } else {
+      // Crear fuente y capas si no existen
+      await mapboxMap!.style.addSource(
+        GeoJsonSource(
+          id: BUS_APPROACH_LINE_SOURCE_ID,
+          data: json.encode(geoJsonFeatureCollection),
+        ),
+      );
+      mapManager.registerSource(BUS_APPROACH_LINE_SOURCE_ID);
+
+      // 1. Agregar capa de borde (más gruesa, negra, debajo)
+      await mapboxMap!.style.addLayer(
+        LineLayer(
+          id: BUS_APPROACH_LINE_BORDER_LAYER_ID,
+          sourceId: BUS_APPROACH_LINE_SOURCE_ID,
+          lineColor: 0xFF000000, // Negro para el borde
+          lineWidth: 8.0, // Consistencia con otros bordes
+          lineOpacity: 0.9,
+          lineJoin: LineJoin.ROUND,
+          lineCap: LineCap.ROUND,
+        ),
+      );
+      mapManager.registerLayer(BUS_APPROACH_LINE_BORDER_LAYER_ID);
+
+      // 2. Agregar capa de línea verde principal (encima del borde)
+      await mapboxMap!.style.addLayer(
+        LineLayer(
+          id: BUS_APPROACH_LINE_LAYER_ID,
+          sourceId: BUS_APPROACH_LINE_SOURCE_ID,
+          lineColor: 0xFF4CAF50, // Verde como en el código anterior
+          lineWidth: 5.0, // Consistencia con BUS
+          lineOpacity: 0.9,
+          lineJoin: LineJoin.ROUND,
+          lineCap: LineCap.ROUND,
+        ),
+      );
+      mapManager.registerLayer(BUS_APPROACH_LINE_LAYER_ID);
+
+      print(
+        "[MapBusRealtime] Created bus approach line with border for active trip",
+      );
     }
   }
 
@@ -844,6 +1082,66 @@ class MapBusRealtime {
             });
       }
     }
+  }
+
+  /// Intentar actualizar elementos del preview si existen (durante transición optimizada)
+  Future<bool> _tryUpdatePreviewBusElements(
+    Coordenada position,
+    int etaMinutes,
+    bool isRealTime,
+  ) async {
+    if (mapboxMap == null) return false;
+
+    // Buscar fuentes de bus del preview que puedan existir
+    final previewBusSourceIds = [
+      '${PREVIEW_BUS_REALTIME_SOURCE_PREFIX}0',
+      '${PREVIEW_BUS_REALTIME_SOURCE_PREFIX}1',
+      '${PREVIEW_BUS_REALTIME_SOURCE_PREFIX}2',
+      '${PREVIEW_BUS_REALTIME_SOURCE_PREFIX}3',
+      '${PREVIEW_BUS_REALTIME_SOURCE_PREFIX}4',
+    ];
+
+    for (String sourceId in previewBusSourceIds) {
+      try {
+        if (await mapboxMap!.style.styleSourceExists(sourceId)) {
+          // Actualizar la fuente del bus del preview con nueva posición
+          final busFeature = {
+            "type": "Feature",
+            "geometry": {
+              "type": "Point",
+              "coordinates": [position.longitud, position.latitud],
+            },
+            "properties": {
+              "linea": _currentBusLine,
+              "eta": etaMinutes,
+              "isRealTime": isRealTime,
+              "destino": _currentBusDestination,
+            },
+          };
+
+          final sourceData = {
+            "type": "FeatureCollection",
+            "features": [busFeature],
+          };
+
+          final source =
+              await mapboxMap!.style.getSource(sourceId) as GeoJsonSource;
+          await source.updateGeoJSON(json.encode(sourceData));
+
+          print(
+            "[MapBusRealtime] Updated preview bus source: $sourceId with new position (${position.latitud}, ${position.longitud})",
+          );
+          return true; // Éxito actualizando elemento del preview
+        }
+      } catch (e) {
+        print(
+          "[MapBusRealtime] Error updating preview bus source $sourceId: $e",
+        );
+        continue; // Intentar con el siguiente
+      }
+    }
+
+    return false; // No se encontraron elementos del preview para actualizar
   }
 
   /// Obtener posición actual del bus en tiempo real (getter público)

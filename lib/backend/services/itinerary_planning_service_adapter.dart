@@ -9,7 +9,7 @@ import './montevideo_api_service_adapter.dart'; // Para obtener ETAs
 import 'package:intl/intl.dart'; // Para formatear fecha y hora
 
 // TODO: Configurar estas constantes adecuadamente.
-const String OTP_BASE_URL = "http://192.168.1.5:8080/otp/routers/default/plan";
+const String OTP_BASE_URL = "http://192.168.1.10:8080/otp/routers/default/plan";
 const int OTP_NUM_ITINERARIES = 5; // Número de itinerarios a solicitar
 
 // Constantes adaptadas del servicio antiguo
@@ -18,7 +18,7 @@ const int MAX_UNIQUE_STOPS_FOR_ETA_LOOKUP =
 
 // TODO: Mover a un archivo de configuración o constantes
 const String OTP_GRAPHQL_ENDPOINT_URL =
-    "http://192.168.1.5:8080/otp/routers/default/index/graphql";
+    "http://192.168.1.10:8080/otp/routers/default/index/graphql";
 // Asegúrate de que esta URL sea accesible desde donde se ejecuta tu app Flutter.
 // Para emulador Android, si OTP corre en el host: "http://10.0.2.2:8080/otp/routers/default/index/graphql"
 // Para web o dispositivo físico, la IP de la máquina host en la red local: "http://TU_IP_LOCAL:8080/otp/routers/default/index/graphql"

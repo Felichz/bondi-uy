@@ -1,5 +1,13 @@
 Mejoras UX
-    - Evaluar una iconografia de paradas que ilustre si es un punto de subida o uno de bajada
+    Top tier
+        Bus en tiempo real
+            - Que se mueva suavemente, movimiento simulado
+            - Que se ajuste el zoom mientras se acerca el bus
+
+    Mid tier
+
+    Low tier
+        - Evaluar una iconografia de paradas que ilustre si es un punto de subida o uno de bajada
 
 ======= PARA REVISAR (proyecto viejo) =======
 

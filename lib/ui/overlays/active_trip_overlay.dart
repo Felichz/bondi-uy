@@ -120,6 +120,9 @@ class _ActiveTripOverlayState extends ConsumerState<ActiveTripOverlay> {
 
   @override
   void dispose() {
+    _arrowAnimationTimer?.cancel();
+    _busTrackingTimer?.cancel();
+    _tooltipFloatTimer?.cancel();
     super.dispose();
   }
 
@@ -229,8 +232,7 @@ class _ActiveTripOverlayState extends ConsumerState<ActiveTripOverlay> {
         print("[ActiveTripOverlay] Making initial zoom to leg 0");
         await mapManager.updateCurrentLeg(0, activeTripState.tramosDelViaje);
 
-        // Iniciar tracking del próximo tramo de bus basado en el paso actual
-        _updateBusTrackingForCurrentLeg();
+        // ELIMINADO: Ya no iniciamos tracking aquí, el sistema centralizado se encarga
       } catch (e) {
         print("[ActiveTripOverlay] Error initializing active trip: $e");
       }
@@ -310,136 +312,34 @@ class _ActiveTripOverlayState extends ConsumerState<ActiveTripOverlay> {
       mapManager.updateCurrentLeg(legIndex, activeTripState.tramosDelViaje);
     }
 
-    // Actualizar el bus tracking basado en el nuevo tramo seleccionado
-    _updateBusTrackingForCurrentLeg();
+    // ELIMINADO: Ya no actualizamos tracking aquí, el sistema centralizado se encarga
   }
 
   void _updateBusTrackingForCurrentLeg() {
-    final activeTripState = ref.read(appLogicProvider).datosFaseViajeActivo;
-    if (activeTripState == null || activeTripState.tramosDelViaje.isEmpty) {
-      _stopBusTracking();
-      return;
-    }
-
-    final tramosDelViaje = activeTripState.tramosDelViaje;
-    final tramoActual = tramosDelViaje[_currentLegIndex];
-
-    print(
-      "[ActiveTripOverlay] Updating bus tracking for leg $_currentLegIndex: ${tramoActual.tipo}",
-    );
-
-    // Determinar cuál es el próximo tramo de bus que necesitamos trackear
-    TramoViajeMostrable? proximoTramoBus = _findNextBusSegment(
-      tramosDelViaje,
-      _currentLegIndex,
-    );
-
-    if (proximoTramoBus != null) {
-      print(
-        "[ActiveTripOverlay] Next bus segment found: line=${proximoTramoBus.nombreLineaBus}, type=${proximoTramoBus.tipo}",
-      );
-      _startBusTracking(proximoTramoBus);
-
-      // Si el tramo ya tiene información de bus, mostrarla inmediatamente
-      if (proximoTramoBus.posicionActualBus != null) {
-        _updateBusPosition(
-          proximoTramoBus.posicionActualBus!,
-          proximoTramoBus.minutosEstimadosLlegadaBus ?? 0,
-          proximoTramoBus.esTiempoRealBus ?? false,
-        );
-      }
-    } else {
-      print(
-        "[ActiveTripOverlay] No more bus segments to track, stopping bus tracking",
-      );
-      _stopBusTracking();
-    }
+    // ELIMINADO: Ya no manejamos tracking de bus aquí
+    // El sistema centralizado en AppLogicProvider + MapBusRealtime se encarga de todo
+    print("[ActiveTripOverlay] Bus tracking delegated to centralized system");
   }
 
   TramoViajeMostrable? _findNextBusSegment(
     List<TramoViajeMostrable> tramos,
     int currentLegIndex,
   ) {
-    final tramoActual = tramos[currentLegIndex];
-
-    // Lógica para determinar el próximo tramo de bus a trackear
-    switch (tramoActual.tipo) {
-      case TipoTramoViaje.CAMINAR:
-        // Si estoy caminando, buscar el siguiente tramo de bus
-        for (int i = currentLegIndex + 1; i < tramos.length; i++) {
-          final tramo = tramos[i];
-          if (tramo.tipo == TipoTramoViaje.VIAJE_EN_BUS ||
-              tramo.tipo == TipoTramoViaje.ESPERAR_BUS) {
-            print(
-              "[ActiveTripOverlay] Walking phase: found next bus at index $i",
-            );
-            return tramo;
-          }
-        }
-        break;
-
-      case TipoTramoViaje.ESPERAR_BUS:
-        // Si estoy esperando el bus, trackear el bus actual (el que estoy esperando)
-        print("[ActiveTripOverlay] Waiting phase: tracking current bus");
-        return tramoActual;
-
-      case TipoTramoViaje.VIAJE_EN_BUS:
-        // Si ya estoy EN el bus viajando, buscar el siguiente tramo de bus (transbordo)
-        for (int i = currentLegIndex + 1; i < tramos.length; i++) {
-          final tramo = tramos[i];
-          if (tramo.tipo == TipoTramoViaje.VIAJE_EN_BUS ||
-              tramo.tipo == TipoTramoViaje.ESPERAR_BUS) {
-            print(
-              "[ActiveTripOverlay] On bus phase: found next transfer bus at index $i",
-            );
-            return tramo;
-          }
-        }
-        // Si no hay más buses, esto significa que estoy en el último/único bus
-        print(
-          "[ActiveTripOverlay] On bus phase: this is the last bus, no more tracking needed",
-        );
-        return null;
-    }
-
-    print("[ActiveTripOverlay] No next bus segment found");
+    // ELIMINADO: Ya no necesitamos encontrar el próximo tramo de bus aquí
+    // El sistema centralizado se encarga de esto
     return null;
   }
 
   void _startBusTracking(TramoViajeMostrable tramo) {
-    if (tramo.tipo != TipoTramoViaje.VIAJE_EN_BUS &&
-        tramo.tipo != TipoTramoViaje.ESPERAR_BUS)
-      return;
-
-    _currentBusLine = tramo.nombreLineaBus;
-    _currentBusDestination = tramo.destinoFinalDelBus;
-
-    // Obtener información inicial del bus si está disponible
-    if (tramo.posicionActualBus != null) {
-      _updateBusPosition(
-        tramo.posicionActualBus!,
-        tramo.minutosEstimadosLlegadaBus ?? 0,
-        tramo.esTiempoRealBus ?? false,
-      );
-    }
-
-    print(
-      "[ActiveTripOverlay] Bus tracking started for line: $_currentBusLine (type: ${tramo.tipo})",
-    );
+    // ELIMINADO: Ya no iniciamos tracking aquí
+    // El sistema centralizado se encarga de todo
+    print("[ActiveTripOverlay] Bus tracking handled by centralized system");
   }
 
   void _stopBusTracking() {
-    // Limpiar estado del bus tracking
-    _currentBusPosition = null;
-    _currentBusEta = null;
-    _currentBusIsRealTime = null;
-    _currentBusLine = null;
-    _currentBusDestination = null;
-
-    // TODO: Implementar limpieza del display del bus cuando esté disponible en MapManager
-    // Por ahora solo limpiamos el estado local
-
-    print("[ActiveTripOverlay] Bus tracking stopped");
+    // ELIMINADO: Ya no detenemos tracking aquí
+    // El sistema centralizado se encarga de todo
+    print("[ActiveTripOverlay] Bus tracking handled by centralized system");
   }
 
   Future<void> _updateBusPosition(
@@ -447,14 +347,9 @@ class _ActiveTripOverlayState extends ConsumerState<ActiveTripOverlay> {
     int etaMinutes,
     bool isRealTime,
   ) async {
-    _currentBusPosition = position;
-    _currentBusEta = etaMinutes;
-    _currentBusIsRealTime = isRealTime;
-
-    // TODO: Implementar display del bus cuando esté disponible en MapManager
-    // Por ahora solo actualizamos el estado local
-
-    if (mounted) setState(() {});
+    // ELIMINADO: Ya no actualizamos posición aquí
+    // El sistema centralizado se encarga de todo
+    print("[ActiveTripOverlay] Bus position handled by centralized system");
   }
 
   @override
@@ -462,6 +357,22 @@ class _ActiveTripOverlayState extends ConsumerState<ActiveTripOverlay> {
     final appUiState = ref.watch(appLogicProvider);
     final appLogic = ref.read(appLogicProvider.notifier);
     final activeTripState = appUiState.datosFaseViajeActivo;
+
+    // Reaccionar a cambios en el sondeo de bus en tiempo real
+    ref.listen<AppUiState>(appLogicProvider, (previous, next) {
+      final prevState = previous?.datosFaseViajeActivo;
+      final nextState = next.datosFaseViajeActivo;
+
+      // Solo actualizar si cambió la información del bus en tiempo real
+      if (prevState?.posicionActualBusReal !=
+              nextState?.posicionActualBusReal ||
+          prevState?.minutosParaLlegadaBusReal !=
+              nextState?.minutosParaLlegadaBusReal ||
+          prevState?.seguimientoBusRealDisponibleEnTramoActual !=
+              nextState?.seguimientoBusRealDisponibleEnTramoActual) {
+        _handleRealtimeBusUpdate(nextState);
+      }
+    });
 
     if (activeTripState == null) {
       return Container(
@@ -508,18 +419,48 @@ class _ActiveTripOverlayState extends ConsumerState<ActiveTripOverlay> {
       }
     }
 
+    // Usar datos del sondeo en tiempo real desde el estado si están disponibles
+    final realtimeBusPosition = activeTripState.posicionActualBusReal;
+    final realtimeBusEta = activeTripState.minutosParaLlegadaBusReal;
+    final isRealtimeAvailable =
+        activeTripState.seguimientoBusRealDisponibleEnTramoActual;
+
     return _ActiveTripInstructionsPanel(
       activeTripState: activeTripState,
       appLogic: appLogic,
       currentLegIndex: _currentLegIndex,
       onLegSelected: _onLegSelected,
-      // Usar datos efectivos (del estado o locales)
-      currentBusPosition: _currentBusPosition,
-      currentBusEta: _currentBusEta,
+      // Usar datos del sondeo en tiempo real si están disponibles, sino usar datos locales
+      currentBusPosition: realtimeBusPosition ?? _currentBusPosition,
+      currentBusEta: realtimeBusEta ?? _currentBusEta,
       currentBusLine: effectiveBusLine,
-      isBusEtaRealTime: _currentBusIsRealTime ?? false,
+      isBusEtaRealTime: isRealtimeAvailable,
       currentBusDestination: effectiveBusDestination,
     );
+  }
+
+  // Método para reaccionar a cambios en el estado del sondeo de bus
+  void _handleRealtimeBusUpdate(EstadoFaseViajeActivo? activeTripState) {
+    if (activeTripState == null) return;
+
+    final mapManager = ref.read(mapManagerProvider);
+    if (mapManager == null) return;
+
+    // Si hay datos de bus en tiempo real disponibles, actualizar el mapa
+    if (activeTripState.seguimientoBusRealDisponibleEnTramoActual &&
+        activeTripState.posicionActualBusReal != null &&
+        activeTripState.minutosParaLlegadaBusReal != null) {
+      print(
+        "[ActiveTripOverlay] Updating realtime bus position: ${activeTripState.posicionActualBusReal}",
+      );
+
+      // Actualizar la posición del bus en el MapManager
+      mapManager.busRealtime.updateBusPosition(
+        activeTripState.posicionActualBusReal!,
+        activeTripState.minutosParaLlegadaBusReal!,
+        true, // Es tiempo real
+      );
+    }
   }
 }
 

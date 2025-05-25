@@ -43,6 +43,47 @@ Esta carpeta contiene toda la lógica de negocio y la gestión del estado para l
   - `IAppLogic`: Interfaz que define todas las acciones que la UI puede invocar sobre la lógica de negocio. `AppLogicNotifier` implementa esta interfaz.
   - **Modelos de Datos para la UI**: Clases de datos como `Coordenada`, `InfoParadaEnMapa`, `OpcionDeRutaMostrable`, `TramoViajeMostrable`, etc., que estructuran la información que la lógica provee a la UI.
 
+## Sondeo de Bus en Tiempo Real
+
+### Funcionalidad
+
+El sondeo de bus en tiempo real es una característica clave que permite rastrear la posición y ETA actualizada de un bus durante un viaje activo. Esta funcionalidad está completamente implementada en la capa de lógica y sigue los principios de separación de responsabilidades.
+
+### Implementación
+
+- **Método Principal**: `iniciarSeguimientoBusTiempoReal()` en `AppLogicNotifier`
+- **Intervalo de Sondeo**: 10 segundos (configurable via `_SEGUIMIENTO_BUS_INTERVALO_SEGUNDOS`)
+- **Activación**: Se inicia automáticamente cuando el usuario confirma una ruta para viaje activo y hay un tramo de bus con ETA disponible
+- **Desactivación**: Se detiene automáticamente cuando:
+  - El usuario sale de la fase `VIAJE_ACTIVO_EN_CURSO`
+  - El bus llega a la parada (ETA <= 0 minutos)
+  - Ocurren errores en la consulta de ETA
+  - Se llama explícitamente a `detenerSeguimientoBusTiempoReal()`
+
+### Flujo de Funcionamiento
+
+1. **Validación**: Verifica que estemos en fase `VIAJE_ACTIVO_EN_CURSO` con un viaje activo válido
+2. **Preparación**: Cancela cualquier timer anterior y extrae los datos del tramo de bus (parada origen, línea)
+3. **Primera Consulta**: Ejecuta una consulta inmediata de ETA para obtener datos iniciales
+4. **Timer Periódico**: Configura un `Timer.periodic` que se ejecuta cada 10 segundos
+5. **Actualización de Estado**: En cada consulta exitosa, actualiza el `AppUiState` con:
+   - `posicionActualBusReal`: Coordenadas del bus en tiempo real
+   - `minutosParaLlegadaBusReal`: ETA actualizada en minutos
+   - `seguimientoBusRealDisponibleEnTramoActual`: Flag indicando si el seguimiento está activo
+6. **Limpieza Automática**: El timer se detiene automáticamente en transiciones de fase
+
+### Separación de Responsabilidades
+
+- **Capa de Lógica**: Se encarga del sondeo, procesamiento de datos y actualización del estado
+- **Capa de UI**: Solo recibe las coordenadas y ETA actualizadas como input y reacciona actualizando la visualización en el mapa
+- **Contrato**: Los datos se pasan a través del `EstadoFaseViajeActivo` dentro del `AppUiState`
+
+### Manejo de Errores
+
+- Errores de red o API se capturan y logean sin crashear la aplicación
+- El seguimiento se detiene automáticamente si no se puede obtener ETA actualizada
+- El estado se limpia apropiadamente en caso de errores
+
 ## Flujo de Datos General
 
 1.  La **UI** observa el `AppUiState` expuesto por el `appLogicProvider`.

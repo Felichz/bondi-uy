@@ -26,7 +26,7 @@ final appLogicProvider = StateNotifierProvider<AppLogicNotifier, AppUiState>((
   );
 });
 
-const int _SEGUIMIENTO_BUS_INTERVALO_SEGUNDOS = 20;
+const int _SEGUIMIENTO_BUS_INTERVALO_SEGUNDOS = 10;
 // Debounce para las sugerencias de geocodificación
 const int _GECODING_SUGGESTIONS_DEBOUNCE_MS = 300;
 
@@ -53,8 +53,25 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
   // Esto es más centralizado que añadir prints en cada método.
   @override
   set state(AppUiState newState) {
+    final oldState = state;
     super.state = newState;
     print("[AppUiState Update]: ${newState.toString()}");
+
+    // Limpiar timer de seguimiento automáticamente si se sale de la fase de viaje activo
+    _handlePhaseTransition(oldState, newState);
+  }
+
+  // Método privado para manejar transiciones de fase y limpiar recursos
+  void _handlePhaseTransition(AppUiState oldState, AppUiState newState) {
+    // Si salimos de la fase de viaje activo, detener el sondeo automáticamente
+    if (oldState.faseActual == FaseApp.VIAJE_ACTIVO_EN_CURSO &&
+        newState.faseActual != FaseApp.VIAJE_ACTIVO_EN_CURSO) {
+      print(
+        "[AppLogicNotifier] Saliendo de fase VIAJE_ACTIVO_EN_CURSO, deteniendo timer de seguimiento",
+      );
+      _seguimientoBusTimer?.cancel();
+      _seguimientoBusTimer = null;
+    }
   }
 
   // --- Implementación de IAppLogic ---
@@ -743,6 +760,19 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
     required String idViajeActivo,
     required String idTramoBus,
   }) async {
+    // SONDEO DE BUS EN TIEMPO REAL
+    // Este método implementa el sondeo periódico de la posición y ETA del bus
+    // para un tramo específico de bus durante un viaje activo.
+    //
+    // Funcionalidad:
+    // 1. Valida que estemos en fase VIAJE_ACTIVO_EN_CURSO
+    // 2. Cancela cualquier timer anterior para evitar múltiples sondeos
+    // 3. Extrae los datos necesarios del tramo (parada origen, línea de bus)
+    // 4. Ejecuta una primera consulta inmediata de ETA
+    // 5. Configura un timer que se ejecuta cada 10 segundos para obtener actualizaciones
+    // 6. Actualiza el estado con la posición del bus y ETA en tiempo real
+    // 7. Se detiene automáticamente si el bus ya llegó o si hay errores
+
     if (state.faseActual != FaseApp.VIAJE_ACTIVO_EN_CURSO ||
         state.datosFaseViajeActivo == null ||
         state.datosFaseViajeActivo!.idViajeActivoConfirmado != idViajeActivo) {
@@ -1038,16 +1068,22 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
 
   @override
   void detenerSeguimientoActivo() {
-    print("[AppLogicNotifier] detenerSeguimientoActivo NOP");
-    // Detener timers, limpiar estado de seguimiento, posiblemente volver a MOSTRANDO_OPCIONES_RUTA.
+    print("[AppLogicNotifier] detenerSeguimientoActivo llamado");
+    // Detener el timer de seguimiento de bus si está activo
     _seguimientoBusTimer?.cancel();
+    _seguimientoBusTimer = null;
+
     if (mounted) {
       state = state.copyWith(
-        faseActual:
-            FaseApp
-                .MOSTRANDO_OPCIONES_RUTA, // O INICIAL_SIN_BUSQUEDA si se cancela todo
+        faseActual: FaseApp.INICIAL_SIN_BUSQUEDA, // Volver al estado inicial
         clearDatosFaseViajeActivo: true,
-        // considerar si idOpcionRutaPrevisualizada debe mantenerse o limpiarse
+        clearDatosFaseOpcionesRuta: true, // También limpiar opciones de ruta
+        clearIdOpcionRutaPrevisualizada: true,
+        clearMensajeErrorGlobal: true,
+        clearMensajeInfoGlobal: true,
+      );
+      print(
+        "[AppLogicNotifier] Seguimiento activo detenido y estado limpiado.",
       );
     }
   }
