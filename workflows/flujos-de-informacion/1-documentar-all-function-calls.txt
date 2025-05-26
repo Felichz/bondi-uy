@@ -1,0 +1,10 @@
+quiero que hagas una investigacion de todo el codigo relacionado al dibujado de elementos en el mapa en la fase de eleccion de opciones de viaje (se dibujan multiples elementos para la preview de la ruta seleccionada), y de la fase de trip activo (luego de seleccionar una opcion)
+
+quiero hagas un archivo markdown con una lista de TODAS las funciones implicadas adhiriendote a la siguiente informacion unicamente (no rompas con este formato solo rellena estos campos para cada funcion)
+
+- Nombre de la funcion
+- Input que recibe esta funcion (cada parametro y sus types)
+- Si esta funcion llama a otra funcion o otras funciones, debes listar las funciones a las que llama y que input le envia a cada una de estas, para cada una de estas funciones debes indicar si es llamada el 100% de las veces, de lo contrario si esta llamada es bajo condicionales debes indicar de manera precisa sobre que condiciones, incluyendo si hay condiciones anidadas, quiero que conserves el 100% de la informacion sobre en que caso se llama a cada funcion
+- Por otra parte, si esta funcion no llama a ninguna otra funcion, debes indicarlo
+
+el scope de la investigacion es el codigo dentro de las carpetas @ui y @map_manager 

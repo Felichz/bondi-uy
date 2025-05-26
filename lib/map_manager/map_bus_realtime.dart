@@ -29,26 +29,12 @@ class MapBusRealtime {
   double _tooltipFloatPhase = 0.0;
   double _lastTooltipOffset = -5.0;
 
-  // Constantes para el bus en tiempo real en viaje activo
-  static const String INCOMING_BUS_SOURCE_ID = 'incoming-bus-source';
-  static const String INCOMING_BUS_LAYER_ID = 'incoming-bus-layer';
-  static const String BUS_TOOLTIP_LAYER_ID = "bus-tooltip-layer";
-  static const String BUS_APPROACH_LINE_SOURCE_ID = 'bus-approach-line-source';
-  static const String BUS_APPROACH_LINE_LAYER_ID = 'bus-approach-line-layer';
-  static const String BUS_APPROACH_LINE_BORDER_LAYER_ID =
-      'bus-approach-line-border-layer';
-
-  // Constantes para buses en tiempo real en preview
-  static const String PREVIEW_BUS_REALTIME_SOURCE_PREFIX =
-      'preview-bus-realtime-source-';
-  static const String PREVIEW_BUS_REALTIME_LAYER_PREFIX =
-      'preview-bus-realtime-layer-';
-  static const String PREVIEW_BUS_TOOLTIP_LAYER_PREFIX =
-      'preview-bus-tooltip-layer-';
-  static const String PREVIEW_BUS_APPROACH_SOURCE_PREFIX =
-      'preview-bus-approach-source-';
-  static const String PREVIEW_BUS_APPROACH_LAYER_PREFIX =
-      'preview-bus-approach-layer-';
+  // Constantes para buses en tiempo real (unificadas para preview y active trip)
+  static const String BUS_REALTIME_SOURCE_PREFIX = 'bus-realtime-source-';
+  static const String BUS_REALTIME_LAYER_PREFIX = 'bus-realtime-layer-';
+  static const String BUS_TOOLTIP_LAYER_PREFIX = 'bus-tooltip-layer-';
+  static const String BUS_APPROACH_SOURCE_PREFIX = 'bus-approach-source-';
+  static const String BUS_APPROACH_LAYER_PREFIX = 'bus-approach-layer-';
 
   MapBusRealtime(this.mapboxMap, this.mapManager);
 
@@ -350,19 +336,21 @@ class MapBusRealtime {
 
       // Agregar o actualizar fuente del bus
       try {
-        if (await mapboxMap!.style.styleSourceExists(INCOMING_BUS_SOURCE_ID)) {
+        if (await mapboxMap!.style.styleSourceExists(
+          'bus-realtime-source-main',
+        )) {
           final source =
-              await mapboxMap!.style.getSource(INCOMING_BUS_SOURCE_ID)
+              await mapboxMap!.style.getSource('bus-realtime-source-main')
                   as GeoJsonSource;
           await source.updateGeoJSON(json.encode(sourceData));
         } else {
           await mapboxMap!.style.addSource(
             GeoJsonSource(
-              id: INCOMING_BUS_SOURCE_ID,
+              id: 'bus-realtime-source-main',
               data: json.encode(sourceData),
             ),
           );
-          mapManager.registerSource(INCOMING_BUS_SOURCE_ID);
+          mapManager.registerSource('bus-realtime-source-main');
         }
       } catch (e) {
         print("[MapBusRealtime] Error updating bus source: $e");
@@ -370,26 +358,27 @@ class MapBusRealtime {
       }
 
       // Crear capa del bus si no existe
-      if (!await mapboxMap!.style.styleLayerExists(INCOMING_BUS_LAYER_ID)) {
+      if (!await mapboxMap!.style.styleLayerExists('bus-realtime-layer-main')) {
         await mapboxMap!.style.addLayer(
           SymbolLayer(
-            id: INCOMING_BUS_LAYER_ID,
-            sourceId: INCOMING_BUS_SOURCE_ID,
+            id: 'bus-realtime-layer-main',
+            sourceId: 'bus-realtime-source-main',
             iconImage: MapIconsLoader.BUS_ICON_IMAGE_ID,
             iconSize: 0.5, // Más pequeño para viaje activo (antes era 0.6)
             iconAllowOverlap: true,
             iconIgnorePlacement: true,
           ),
         );
-        mapManager.registerLayer(INCOMING_BUS_LAYER_ID);
+        mapManager.registerLayer('bus-realtime-layer-main');
       }
 
       // Crear capa del tooltip si no existe
-      if (!await mapboxMap!.style.styleLayerExists(BUS_TOOLTIP_LAYER_ID)) {
+      if (!await mapboxMap!.style.styleLayerExists('bus-tooltip-layer-main')) {
         await mapboxMap!.style.addLayer(
           SymbolLayer(
-            id: BUS_TOOLTIP_LAYER_ID,
-            sourceId: INCOMING_BUS_SOURCE_ID, // Usar la misma fuente que el bus
+            id: 'bus-tooltip-layer-main',
+            sourceId:
+                'bus-realtime-source-main', // Usar la misma fuente que el bus
             iconImage: MapIconsLoader.BUS_TOOLTIP_ICON_ID,
             iconSize: 0.5, // Mismo tamaño que el bus (antes era 0.6)
             iconAllowOverlap: true,
@@ -397,7 +386,7 @@ class MapBusRealtime {
             iconOffset: [0.0, -5.0], // Posición base arriba del bus
           ),
         );
-        mapManager.registerLayer(BUS_TOOLTIP_LAYER_ID);
+        mapManager.registerLayer('bus-tooltip-layer-main');
       }
 
       // Iniciar animación flotante del tooltip
@@ -420,37 +409,39 @@ class MapBusRealtime {
 
     try {
       // Remover capa del tooltip
-      if (await mapboxMap!.style.styleLayerExists(BUS_TOOLTIP_LAYER_ID)) {
-        await mapboxMap!.style.removeStyleLayer(BUS_TOOLTIP_LAYER_ID);
+      if (await mapboxMap!.style.styleLayerExists('bus-tooltip-layer-main')) {
+        await mapboxMap!.style.removeStyleLayer('bus-tooltip-layer-main');
       }
 
       // Remover capa del bus
-      if (await mapboxMap!.style.styleLayerExists(INCOMING_BUS_LAYER_ID)) {
-        await mapboxMap!.style.removeStyleLayer(INCOMING_BUS_LAYER_ID);
+      if (await mapboxMap!.style.styleLayerExists('bus-realtime-layer-main')) {
+        await mapboxMap!.style.removeStyleLayer('bus-realtime-layer-main');
       }
 
       // Remover fuente (compartida por bus y tooltip)
-      if (await mapboxMap!.style.styleSourceExists(INCOMING_BUS_SOURCE_ID)) {
-        await mapboxMap!.style.removeStyleSource(INCOMING_BUS_SOURCE_ID);
+      if (await mapboxMap!.style.styleSourceExists(
+        'bus-realtime-source-main',
+      )) {
+        await mapboxMap!.style.removeStyleSource('bus-realtime-source-main');
       }
 
       // NUEVO: Limpiar línea de aproximación verde
-      if (await mapboxMap!.style.styleLayerExists(BUS_APPROACH_LINE_LAYER_ID)) {
-        await mapboxMap!.style.removeStyleLayer(BUS_APPROACH_LINE_LAYER_ID);
+      if (await mapboxMap!.style.styleLayerExists('bus-approach-layer-main')) {
+        await mapboxMap!.style.removeStyleLayer('bus-approach-layer-main');
       }
 
       if (await mapboxMap!.style.styleLayerExists(
-        BUS_APPROACH_LINE_BORDER_LAYER_ID,
+        'bus-approach-layer-main-shadow',
       )) {
         await mapboxMap!.style.removeStyleLayer(
-          BUS_APPROACH_LINE_BORDER_LAYER_ID,
+          'bus-approach-layer-main-shadow',
         );
       }
 
       if (await mapboxMap!.style.styleSourceExists(
-        BUS_APPROACH_LINE_SOURCE_ID,
+        'bus-approach-source-main',
       )) {
-        await mapboxMap!.style.removeStyleSource(BUS_APPROACH_LINE_SOURCE_ID);
+        await mapboxMap!.style.removeStyleSource('bus-approach-source-main');
       }
 
       print("[MapBusRealtime] Bus display, tooltip and approach line cleared");
@@ -567,11 +558,11 @@ class MapBusRealtime {
 
     // Buscar líneas de aproximación del preview que puedan existir
     final previewApproachSourceIds = [
-      '${PREVIEW_BUS_APPROACH_SOURCE_PREFIX}0',
-      '${PREVIEW_BUS_APPROACH_SOURCE_PREFIX}1',
-      '${PREVIEW_BUS_APPROACH_SOURCE_PREFIX}2',
-      '${PREVIEW_BUS_APPROACH_SOURCE_PREFIX}3',
-      '${PREVIEW_BUS_APPROACH_SOURCE_PREFIX}4',
+      '${BUS_APPROACH_SOURCE_PREFIX}0',
+      '${BUS_APPROACH_SOURCE_PREFIX}1',
+      '${BUS_APPROACH_SOURCE_PREFIX}2',
+      '${BUS_APPROACH_SOURCE_PREFIX}3',
+      '${BUS_APPROACH_SOURCE_PREFIX}4',
     ];
 
     for (String sourceId in previewApproachSourceIds) {
@@ -603,41 +594,40 @@ class MapBusRealtime {
     if (mapboxMap == null) return;
 
     // Actualizar o crear fuente de la línea verde para viaje activo
-    if (await mapboxMap!.style.styleSourceExists(BUS_APPROACH_LINE_SOURCE_ID)) {
+    if (await mapboxMap!.style.styleSourceExists('bus-approach-source-main')) {
       final source =
-          await mapboxMap!.style.getSource(BUS_APPROACH_LINE_SOURCE_ID)
+          await mapboxMap!.style.getSource('bus-approach-source-main')
               as GeoJsonSource;
       await source.updateGeoJSON(json.encode(geoJsonFeatureCollection));
-      print("[MapBusRealtime] Updated active trip approach line source");
     } else {
-      // Crear fuente y capas si no existen
+      // Crear fuente nueva
       await mapboxMap!.style.addSource(
         GeoJsonSource(
-          id: BUS_APPROACH_LINE_SOURCE_ID,
+          id: 'bus-approach-source-main',
           data: json.encode(geoJsonFeatureCollection),
         ),
       );
-      mapManager.registerSource(BUS_APPROACH_LINE_SOURCE_ID);
+      mapManager.registerSource('bus-approach-source-main');
 
       // 1. Agregar capa de borde (más gruesa, negra, debajo)
       await mapboxMap!.style.addLayer(
         LineLayer(
-          id: BUS_APPROACH_LINE_BORDER_LAYER_ID,
-          sourceId: BUS_APPROACH_LINE_SOURCE_ID,
+          id: 'bus-approach-layer-main-shadow',
+          sourceId: 'bus-approach-source-main',
           lineColor: 0xFF000000, // Negro para el borde
           lineWidth: 8.0, // Consistencia con otros bordes
-          lineOpacity: 0.9,
+          lineOpacity: 1.0,
           lineJoin: LineJoin.ROUND,
           lineCap: LineCap.ROUND,
         ),
       );
-      mapManager.registerLayer(BUS_APPROACH_LINE_BORDER_LAYER_ID);
+      mapManager.registerLayer('bus-approach-layer-main-shadow');
 
       // 2. Agregar capa de línea verde principal (encima del borde)
       await mapboxMap!.style.addLayer(
         LineLayer(
-          id: BUS_APPROACH_LINE_LAYER_ID,
-          sourceId: BUS_APPROACH_LINE_SOURCE_ID,
+          id: 'bus-approach-layer-main',
+          sourceId: 'bus-approach-source-main',
           lineColor: 0xFF4CAF50, // Verde como en el código anterior
           lineWidth: 5.0, // Consistencia con BUS
           lineOpacity: 0.9,
@@ -645,7 +635,7 @@ class MapBusRealtime {
           lineCap: LineCap.ROUND,
         ),
       );
-      mapManager.registerLayer(BUS_APPROACH_LINE_LAYER_ID);
+      mapManager.registerLayer('bus-approach-layer-main');
 
       print(
         "[MapBusRealtime] Created bus approach line with border for active trip",
@@ -665,8 +655,8 @@ class MapBusRealtime {
         tramo.geometriaPolilinea!.isEmpty)
       return;
 
-    final sourceId = '$PREVIEW_BUS_REALTIME_SOURCE_PREFIX$segmentIndex';
-    final layerId = '$PREVIEW_BUS_REALTIME_LAYER_PREFIX$segmentIndex';
+    final sourceId = '$BUS_REALTIME_SOURCE_PREFIX$segmentIndex';
+    final layerId = '$BUS_REALTIME_LAYER_PREFIX$segmentIndex';
 
     // Coordenada del bus
     final busPosition = tramo.posicionActualBus!;
@@ -717,7 +707,7 @@ class MapBusRealtime {
       mapManager.registerLayer(layerId);
 
       // 4. Agregar capa del tooltip flotante
-      final tooltipLayerId = '$PREVIEW_BUS_TOOLTIP_LAYER_PREFIX$segmentIndex';
+      final tooltipLayerId = '$BUS_TOOLTIP_LAYER_PREFIX$segmentIndex';
       await mapboxMap!.style.addLayer(
         SymbolLayer(
           id: tooltipLayerId,
@@ -753,10 +743,9 @@ class MapBusRealtime {
   ) async {
     if (mapboxMap == null) return;
 
-    final sourceId = '$PREVIEW_BUS_APPROACH_SOURCE_PREFIX$segmentIndex';
-    final shadowLayerId =
-        '$PREVIEW_BUS_APPROACH_LAYER_PREFIX$segmentIndex-shadow';
-    final mainLayerId = '$PREVIEW_BUS_APPROACH_LAYER_PREFIX$segmentIndex';
+    final sourceId = '$BUS_APPROACH_SOURCE_PREFIX$segmentIndex';
+    final shadowLayerId = '$BUS_APPROACH_LAYER_PREFIX$segmentIndex-shadow';
+    final mainLayerId = '$BUS_APPROACH_LAYER_PREFIX$segmentIndex';
 
     print("[MapBusRealtime] Creating bus approach line:");
     print(
@@ -882,8 +871,8 @@ class MapBusRealtime {
   Future<void> _addRealtimeBusFromEta(EtaMostrable eta, int index) async {
     if (mapboxMap == null || eta.posicionBus == null) return;
 
-    final sourceId = '${PREVIEW_BUS_REALTIME_SOURCE_PREFIX}eta_$index';
-    final layerId = '${PREVIEW_BUS_REALTIME_LAYER_PREFIX}eta_$index';
+    final sourceId = '$BUS_REALTIME_SOURCE_PREFIX$index';
+    final layerId = '$BUS_REALTIME_LAYER_PREFIX$index';
 
     final geoJsonFeature = {
       "type": "Feature",
@@ -920,7 +909,7 @@ class MapBusRealtime {
       mapManager.registerLayer(layerId);
 
       // Agregar capa del tooltip flotante
-      final tooltipLayerId = '${PREVIEW_BUS_TOOLTIP_LAYER_PREFIX}eta_$index';
+      final tooltipLayerId = '$BUS_TOOLTIP_LAYER_PREFIX$index';
       await mapboxMap!.style.addLayer(
         SymbolLayer(
           id: tooltipLayerId,
@@ -977,11 +966,11 @@ class MapBusRealtime {
       try {
         // Verificar si la capa del tooltip existe antes de actualizarla
         final bool layerExists = await mapboxMap!.style.styleLayerExists(
-          BUS_TOOLTIP_LAYER_ID,
+          'bus-tooltip-layer-main',
         );
         if (layerExists) {
           await mapboxMap!.style.setStyleLayerProperty(
-            BUS_TOOLTIP_LAYER_ID,
+            'bus-tooltip-layer-main',
             'icon-offset',
             [0.0, offsetY],
           );
@@ -1021,7 +1010,7 @@ class MapBusRealtime {
         // Actualizar todas las capas de tooltip que existan
         for (int i = 0; i < 10; i++) {
           // Máximo 10 opciones de ruta posibles
-          final layerId = '$PREVIEW_BUS_TOOLTIP_LAYER_PREFIX$i';
+          final layerId = '$BUS_TOOLTIP_LAYER_PREFIX$i';
           final bool layerExists = await mapboxMap!.style.styleLayerExists(
             layerId,
           );
@@ -1049,11 +1038,11 @@ class MapBusRealtime {
     if (mapboxMap != null) {
       // Para viaje activo
       mapboxMap!.style
-          .styleLayerExists(BUS_TOOLTIP_LAYER_ID)
+          .styleLayerExists('bus-tooltip-layer-main')
           .then((exists) {
             if (exists) {
               mapboxMap!.style.setStyleLayerProperty(
-                BUS_TOOLTIP_LAYER_ID,
+                'bus-tooltip-layer-main',
                 'icon-offset',
                 [0.0, -5.0], // Posición base arriba del bus
               );
@@ -1065,7 +1054,7 @@ class MapBusRealtime {
 
       // Para preview
       for (int i = 0; i < 10; i++) {
-        final layerId = '$PREVIEW_BUS_TOOLTIP_LAYER_PREFIX$i';
+        final layerId = '$BUS_TOOLTIP_LAYER_PREFIX$i';
         mapboxMap!.style
             .styleLayerExists(layerId)
             .then((exists) {
@@ -1094,11 +1083,11 @@ class MapBusRealtime {
 
     // Buscar fuentes de bus del preview que puedan existir
     final previewBusSourceIds = [
-      '${PREVIEW_BUS_REALTIME_SOURCE_PREFIX}0',
-      '${PREVIEW_BUS_REALTIME_SOURCE_PREFIX}1',
-      '${PREVIEW_BUS_REALTIME_SOURCE_PREFIX}2',
-      '${PREVIEW_BUS_REALTIME_SOURCE_PREFIX}3',
-      '${PREVIEW_BUS_REALTIME_SOURCE_PREFIX}4',
+      '${BUS_REALTIME_SOURCE_PREFIX}0',
+      '${BUS_REALTIME_SOURCE_PREFIX}1',
+      '${BUS_REALTIME_SOURCE_PREFIX}2',
+      '${BUS_REALTIME_SOURCE_PREFIX}3',
+      '${BUS_REALTIME_SOURCE_PREFIX}4',
     ];
 
     for (String sourceId in previewBusSourceIds) {

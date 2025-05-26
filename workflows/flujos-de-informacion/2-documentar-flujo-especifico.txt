@@ -1,0 +1,8 @@
+@map_drawing_functions.md con esta informacion quiero que hagas un nuevo archivo que sea como un mapa del flujo de informacion detallado paso a paso si el usuario realiza las siguientes acciones (respecto al mapa claro)
+
+1. El usuario entra en la fase de opciones de viaje y ve la preview de la primera opcion de trip (con ETA)
+2. El usuario cambia a la segunda opcion (esta sin ETA)
+3. El usuario cambia a la tercera opcion (esta so tiene ETA)
+4. El usuario selecciona esta tercera opcion mostrada
+
+agrega una seccion explicando en lenguaje natural que es lo que sucede en el mapa en cada paso

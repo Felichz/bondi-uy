@@ -1,0 +1,5 @@
+antes de solucionar esto tocando codigo quisiera que pensemos en los flujos de informacion, ya viste que tengo documentacion de los flujos y te la adjunte
+
+quiero que diseñes el flujo correcto y luego quiero que hagas un plan para pasar del flujo actual al nuevo flujo diseñado, recien ahi con el plan claro desde la perspectiva de flujos recien ahi tiene sentido tocar el codigo, ya ves que estan documentada la lista de todas las funciones indicando a que funcion llaman asi que deberias tener una vision holistica asi que por ejemplo si decides borrar una funcion o modificarla ya deberias tener una compresion de los puntos que esto afectaria, quiero que seas muy consciente de estas cosas por eso primero quiero que te enfoques en solucionar el problema desde la perspectiva de flujos ni siquiera creo que sea necesario leer mas codigo
+
+quiero que te bases en @flujo_informacion_mapa.md , fijate que debes rediseñar el flujo a nivel tecnico pero la parte que describe el flujo en lenguaje natural seria como lo que ve el usuario y eso debe mantenerse intacto entiendes? signifia que el nuevo flujo que diseñes debe mantener un comportamiento equivalente a ojos del usuario

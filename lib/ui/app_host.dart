@@ -325,11 +325,11 @@ class _AppHostState extends ConsumerState<AppHost> {
     switch (from) {
       case FaseApp.MOSTRANDO_OPCIONES_RUTA:
         // Saliendo de preview de rutas (pero no hacia active trip)
-        mapManager!.cleanup.clearRoutePreview();
+        mapManager!.cleanup.clearRoute();
         break;
       case FaseApp.VIAJE_ACTIVO_EN_CURSO:
         // Saliendo de viaje activo
-        mapManager!.cleanup.clearActiveTrip();
+        mapManager!.cleanup.clearRoute();
         break;
       default:
         // Para otras fases, limpiar todo
