@@ -1,0 +1,26 @@
+quiero que hagas una investigacion de todo el codigo relacionado a este flujo
+
+quiero hagas un archivo markdown con una lista de TODAS las funciones implicadas adhiriendote a la siguiente informacion unicamente
+
+- Nombre de la funcion
+- Input que recibe esta funcion (cada parametro y sus types)
+- Si esta funcion llama a otra funcion o otras funciones, debes listar las funciones a las que llama y que input le envia a cada una de estas, para cada una de estas funciones debes indicar si es llamada el 100% de las veces, de lo contrario si esta llamada es bajo condicionales debes indicar de manera precisa sobre que condiciones, incluyendo si hay condiciones anidadas, quiero que conserves el 100% de la informacion sobre en que caso se llama a cada funcion
+- Por otra parte, si esta funcion no llama a ninguna otra funcion, debes indicarlo
+
+el scope de la investigacion es todo el codigo dentro de la carpeta @lib 
+
+1. El usuario entra en la fase de opciones de viaje y ve la preview de la primera opcion de trip (con ETA)
+2. El usuario cambia a la segunda opcion (esta sin ETA)
+3. El usuario cambia a la tercera opcion (esta so tiene ETA)
+4. El usuario selecciona esta tercera opcion mostrada
+5. Ahora el usuario en el active trip esta en el paso de walk hasta la parada
+6. Ahora el usuario en el active trip presiona el boton para pasar al siguiente paso que es esperar el bus en la parada
+7. Ahora el usuario en el active trip presiona el boton para pasar al siguiente paso que es ir hasta la parada de destino
+8. Ahora el usuario en el active trip presiona el boton para pasar al siguiente paso que es esperar el segundo bus en la parada
+9. Ahora el usuario en el active trip presiona el boton para pasar al siguiente paso que es caminar hasta el destino
+
+debes leer TODO el codigo de los archivos relacionados e ir construyendo el archivo mientras lees cada archivo, asi por pasos, hasta tener un escaneo/mapeo completo
+
+recuerda apenas encuentres funciones que forman parte de este flujo en un archivo ya debes empezar a documentarlas, cada archivo que lees actualizar el archivo markdown con las funciones
+
+usa el comando cat para leer los archivos el IDE te va a dar el output, no tienes permitido usar otra cosa que cat en lo que dure esta task

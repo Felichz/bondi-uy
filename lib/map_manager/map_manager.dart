@@ -140,8 +140,8 @@ class MapManager {
       // 1. Detener animaciones del preview
       _busRealtime.stopPreviewAnimations();
 
-      // 2. Limpiar elementos específicos del preview (buses, tooltips)
-      await _cleanup.clearPreviewBusElements();
+      // 2. ELIMINADO: No limpiar elementos de buses para mantener ETA y tramo verde
+      // await _cleanup.clearPreviewBusElements();
 
       // 3. Configurar tracking de bus manteniendo los elementos visuales existentes
       await _busRealtime.initializeActiveTripTracking(activeTripState);
