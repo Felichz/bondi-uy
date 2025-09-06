@@ -6,6 +6,8 @@ import 'package:bondi_uy/backend/contrato_ui/app_ui_state.dart';
 import 'package:bondi_uy/utils/geometry_utils.dart';
 import 'map_manager.dart';
 import 'map_icons_loader.dart';
+import '../backend/providers/app_logic_provider.dart';
+import 'package:bondi_uy/journey/journey_step_state.dart';
 
 /// Módulo especializado en manejar buses en tiempo real y tooltips
 class MapBusRealtime {
@@ -19,6 +21,10 @@ class MapBusRealtime {
   Coordenada? _currentBusPosition;
   int? _currentBusEta;
   bool? _currentBusIsRealTime;
+
+  // DIFF: Agregar estado para tracking híbrido
+  BusTrackingMode _trackingMode = BusTrackingMode.INACTIVE;
+  // Eliminado: no es necesario mantener una copia local persistente
 
   // Variables para almacenar información necesaria para actualizar la línea de aproximación
   TramoViajeMostrable? _currentTrackedSegment;
@@ -36,7 +42,15 @@ class MapBusRealtime {
   static const String BUS_APPROACH_SOURCE_PREFIX = 'bus-approach-source-';
   static const String BUS_APPROACH_LAYER_PREFIX = 'bus-approach-layer-';
 
+  // DIFF: Constantes para tracking de usuario
+  static const String USER_BUS_SOURCE_ID = 'user-bus-source';
+  static const String USER_BUS_LAYER_ID = 'user-bus-layer';
+  static const String USER_BUS_ICON_ID = 'user-bus-icon';
+
   MapBusRealtime(this.mapboxMap, this.mapManager);
+
+  // DIFF: Getter para obtener modo de tracking actual
+  BusTrackingMode get trackingMode => _trackingMode;
 
   /// Mostrar buses en tiempo real para preview de ruta
   Future<void> displayRealtimeBusesForPreview(
@@ -124,6 +138,13 @@ class MapBusRealtime {
     int legIndex,
     List<TramoViajeMostrable> tramos,
   ) async {
+    // No iniciar/actualizar tracking API si estamos en modo USER_LOCATION (usuario a bordo)
+    if (_trackingMode == BusTrackingMode.USER_LOCATION) {
+      print(
+        "[MapBusRealtime] Skipping updateBusTrackingForLeg because tracking mode is USER_LOCATION",
+      );
+      return;
+    }
     if (tramos.isEmpty || legIndex >= tramos.length) {
       _stopBusTracking();
       return;
@@ -166,16 +187,25 @@ class MapBusRealtime {
     _currentBusEta = etaMinutes;
     _currentBusIsRealTime = isRealTime;
 
-    // NUEVA LÓGICA: Durante transición optimizada, usar SOLO elementos del preview
-    bool usingPreviewElements = await _tryUpdatePreviewBusElements(
-      position,
-      etaMinutes,
-      isRealTime,
-    );
+    // Política de escritura de capas FUERTEMENTE definida por fase:
+    // - active_trip: escribir SIEMPRE en las fuentes/capas "main" del viaje activo
+    //                (nunca tocar elementos de preview).
+    // - otras fases (preview): intentar actualizar elementos de preview si existen.
+    final isActiveTrip = mapManager.currentPhase == 'active_trip';
 
-    if (!usingPreviewElements) {
-      // Solo si NO hay elementos del preview, usar elementos de active trip
+    if (isActiveTrip) {
+      // Active trip: no intentar escribir en elementos de preview.
       await _displayBusOnMap(position);
+    } else {
+      // Preview: actualizar elementos de preview si existen; si no, usar main.
+      bool usingPreviewElements = await _tryUpdatePreviewBusElements(
+        position,
+        etaMinutes,
+        isRealTime,
+      );
+      if (!usingPreviewElements) {
+        await _displayBusOnMap(position);
+      }
     }
 
     // Actualizar línea de aproximación verde
@@ -299,15 +329,63 @@ class MapBusRealtime {
 
   /// Obtener actualización del bus (placeholder para futuras implementaciones)
   Future<void> _fetchBusUpdate(TramoViajeMostrable tramo) async {
-    // TODO: Implementar llamada al backend para obtener posición actualizada del bus
-    // ELIMINADO: Ya no usamos datos antiguos del tramo, el sistema centralizado se encarga
-    // if (tramo.posicionActualBus != null) {
-    //   await updateBusPosition(...)
-    // }
+    print("[MapBusRealtime] _fetchBusUpdate called - fetching real ETA data");
 
-    print(
-      "[MapBusRealtime] _fetchBusUpdate called - delegating to centralized real-time system",
-    );
+    // IMPLEMENTACIÓN REAL: Conectar con el sistema de ETA que funciona
+    try {
+      // Obtener el AppLogicProvider para acceder al sistema de ETA
+      if (mapManager.ref == null) {
+        print("[MapBusRealtime] WidgetRef no disponible en MapManager");
+        return;
+      }
+
+      // final appLogicNotifier = mapManager.ref!.read(appLogicProvider.notifier); // no usado
+      final appUiState = mapManager.ref!.read(appLogicProvider);
+
+      // Obtener datos actualizados del estado del viaje activo
+      final activeTripState = appUiState.datosFaseViajeActivo;
+      if (activeTripState == null) {
+        print("[MapBusRealtime] No hay viaje activo");
+        return;
+      }
+
+      // Verificar si hay datos de bus en tiempo real disponibles
+      if (activeTripState.seguimientoBusRealDisponibleEnTramoActual &&
+          activeTripState.posicionActualBusReal != null &&
+          activeTripState.minutosParaLlegadaBusReal != null) {
+        print("[MapBusRealtime] Datos de ETA real encontrados:");
+        print("  - Posición: ${activeTripState.posicionActualBusReal}");
+        print("  - ETA: ${activeTripState.minutosParaLlegadaBusReal} min");
+
+        // Actualizar la posición del bus en el mapa
+        await updateBusPosition(
+          activeTripState.posicionActualBusReal!,
+          activeTripState.minutosParaLlegadaBusReal!,
+          true, // Es tiempo real
+        );
+      } else {
+        print(
+          "[MapBusRealtime] No hay datos de ETA real en este ciclo (active_trip) - mantener última posición válida",
+        );
+        // Active trip: NO usar fallback del tramo (evita saltos a buses lejanos).
+        // Conservamos la última posición válida en pantalla.
+      }
+    } catch (e) {
+      print("[MapBusRealtime] Error obteniendo actualización de ETA: $e");
+
+      // Fallback: usar datos del tramo
+      if (tramo.posicionActualBus != null &&
+          tramo.minutosEstimadosLlegadaBus != null) {
+        print(
+          "[MapBusRealtime] Usando datos del tramo como fallback por error",
+        );
+        await updateBusPosition(
+          tramo.posicionActualBus!,
+          tramo.minutosEstimadosLlegadaBus!,
+          tramo.esTiempoRealBus ?? false,
+        );
+      }
+    }
   }
 
   /// Mostrar bus en el mapa para viaje activo
@@ -593,12 +671,75 @@ class MapBusRealtime {
   ) async {
     if (mapboxMap == null) return;
 
+    // Ajustar estilo según el tipo de paso actual (menor énfasis al CAMINAR)
+    double shadowWidth = 8.0;
+    double shadowOpacity = 1.0;
+    double mainWidth = 5.0;
+    double mainOpacity = 0.9;
+
+    try {
+      final currentType =
+          mapManager.ref?.read(appLogicProvider).currentJourneyStep?.type;
+      if (currentType != null) {
+        switch (currentType) {
+          case JourneyStepType.WALKING_TO_STOP:
+            shadowWidth = 6.0;
+            shadowOpacity = 0.6;
+            mainWidth = 3.5;
+            mainOpacity = 0.55;
+            break;
+          case JourneyStepType.WAITING_FOR_BUS:
+          case JourneyStepType.RIDING_BUS:
+          case JourneyStepType.WALKING_TO_DESTINATION:
+            // Usar valores por defecto (más énfasis)
+            break;
+        }
+      }
+    } catch (_) {
+      // Si falla, usar valores por defecto
+    }
+
     // Actualizar o crear fuente de la línea verde para viaje activo
-    if (await mapboxMap!.style.styleSourceExists('bus-approach-source-main')) {
+    final sourceExists = await mapboxMap!.style.styleSourceExists(
+      'bus-approach-source-main',
+    );
+    if (sourceExists) {
       final source =
           await mapboxMap!.style.getSource('bus-approach-source-main')
               as GeoJsonSource;
       await source.updateGeoJSON(json.encode(geoJsonFeatureCollection));
+
+      // Asegurar estilo actualizado según el paso actual (ajustar pesos/opacidades)
+      try {
+        if (await mapboxMap!.style.styleLayerExists(
+          'bus-approach-layer-main-shadow',
+        )) {
+          await mapboxMap!.style.setStyleLayerProperty(
+            'bus-approach-layer-main-shadow',
+            'line-width',
+            shadowWidth,
+          );
+          await mapboxMap!.style.setStyleLayerProperty(
+            'bus-approach-layer-main-shadow',
+            'line-opacity',
+            shadowOpacity,
+          );
+        }
+        if (await mapboxMap!.style.styleLayerExists(
+          'bus-approach-layer-main',
+        )) {
+          await mapboxMap!.style.setStyleLayerProperty(
+            'bus-approach-layer-main',
+            'line-width',
+            mainWidth,
+          );
+          await mapboxMap!.style.setStyleLayerProperty(
+            'bus-approach-layer-main',
+            'line-opacity',
+            mainOpacity,
+          );
+        }
+      } catch (_) {}
     } else {
       // Crear fuente nueva
       await mapboxMap!.style.addSource(
@@ -615,8 +756,8 @@ class MapBusRealtime {
           id: 'bus-approach-layer-main-shadow',
           sourceId: 'bus-approach-source-main',
           lineColor: 0xFF000000, // Negro para el borde
-          lineWidth: 8.0, // Consistencia con otros bordes
-          lineOpacity: 1.0,
+          lineWidth: shadowWidth,
+          lineOpacity: shadowOpacity,
           lineJoin: LineJoin.ROUND,
           lineCap: LineCap.ROUND,
         ),
@@ -629,8 +770,8 @@ class MapBusRealtime {
           id: 'bus-approach-layer-main',
           sourceId: 'bus-approach-source-main',
           lineColor: 0xFF4CAF50, // Verde como en el código anterior
-          lineWidth: 5.0, // Consistencia con BUS
-          lineOpacity: 0.9,
+          lineWidth: mainWidth,
+          lineOpacity: mainOpacity,
           lineJoin: LineJoin.ROUND,
           lineCap: LineCap.ROUND,
         ),
@@ -1143,9 +1284,160 @@ class MapBusRealtime {
     _stopTooltipFloatingAnimation();
   }
 
+  // DIFF: Nuevo método para cambiar a modo de tracking del usuario
+  Future<void> switchToUserLocationMode() async {
+    print('[MapBusRealtime] Switching to user location tracking mode');
+
+    _trackingMode = BusTrackingMode.USER_LOCATION;
+
+    // Detener sondeo de API
+    _busTrackingTimer?.cancel();
+    _busTrackingTimer = null;
+
+    // El bus ahora será renderizado usando la ubicación del usuario
+    // Esto se manejará desde el LocationTracker
+    print(
+      '[MapBusRealtime] Switched to user location mode - API polling stopped',
+    );
+  }
+
+  // DIFF: Nuevo método para renderizar bus en ubicación del usuario
+  Future<void> updateBusToUserLocation(Coordenada userLocation) async {
+    print(
+      '[MapBusRealtime] updateBusToUserLocation called - Mode: $_trackingMode',
+    );
+
+    if (_trackingMode != BusTrackingMode.USER_LOCATION) {
+      print(
+        '[MapBusRealtime] ⚠️ IGNORING updateBusToUserLocation - not in USER_LOCATION mode (current: $_trackingMode)',
+      );
+      return;
+    }
+
+    if (mapboxMap == null) {
+      print(
+        '[MapBusRealtime] ⚠️ IGNORING updateBusToUserLocation - mapboxMap is null',
+      );
+      return;
+    }
+
+    // No persistimos la ubicación aquí; el dibujo usa el parámetro directamente
+    print(
+      '[MapBusRealtime] ✅ Updating bus to user location: ${userLocation.latitud}, ${userLocation.longitud}',
+    );
+
+    // Renderizar icono de bus en la ubicación del usuario
+    await _displayBusAtUserLocation(userLocation);
+
+    // Actualizar línea hacia parada de destino
+    if (_currentStopPosition != null) {
+      await _updateBusApproachLineForActiveTrip(
+        userLocation,
+        _currentStopPosition!,
+      );
+    }
+  }
+
+  // DIFF: Método para renderizar bus en ubicación del usuario
+  Future<void> _displayBusAtUserLocation(Coordenada userLocation) async {
+    if (mapboxMap == null) return;
+
+    try {
+      final busFeature = {
+        'type': 'Feature',
+        'geometry': {
+          'type': 'Point',
+          'coordinates': [userLocation.longitud, userLocation.latitud],
+        },
+        'properties': {'type': 'user-bus', 'line': _currentBusLine ?? 'Bus'},
+      };
+
+      final sourceData = {
+        'type': 'FeatureCollection',
+        'features': [busFeature],
+      };
+
+      // Actualizar o crear fuente
+      if (await mapboxMap!.style.styleSourceExists(USER_BUS_SOURCE_ID)) {
+        final source =
+            await mapboxMap!.style.getSource(USER_BUS_SOURCE_ID)
+                as GeoJsonSource;
+        await source.updateGeoJSON(jsonEncode(sourceData));
+      } else {
+        await mapboxMap!.style.addSource(
+          GeoJsonSource(id: USER_BUS_SOURCE_ID, data: jsonEncode(sourceData)),
+        );
+        mapManager.registerSource(USER_BUS_SOURCE_ID);
+
+        // Agregar capa del bus
+        await mapboxMap!.style.addLayer(
+          SymbolLayer(
+            id: USER_BUS_LAYER_ID,
+            sourceId: USER_BUS_SOURCE_ID,
+            iconImage: MapIconsLoader.BUS_ICON_IMAGE_ID,
+            iconAllowOverlap: true,
+            iconSize: 0.8, // Slightly larger to indicate it's the user
+            iconAnchor: IconAnchor.CENTER,
+          ),
+        );
+        mapManager.registerLayer(USER_BUS_LAYER_ID);
+      }
+
+      print('[MapBusRealtime] Updated bus icon at user location');
+    } catch (e) {
+      print('[MapBusRealtime] Error displaying bus at user location: $e');
+    }
+  }
+
+  // DIFF: Método para iniciar tracking de API
+  Future<void> startApiTracking() async {
+    print('[MapBusRealtime] Starting API tracking mode');
+    _trackingMode = BusTrackingMode.API_REALTIME;
+
+    // IMPORTANTE: Limpiar cualquier elemento de bus del usuario que pueda estar visible
+    await _clearUserBusDisplay();
+
+    print(
+      '[MapBusRealtime] API tracking mode activated - user bus elements cleared',
+    );
+    // La lógica de tracking de API ya existe en los métodos actuales
+  }
+
+  // DIFF: Método para detener todos los tipos de tracking
+  void stopAllTracking() {
+    _trackingMode = BusTrackingMode.INACTIVE;
+    _busTrackingTimer?.cancel();
+    _busTrackingTimer = null;
+    // Sin estado local que limpiar para ubicación de usuario
+
+    // Limpiar elementos de usuario del mapa
+    _clearUserBusDisplay();
+
+    print('[MapBusRealtime] All tracking stopped');
+  }
+
+  // DIFF: Método para limpiar elementos de bus del usuario
+  Future<void> _clearUserBusDisplay() async {
+    if (mapboxMap == null) return;
+
+    try {
+      if (await mapboxMap!.style.styleLayerExists(USER_BUS_LAYER_ID)) {
+        await mapboxMap!.style.removeStyleLayer(USER_BUS_LAYER_ID);
+      }
+      if (await mapboxMap!.style.styleSourceExists(USER_BUS_SOURCE_ID)) {
+        await mapboxMap!.style.removeStyleSource(USER_BUS_SOURCE_ID);
+      }
+    } catch (e) {
+      print('[MapBusRealtime] Error clearing user bus display: $e');
+    }
+  }
+
   /// Limpiar recursos y detener animaciones
   void dispose() {
-    _stopBusTracking();
+    stopAllTracking();
     _stopTooltipFloatingAnimation();
   }
 }
+
+// DIFF: Enum para modos de tracking
+enum BusTrackingMode { INACTIVE, API_REALTIME, USER_LOCATION }

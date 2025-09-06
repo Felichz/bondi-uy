@@ -18,6 +18,9 @@ class MapRouteRenderer {
   double _arrowAnimationPhase = 0.0;
   List<String> _animatedArrowLayerIds = [];
 
+  // DIFF: Flag para controlar animaciones
+  bool _animationsEnabled = true;
+
   // Constantes para IDs de capas y fuentes unificadas
   static const String WALK_SOURCE_PREFIX = 'route-walk-source-';
   static const String WALK_LAYER_PREFIX = 'route-walk-layer-';
@@ -402,17 +405,42 @@ class MapRouteRenderer {
   // ========== MÉTODOS DE ANIMACIÓN ==========
 
   void _startArrowAnimation() {
+    // DIFF: Solo iniciar animaciones si están habilitadas
+    if (!_animationsEnabled) {
+      print(
+        "[MapRouteRenderer] 🎭 Animaciones deshabilitadas - no iniciando timer",
+      );
+      return;
+    }
+
     _stopArrowAnimation(); // Asegurar que no hay timer previo
 
     _arrowAnimationTimer = Timer.periodic(
       const Duration(milliseconds: 100), // 100ms para animación suave
       (timer) => _updateArrowAnimation(),
     );
+    print("[MapRouteRenderer] 🎭 Arrow animation timer started");
   }
 
   void _stopArrowAnimation() {
     _arrowAnimationTimer?.cancel();
     _arrowAnimationTimer = null;
+  }
+
+  // DIFF: Método para controlar animaciones
+  void setAnimationsEnabled(bool enabled) {
+    print("[MapRouteRenderer] 🎭 Setting animations enabled: $enabled");
+    _animationsEnabled = enabled;
+
+    if (enabled) {
+      // Si se habilitan las animaciones, reiniciar si hay capas animadas
+      if (_animatedArrowLayerIds.isNotEmpty) {
+        _startArrowAnimation();
+      }
+    } else {
+      // Si se deshabilitan, detener animaciones
+      _stopArrowAnimation();
+    }
   }
 
   Future<void> _updateArrowAnimation() async {

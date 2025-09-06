@@ -8,20 +8,42 @@ import '../contrato_ui/app_ui_state.dart'; // Para Coordenada, OpcionDeRutaMostr
 import './montevideo_api_service_adapter.dart'; // Para obtener ETAs
 import 'package:intl/intl.dart'; // Para formatear fecha y hora
 
-// TODO: Configurar estas constantes adecuadamente.
-const String OTP_BASE_URL = "http://192.168.1.10:8080/otp/routers/default/plan";
+// Configuración de endpoints OTP: permite override vía --dart-define en tiempo de run/build
+// Ejemplo:
+// flutter run --dart-define=OTP_TUNNEL_ID=bcc27134b40e
+//
+// Esto construye automáticamente:
+// - https://bcc27134b40e.ngrok-free.app/otp/routers/default/plan
+// - https://bcc27134b40e.ngrok-free.app/otp/routers/default/index/graphql
+const String? _otpTunnelId = String.fromEnvironment(
+  'OTP_TUNNEL_ID',
+  defaultValue: '',
+);
+
+String get OTP_BASE_URL {
+  if (_otpTunnelId != null && _otpTunnelId!.isNotEmpty) {
+    return "https://$_otpTunnelId.ngrok-free.app/otp/routers/default/plan";
+  }
+  return "http://192.168.1.21:8080/otp/routers/default/plan";
+}
+
 const int OTP_NUM_ITINERARIES = 5; // Número de itinerarios a solicitar
 
 // Constantes adaptadas del servicio antiguo
 const int MAX_UNIQUE_STOPS_FOR_ETA_LOOKUP =
     3; // Límite de paradas únicas para consultar ETA activamente
 
-// TODO: Mover a un archivo de configuración o constantes
-const String OTP_GRAPHQL_ENDPOINT_URL =
-    "http://192.168.1.10:8080/otp/routers/default/index/graphql";
-// Asegúrate de que esta URL sea accesible desde donde se ejecuta tu app Flutter.
-// Para emulador Android, si OTP corre en el host: "http://10.0.2.2:8080/otp/routers/default/index/graphql"
-// Para web o dispositivo físico, la IP de la máquina host en la red local: "http://TU_IP_LOCAL:8080/otp/routers/default/index/graphql"
+// Permite override vía --dart-define (ver ejemplo arriba)
+String get OTP_GRAPHQL_ENDPOINT_URL {
+  if (_otpTunnelId != null && _otpTunnelId!.isNotEmpty) {
+    return "https://$_otpTunnelId.ngrok-free.app/otp/routers/default/index/graphql";
+  }
+  return "http://192.168.1.21:8080/otp/routers/default/index/graphql";
+}
+// Configuración de IPs:
+// - Para emulador Android: usar "http://10.0.2.2:8080/otp/routers/default/index/graphql"
+// - Para dispositivo físico en WiFi: usar "http://192.168.1.21:8080/otp/routers/default/index/graphql"
+// - Para web: usar la IP de la máquina host en la red local
 
 // --- Modelos Internos Simplificados (similares a los del código antiguo para parsear OTP) ---
 // Estos pueden evolucionar o ser reemplazados por un parseo más directo a AppUiState.
@@ -825,6 +847,7 @@ class ItineraryPlanningServiceAdapter
               idTramo: _generateUniqueId("walk${itineraryOtpIndex}_$i"),
               tipo: TipoTramoViaje.CAMINAR,
               geometriaPolilinea: geometria,
+              posicionPunto: coordDestinoTramo,
               descripcion:
                   "Caminar hacia ${leg.to?.stopNameFromOtp ?? leg.to?.name ?? 'destino'}",
               duracionEstimadaSegundos: legDurationSec,

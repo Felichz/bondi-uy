@@ -1,4 +1,5 @@
 import 'package:flutter/services.dart';
+import 'package:flutter/material.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -16,6 +17,7 @@ class MapIconsLoader {
   static const String BUS_TOOLTIP_ICON_ID = 'incoming-bus-tooltip';
   static const String PREVIEW_BUS_TOOLTIP_ICON_ID =
       'incoming-bus-tooltip-preview';
+  static const String USER_LOCATION_ICON_ID = 'user-location-icon';
 
   MapIconsLoader(this.mapboxMap, this.mapManager);
 
@@ -102,6 +104,67 @@ class MapIconsLoader {
 
     final Uint8List pngBytes = byteData.buffer.asUint8List();
     return MbxImage(width: image.width, height: image.height, data: pngBytes);
+  }
+
+  /// Cargar icono de ubicación del usuario
+  Future<void> loadUserLocationIcon() async {
+    if (mapboxMap == null) return;
+
+    print("[MapIconsLoader] Loading user location icon");
+
+    try {
+      // Crear un círculo azul programáticamente para la ubicación del usuario
+      final userLocationImage = await _createUserLocationIcon();
+      await mapboxMap!.style.addStyleImage(
+        USER_LOCATION_ICON_ID,
+        1.0,
+        userLocationImage,
+        false,
+        [],
+        [],
+        null,
+      );
+
+      print("[MapIconsLoader] User location icon loaded successfully");
+    } catch (e) {
+      print("[MapIconsLoader] Error loading user location icon: $e");
+      rethrow;
+    }
+  }
+
+  /// Crear icono de ubicación del usuario programáticamente
+  Future<MbxImage> _createUserLocationIcon() async {
+    final ui.PictureRecorder recorder = ui.PictureRecorder();
+    final Canvas canvas = Canvas(recorder);
+    final Paint paint = Paint();
+
+    // Configurar el tamaño del icono
+    const double size = 32.0;
+    const double radius = size / 2;
+
+    // Dibujar círculo azul con borde blanco
+    paint.color = ui.Color(0xFFFFFFFF); // Blanco para el borde
+    canvas.drawCircle(Offset(radius, radius), radius, paint);
+
+    paint.color = ui.Color(0xFF2196F3); // Azul material
+    canvas.drawCircle(Offset(radius, radius), radius - 2, paint);
+
+    // Dibujar punto central más pequeño
+    paint.color = ui.Color(0xFFFFFFFF); // Blanco para el centro
+    canvas.drawCircle(Offset(radius, radius), 4, paint);
+
+    final ui.Picture picture = recorder.endRecording();
+    final ui.Image image = await picture.toImage(size.toInt(), size.toInt());
+
+    final ByteData? byteData = await image.toByteData(
+      format: ui.ImageByteFormat.png,
+    );
+    if (byteData == null) {
+      throw Exception('Failed to create user location icon');
+    }
+
+    final Uint8List pngBytes = byteData.buffer.asUint8List();
+    return MbxImage(width: size.toInt(), height: size.toInt(), data: pngBytes);
   }
 
   /// Verificar si los iconos están cargados

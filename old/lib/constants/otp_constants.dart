@@ -11,7 +11,7 @@
 // Reemplaza 'TU_IP_LOCAL' con la dirección IP de la máquina donde corre el servidor OTP.
 // Ejemplo: const String OTP_BASE_URL = "http://192.168.1.100:8080";
 const String OTP_BASE_URL =
-    "http://192.168.1.9:8080"; // ¡¡¡ATENCIÓN: MODIFICAR ESTA LÍNEA!!!
+    "http://192.168.1.10:8080"; // ¡¡¡ATENCIÓN: MODIFICAR ESTA LÍNEA!!!
 
 // --- Endpoints específicos de OTP ---
 // Endpoint REST para planificación (se mantiene por si acaso o para futuras referencias)

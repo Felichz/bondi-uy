@@ -1,0 +1,625 @@
+{
+  "system": "Bondi UY",
+  "entryPoint": "lib/main.dart",
+  
+  "modules": {
+    "main": {
+      "id": "main",
+      "name": "main",
+      "sourcePath": "lib/main.dart",
+      "depth": 0,
+      "purpose": "Bootstrap the Flutter application and set up providers",
+      "type": "function",
+      "concern": "Application initialization and dependency injection setup",
+      
+      "flow": {
+        "in": "Flutter framework initialization",
+        "does": "ensureInitialized() → runApp() → ProviderScope → AppHost",
+        "out": "Fully initialized app with dependency injection"
+      },
+      
+      "talks_to": {
+        "app_host": "provides root widget for UI rendering",
+        "flutter_riverpod": "establishes global provider scope for state management"
+      },
+      
+      "behavior": ["singleton entry point", "synchronous initialization", "provider scope wrapper"],
+      "role": "orchestrator",
+      
+      "inputs": [],
+      "outputs": [{
+        "name": "app",
+        "type": "Widget",
+        "description": "Root app widget with providers",
+        "destination": "Flutter framework"
+      }],
+      
+      "dependencies": [{
+        "moduleId": "app_host",
+        "purpose": "root UI widget",
+        "type": "import",
+        "isExternal": false,
+        "timing": "startup"
+      }, {
+        "moduleId": "flutter_riverpod",
+        "purpose": "state management provider scope",
+        "type": "import",
+        "isExternal": true,
+        "timing": "startup"
+      }, {
+        "moduleId": "flutter",
+        "purpose": "framework initialization and widgets",
+        "type": "import",
+        "isExternal": true,
+        "timing": "startup"
+      }],
+      
+      "sideEffects": [
+        "initializes Flutter widgets binding",
+        "establishes global provider scope"
+      ],
+      
+      "flowNotes": "Entry point that bootstraps the Flutter app with Riverpod state management and launches the main UI widget",
+      
+      "children": {
+        "app_host": {
+          "id": "app_host",
+          "name": "AppHost",
+          "sourcePath": "lib/ui/app_host.dart",
+          "depth": 1,
+          "purpose": "Central UI orchestrator managing app phases and map lifecycle",
+          "type": "class",
+          "concern": "UI state coordination and map management lifecycle",
+          
+          "flow": {
+            "in": "App state from appLogicProvider, map events",
+            "does": "watch state → render phase overlay → manage map transitions → handle errors",
+            "out": "Rendered UI with appropriate overlay for current phase"
+          },
+          
+          "talks_to": {
+            "app_logic_provider": "consumes app state and calls state actions",
+            "map_manager": "coordinates map rendering and lifecycle",
+            "phase_overlays": "renders UI for specific app phases"
+          },
+          
+          "behavior": ["stateful consumer widget", "phase-based rendering", "map lifecycle management"],
+          "role": "coordinator",
+          
+          "inputs": [{
+            "name": "appUiState",
+            "type": "AppUiState",
+            "description": "Current application state",
+            "source": "appLogicProvider"
+          }],
+          
+          "outputs": [{
+            "name": "phaseOverlay",
+            "type": "Widget",
+            "description": "UI overlay matching current app phase",
+            "destination": "Flutter widget tree"
+          }],
+          
+          "dependencies": [{
+            "moduleId": "app_logic_provider",
+            "purpose": "state management and business logic",
+            "type": "import",
+            "isExternal": false,
+            "timing": "on-demand"
+          }, {
+            "moduleId": "map_manager",
+            "purpose": "map rendering and state management",
+            "type": "instantiation",
+            "isExternal": false,
+            "timing": "on-demand"
+          }, {
+            "moduleId": "mapbox_maps_flutter",
+            "purpose": "map widget and controller",
+            "type": "import",
+            "isExternal": true,
+            "timing": "on-demand"
+          }],
+          
+          "sideEffects": [
+            "creates MapManager instance",
+            "manages Mapbox map lifecycle",
+            "provides global map manager via provider"
+          ],
+          
+          "flowNotes": "Acts as the central coordinator that watches app state changes and renders appropriate UI phases while managing the map lifecycle",
+          
+          "children": {
+            "app_logic_provider": {
+              "id": "app_logic_provider",
+              "name": "AppLogicNotifier",
+              "sourcePath": "lib/backend/providers/app_logic_provider.dart",
+              "depth": 2,
+              "purpose": "Core business logic and state management for the entire application",
+              "type": "class",
+              "concern": "Centralized state management and coordination of all app business logic",
+              
+              "flow": {
+                "in": "User actions, service responses, timer events",
+                "does": "validate → call services → update state → manage timers → coordinate automatic navigation",
+                "out": "Updated AppUiState and side effects"
+              },
+              
+              "talks_to": {
+                "montevideo_api_service": "fetches bus data and ETAs",
+                "itinerary_planning_service": "plans routes between origin/destination",
+                "geocoding_service": "handles location search and reverse geocoding",
+                "location_tracker": "manages automatic navigation and location updates"
+              },
+              
+              "behavior": ["state notifier pattern", "timer-based polling", "automatic state transitions", "error handling"],
+              "role": "orchestrator",
+              
+              "inputs": [{
+                "name": "userActions",
+                "type": "Various method calls",
+                "description": "User interactions from UI",
+                "source": "UI components"
+              }, {
+                "name": "serviceResponses",
+                "type": "Service data objects",
+                "description": "Data from external services",
+                "source": "service adapters"
+              }],
+              
+              "outputs": [{
+                "name": "appUiState",
+                "type": "AppUiState",
+                "description": "Complete application state",
+                "destination": "UI consumers via Riverpod"
+              }],
+              
+              "dependencies": [{
+                "moduleId": "app_ui_state",
+                "purpose": "state data structures and contracts",
+                "type": "import",
+                "isExternal": false,
+                "timing": "startup"
+              }, {
+                "moduleId": "montevideo_api_service_adapter",
+                "purpose": "bus stop and ETA data",
+                "type": "composition",
+                "isExternal": false,
+                "timing": "on-demand"
+              }, {
+                "moduleId": "location_tracker",
+                "purpose": "automatic navigation and location tracking",
+                "type": "composition",
+                "isExternal": false,
+                "timing": "on-demand"
+              }],
+              
+              "sideEffects": [
+                "manages periodic timers for bus tracking",
+                "triggers map updates via MapManager",
+                "persists location permissions state"
+              ],
+              
+              "flowNotes": "Central business logic hub that coordinates all app functionality including route planning, bus tracking, automatic navigation, and state transitions",
+              
+              "children": {
+                "app_ui_state": {
+                  "id": "app_ui_state",
+                  "name": "AppUiState",
+                  "sourcePath": "lib/backend/contrato_ui/app_ui_state.dart",
+                  "depth": 3,
+                  "purpose": "Immutable state container and data contracts for the entire application",
+                  "type": "class",
+                  "concern": "Type-safe state representation and UI-backend contract definition",
+                  
+                  "flow": {
+                    "in": "State mutations from AppLogicNotifier",
+                    "does": "validate → construct immutable state → provide copyWith methods",
+                    "out": "Immutable state objects for UI consumption"
+                  },
+                  
+                  "talks_to": {
+                    "journey_step_state": "automatic navigation state",
+                    "route_dynamic_calculator": "route progress calculations"
+                  },
+                  
+                  "behavior": ["immutable data structures", "copyWith pattern", "type safety", "phase-based state"],
+                  "role": "storage",
+                  
+                  "inputs": [{
+                    "name": "stateUpdates",
+                    "type": "Constructor parameters",
+                    "description": "New state values",
+                    "source": "AppLogicNotifier"
+                  }],
+                  
+                  "outputs": [{
+                    "name": "stateObjects",
+                    "type": "Various state classes",
+                    "description": "Immutable state representations",
+                    "destination": "UI components and business logic"
+                  }],
+                  
+                  "dependencies": [{
+                    "moduleId": "journey_step_state",
+                    "purpose": "automatic navigation state structure",
+                    "type": "import",
+                    "isExternal": false,
+                    "timing": "startup"
+                  }],
+                  
+                  "sideEffects": [],
+                  
+                  "flowNotes": "Defines the complete state structure and contracts between UI and backend layers with immutable data patterns"
+                },
+                
+                "montevideo_api_service_adapter": {
+                  "id": "montevideo_api_service_adapter",
+                  "name": "MontevideoApiServiceAdapter",
+                  "sourcePath": "lib/backend/services/montevideo_api_service_adapter.dart",
+                  "depth": 3,
+                  "purpose": "Adapter for Montevideo public transport API providing bus stops and real-time data",
+                  "type": "class",
+                  "concern": "External API integration and data transformation",
+                  
+                  "flow": {
+                    "in": "API requests for stops and ETAs",
+                    "does": "authenticate → fetch data → transform → handle errors",
+                    "out": "Normalized bus stop and ETA data"
+                  },
+                  
+                  "talks_to": {
+                    "http": "makes HTTP requests to transport API",
+                    "flutter_assets": "loads local bus stop data"
+                  },
+                  
+                  "behavior": ["oauth token management", "error handling", "data transformation", "fallback to local data"],
+                  "role": "gateway",
+                  
+                  "inputs": [{
+                    "name": "stopId",
+                    "type": "String",
+                    "description": "Bus stop identifier",
+                    "source": "business logic"
+                  }],
+                  
+                  "outputs": [{
+                    "name": "stopDetails",
+                    "type": "InfoDetalladaParada",
+                    "description": "Stop information with ETAs",
+                    "destination": "business logic layer"
+                  }],
+                  
+                  "dependencies": [{
+                    "moduleId": "http",
+                    "purpose": "HTTP requests to external API",
+                    "type": "import",
+                    "isExternal": true,
+                    "timing": "on-demand"
+                  }],
+                  
+                  "sideEffects": [
+                    "manages OAuth tokens",
+                    "makes network requests",
+                    "caches authentication state"
+                  ],
+                  
+                  "flowNotes": "Handles authentication and data fetching from Montevideo's transport API with fallback to local data sources"
+                },
+                
+                "location_tracker": {
+                  "id": "location_tracker",
+                  "name": "LocationTracker",
+                  "sourcePath": "lib/journey/location_tracker.dart",
+                  "depth": 3,
+                  "purpose": "GPS tracking and automatic navigation with geofence detection",
+                  "type": "class",
+                  "concern": "Real-time location tracking and arrival detection",
+                  
+                  "flow": {
+                    "in": "GPS permissions and destination coordinates",
+                    "does": "requestPermissions → startTracking → detectArrivals → notifyCallbacks",
+                    "out": "Location updates and arrival notifications"
+                  },
+                  
+                  "talks_to": {
+                    "geolocator": "GPS location services",
+                    "geometry_utils": "distance calculations"
+                  },
+                  
+                  "behavior": ["periodic GPS polling", "geofence monitoring", "permission handling", "test mode support"],
+                  "role": "executor",
+                  
+                  "inputs": [{
+                    "name": "destinations",
+                    "type": "List<Coordenada>",
+                    "description": "Target locations for geofences",
+                    "source": "journey management"
+                  }],
+                  
+                  "outputs": [{
+                    "name": "locationUpdates",
+                    "type": "Coordenada",
+                    "description": "Current user location",
+                    "destination": "callback functions"
+                  }],
+                  
+                  "dependencies": [{
+                    "moduleId": "geolocator",
+                    "purpose": "GPS location services",
+                    "type": "import",
+                    "isExternal": true,
+                    "timing": "on-demand"
+                  }],
+                  
+                  "sideEffects": [
+                    "requests location permissions",
+                    "starts background GPS polling",
+                    "manages periodic timers"
+                  ],
+                  
+                  "flowNotes": "Manages continuous GPS tracking with geofence detection for automatic journey step transitions"
+                }
+              }
+            },
+            
+            "map_manager": {
+              "id": "map_manager",
+              "name": "MapManager",
+              "sourcePath": "lib/map_manager/map_manager.dart",
+              "depth": 2,
+              "purpose": "Unified map state management and rendering coordination",
+              "type": "class",
+              "concern": "Map visualization lifecycle and optimization",
+              
+              "flow": {
+                "in": "Route data, bus positions, phase changes",
+                "does": "initialize → render routes → manage layers → optimize transitions",
+                "out": "Updated map visualization with routes and real-time data"
+              },
+              
+              "talks_to": {
+                "map_route_renderer": "renders route geometries on map",
+                "map_bus_realtime": "displays real-time bus positions",
+                "map_icons_loader": "manages map icon assets",
+                "map_camera_controller": "handles map zoom and focus",
+                "map_cleanup": "manages layer lifecycle"
+              },
+              
+              "behavior": ["phase-based rendering", "layer management", "transition optimization", "resource cleanup"],
+              "role": "coordinator",
+              
+              "inputs": [{
+                "name": "routeData",
+                "type": "OpcionDeRutaMostrable",
+                "description": "Route information to display",
+                "source": "business logic"
+              }, {
+                "name": "activeTripState",
+                "type": "EstadoFaseViajeActivo",
+                "description": "Active journey state",
+                "source": "business logic"
+              }],
+              
+              "outputs": [{
+                "name": "mapVisualization",
+                "type": "Map layers and sources",
+                "description": "Visual representation on map",
+                "destination": "Mapbox map instance"
+              }],
+              
+              "dependencies": [{
+                "moduleId": "map_route_renderer",
+                "purpose": "route geometry rendering",
+                "type": "composition",
+                "isExternal": false,
+                "timing": "startup"
+              }, {
+                "moduleId": "map_bus_realtime",
+                "purpose": "real-time bus visualization",
+                "type": "composition",
+                "isExternal": false,
+                "timing": "startup"
+              }],
+              
+              "sideEffects": [
+                "creates and manages map layers",
+                "loads map icons and assets",
+                "manages map source lifecycle"
+              ],
+              
+              "flowNotes": "Central coordinator for all map visualization with optimized transitions between app phases",
+              
+              "children": {
+                "map_route_renderer": {
+                  "id": "map_route_renderer",
+                  "name": "MapRouteRenderer",
+                  "sourcePath": "lib/map_manager/map_route_renderer.dart",
+                  "depth": 3,
+                  "purpose": "Renders route geometries and waypoints on the map",
+                  "type": "class",
+                  "concern": "Route visualization and styling",
+                  
+                  "flow": {
+                    "in": "Route tramos with geometry data",
+                    "does": "processGeometry → createLayers → applyStyles → addToMap",
+                    "out": "Styled route layers on map"
+                  },
+                  
+                  "talks_to": {
+                    "mapbox_maps_flutter": "map layer and source management"
+                  },
+                  
+                  "behavior": ["geometry processing", "multi-modal styling", "layer creation"],
+                  "role": "executor",
+                  
+                  "dependencies": [{
+                    "moduleId": "mapbox_maps_flutter",
+                    "purpose": "map rendering API",
+                    "type": "import",
+                    "isExternal": true,
+                    "timing": "on-demand"
+                  }],
+                  
+                  "sideEffects": ["creates map layers", "adds geometry sources"],
+                  "flowNotes": "Handles the visual representation of routes with different styles for walking, bus, and waiting segments"
+                },
+                
+                "map_bus_realtime": {
+                  "id": "map_bus_realtime",
+                  "name": "MapBusRealtime",
+                  "sourcePath": "lib/map_manager/map_bus_realtime.dart",
+                  "depth": 3,
+                  "purpose": "Real-time bus position visualization and tracking",
+                  "type": "class",
+                  "concern": "Dynamic bus position updates and animations",
+                  
+                  "flow": {
+                    "in": "Bus positions and ETA data",
+                    "does": "updatePosition → animate → showTooltips → manageTracking",
+                    "out": "Animated bus markers with real-time data"
+                  },
+                  
+                  "talks_to": {
+                    "mapbox_maps_flutter": "bus marker and animation management"
+                  },
+                  
+                  "behavior": ["real-time updates", "position animations", "ETA tooltips", "hybrid tracking"],
+                  "role": "executor",
+                  
+                  "dependencies": [{
+                    "moduleId": "mapbox_maps_flutter",
+                    "purpose": "map marker and animation API",
+                    "type": "import",
+                    "isExternal": true,
+                    "timing": "on-demand"
+                  }],
+                  
+                  "sideEffects": ["animates map markers", "manages real-time layers"],
+                  "flowNotes": "Manages real-time bus visualization with smooth animations and context-aware tracking modes"
+                }
+              }
+            },
+            
+            "phase_overlays": {
+              "id": "phase_overlays",
+              "name": "Phase Overlays",
+              "sourcePath": "lib/ui/overlays/",
+              "depth": 2,
+              "purpose": "Phase-specific UI overlays for different app states",
+              "type": "namespace",
+              "concern": "Context-sensitive user interface rendering",
+              
+              "flow": {
+                "in": "Current app phase and relevant state data",
+                "does": "render phase-specific UI → handle user interactions → update state",
+                "out": "Interactive UI appropriate for current app phase"
+              },
+              
+              "talks_to": {
+                "app_logic_provider": "triggers state changes based on user actions"
+              },
+              
+              "behavior": ["phase-specific rendering", "user interaction handling", "state-driven UI"],
+              "role": "executor",
+              
+              "children": {
+                "initial_phase_overlay": {
+                  "id": "initial_phase_overlay",
+                  "name": "InitialPhaseOverlay",
+                  "sourcePath": "lib/ui/overlays/initial_phase_overlay.dart",
+                  "depth": 3,
+                  "purpose": "Search interface for origin and destination selection",
+                  "type": "class",
+                  "concern": "Route planning initiation interface",
+                  
+                  "flow": {
+                    "in": "User text input and location selections",
+                    "does": "handleInput → showSuggestions → validateSelections → triggerSearch",
+                    "out": "Route search initiation"
+                  },
+                  
+                  "dependencies": [{
+                    "moduleId": "app_search_panel",
+                    "purpose": "search input components",
+                    "type": "composition",
+                    "isExternal": false,
+                    "timing": "startup"
+                  }],
+                  
+                  "flowNotes": "Provides the main search interface for users to input origin and destination"
+                },
+                
+                "route_options_overlay": {
+                  "id": "route_options_overlay",
+                  "name": "RouteOptionsOverlay",
+                  "sourcePath": "lib/ui/overlays/route_options_overlay.dart",
+                  "depth": 3,
+                  "purpose": "Route selection interface with preview functionality",
+                  "type": "class",
+                  "concern": "Route option presentation and selection",
+                  
+                  "flow": {
+                    "in": "Available route options and map preview requests",
+                    "does": "displayOptions → handlePreview → confirmSelection → startJourney",
+                    "out": "Selected route and journey initiation"
+                  },
+                  
+                  "flowNotes": "Displays route options in a carousel format with map preview integration"
+                },
+                
+                "active_trip_overlay": {
+                  "id": "active_trip_overlay",
+                  "name": "ActiveTripOverlay",
+                  "sourcePath": "lib/ui/overlays/active_trip_overlay.dart",
+                  "depth": 3,
+                  "purpose": "Journey guidance interface with automatic and manual navigation",
+                  "type": "class",
+                  "concern": "Active journey management and step-by-step guidance",
+                  
+                  "flow": {
+                    "in": "Journey steps, location updates, bus tracking data",
+                    "does": "displayProgress → handleTransitions → showRealTimeData → manageNavigation",
+                    "out": "Step-by-step guidance and progress visualization"
+                  },
+                  
+                  "dependencies": [{
+                    "moduleId": "journey_step_state",
+                    "purpose": "automatic navigation state",
+                    "type": "import",
+                    "isExternal": false,
+                    "timing": "on-demand"
+                  }],
+                  
+                  "flowNotes": "Provides comprehensive journey guidance with automatic step detection and manual navigation options",
+                  
+                  "children": {
+                    "journey_step_state": {
+                      "id": "journey_step_state",
+                      "name": "JourneyStepState",
+                      "sourcePath": "lib/journey/journey_step_state.dart",
+                      "depth": 4,
+                      "purpose": "Immutable state for individual journey steps in automatic navigation",
+                      "type": "class",
+                      "concern": "Step-level progress tracking and state management",
+                      
+                      "flow": {
+                        "in": "Step configuration and progress updates",
+                        "does": "validateStep → trackProgress → formatDisplay → detectCompletion",
+                        "out": "Formatted step state with progress information"
+                      },
+                      
+                      "behavior": ["immutable state", "progress calculations", "display formatting", "completion detection"],
+                      "role": "storage",
+                      
+                      "flowNotes": "Represents the state of individual steps in automatic navigation with progress tracking and formatting"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,521 @@
+{
+  "system": "Bondi UY",
+  "entryPoint": "lib/main.dart",
+  
+  "modules": {
+    "main": {
+      "id": "main",
+      "name": "main",
+      "sourcePath": "lib/main.dart",
+      "depth": 0,
+      "purpose": "Bootstrap the Flutter application and set up providers",
+      "type": "function",
+      "concern": "Application initialization and dependency injection setup",
+      
+      "flow": {
+        "in": "Flutter framework initialization",
+        "does": "ensureInitialized() → runApp() → ProviderScope → AppHost",
+        "out": "Fully initialized app with dependency injection"
+      },
+      
+      "talks_to": {
+        "app_host": "provides root widget for UI rendering",
+        "flutter_riverpod": "establishes global provider scope for state management"
+      },
+      
+      "behavior": ["singleton entry point", "synchronous initialization", "provider scope wrapper"],
+      "role": "orchestrator",
+      
+      "inputs": [],
+      "outputs": [{
+        "name": "app",
+        "type": "Widget", 
+        "description": "Root app widget with providers",
+        "destination": "Flutter framework"
+      }],
+      
+      "dependencies": [{
+        "moduleId": "app_host",
+        "purpose": "root UI widget",
+        "type": "import",
+        "isExternal": false,
+        "timing": "startup"
+      }],
+      
+      "sideEffects": [
+        "initializes Flutter widgets binding",
+        "establishes global provider scope"
+      ],
+      
+      "flowNotes": "Entry point that bootstraps the Flutter app with Riverpod state management and launches the main UI widget",
+      
+      "children": {
+        "app_host": {
+          "id": "app_host",
+          "name": "AppHost",
+          "sourcePath": "lib/ui/app_host.dart",
+          "depth": 1,
+          "purpose": "Central UI orchestrator managing app phases and map lifecycle",
+          "type": "class",
+          "concern": "UI state coordination and map management lifecycle",
+          
+          "flow": {
+            "in": "App state from appLogicProvider, map events",
+            "does": "watch state → render phase overlay → manage map transitions → handle errors",
+            "out": "Rendered UI with appropriate overlay for current phase"
+          },
+          
+          "talks_to": {
+            "app_logic_provider": "consumes app state and calls state actions",
+            "map_manager": "coordinates map rendering and lifecycle", 
+            "phase_overlays": "renders UI for specific app phases"
+          },
+          
+          "behavior": ["stateful consumer widget", "phase-based rendering", "map lifecycle management"],
+          "role": "coordinator",
+          
+          "children": {
+            "app_logic_provider": {
+              "id": "app_logic_provider", 
+              "name": "AppLogicNotifier",
+              "sourcePath": "lib/backend/providers/app_logic_provider.dart",
+              "depth": 2,
+              "purpose": "Core business logic, state management, and journey state machine",
+              "type": "class",
+              "concern": "Centralized state management and automatic journey progression",
+              
+              "flow": {
+                "in": "User actions, service responses, location updates, arrival events",
+                "does": "validate → call services → run state machine → manage timers → coordinate automatic navigation → handle transitions",
+                "out": "Updated AppUiState, automatic step transitions, timer management"
+              },
+              
+              "talks_to": {
+                "montevideo_api_service": "fetches bus data and ETAs with conditional polling",
+                "itinerary_planning_service": "plans routes between origin/destination",
+                "geocoding_service": "handles location search and reverse geocoding",
+                "location_tracker": "manages automatic navigation and arrival detection",
+                "journey_state_machine": "handles automatic step transitions",
+                "bus_boarding_detector": "detects when user boards bus",
+                "hybrid_bus_tracker": "switches between API and user location modes"
+              },
+              
+              "behavior": [
+                "finite state machine for journey steps",
+                "conditional ETA polling (stops when user boards bus)",
+                "automatic step transitions via geofences",
+                "hybrid bus tracking mode switching",
+                "bus boarding detection via speed + location analysis"
+              ],
+              "role": "orchestrator",
+              
+              "sideEffects": [
+                "manages _seguimientoBusTimer with conditional logic",
+                "stops ETA polling when user transitions to RIDING_BUS",
+                "switches bus tracking from API to user location mode",
+                "triggers automatic geofence-based step transitions"
+              ],
+              
+              "flowNotes": "Implements complete journey state machine with automatic transitions: WALKING_TO_STOP → WAITING_FOR_BUS → RIDING_BUS → WALKING_TO_DESTINATION",
+              
+              "children": {
+                "journey_state_machine": {
+                  "id": "journey_state_machine",
+                  "name": "Journey State Machine",
+                  "sourcePath": "lib/backend/providers/app_logic_provider.dart (lines 1313-1376)",
+                  "depth": 3,
+                  "purpose": "Automatic journey step transitions and state management",
+                  "type": "function",
+                  "concern": "Finite state machine for journey progression",
+                  
+                  "flow": {
+                    "in": "arrival events, current step state, location updates",
+                    "does": "validateTransition → determineNextStep → configureTracking → notifyUI",
+                    "out": "automatic step transitions and tracking mode changes"
+                  },
+                  
+                  "talks_to": {
+                    "location_tracker": "receives arrival detection events",
+                    "bus_boarding_detector": "validates bus boarding conditions",
+                    "hybrid_bus_tracker": "configures tracking mode per step"
+                  },
+                  
+                  "behavior": [
+                    "geofence-based automatic transitions",
+                    "validates step completion conditions", 
+                    "configures appropriate tracking for each step",
+                    "handles journey completion detection"
+                  ],
+                  "role": "coordinator",
+                  
+                  "inputs": [{
+                    "name": "arrivalEvent",
+                    "type": "String (geofence ID)",
+                    "description": "Geofence arrival notification",
+                    "source": "LocationTracker callback"
+                  }],
+                  
+                  "outputs": [{
+                    "name": "stepTransition",
+                    "type": "JourneyStepState",
+                    "description": "New journey step configuration",
+                    "destination": "AppUiState and UI components"
+                  }],
+                  
+                  "sideEffects": [
+                    "automatic progression through journey steps",
+                    "reconfigures geofences for next step",
+                    "triggers bus tracking mode changes"
+                  ],
+                  
+                  "flowNotes": "Core state machine implementing the exact transitions: Llegada a parada → Esperar bus → Subir al bus → En el bus → Llegar a parada destino → Siguiente paso"
+                },
+                
+                "bus_boarding_detector": {
+                  "id": "bus_boarding_detector",
+                  "name": "Bus Boarding Detector",
+                  "sourcePath": "lib/journey/route_dynamic_calculator.dart (lines 152-172)",
+                  "depth": 3,
+                  "purpose": "Detects when user boards bus using location and speed analysis",
+                  "type": "function",
+                  "concern": "Movement pattern analysis for bus boarding detection",
+                  
+                  "flow": {
+                    "in": "user location, user speed, bus route geometry",
+                    "does": "checkRouteProximity → validateSpeed → detectBoarding",
+                    "out": "boarding detection boolean"
+                  },
+                  
+                  "talks_to": {
+                    "route_geometry_analyzer": "validates proximity to bus route",
+                    "location_tracker": "receives user speed from GPS"
+                  },
+                  
+                  "behavior": [
+                    "dual-criteria detection: location + speed",
+                    "100m proximity threshold to bus route",
+                    "2.0 m/s minimum speed (above walking speed)",
+                    "geometric route analysis for validation"
+                  ],
+                  "role": "executor",
+                  
+                  "inputs": [{
+                    "name": "userLocation",
+                    "type": "Coordenada",
+                    "description": "Current user GPS position",
+                    "source": "LocationTracker"
+                  }, {
+                    "name": "userSpeed", 
+                    "type": "double",
+                    "description": "User movement speed in m/s",
+                    "source": "Geolocator GPS data"
+                  }],
+                  
+                  "outputs": [{
+                    "name": "boardingDetected",
+                    "type": "bool",
+                    "description": "Whether user has boarded the bus",
+                    "destination": "journey state machine"
+                  }],
+                  
+                  "sideEffects": ["triggers transition from WAITING_FOR_BUS to RIDING_BUS"],
+                  
+                  "flowNotes": "Implements sophisticated bus boarding detection using combined location proximity and speed analysis to distinguish between 'waiting at stop' vs 'riding bus'"
+                },
+                
+                "hybrid_bus_tracker": {
+                  "id": "hybrid_bus_tracker", 
+                  "name": "Hybrid Bus Tracker",
+                  "sourcePath": "lib/backend/providers/app_logic_provider.dart (lines 1571-1600)",
+                  "depth": 3,
+                  "purpose": "Switches bus tracking data source based on user state",
+                  "type": "function",
+                  "concern": "Conditional ETA polling and tracking mode management",
+                  
+                  "flow": {
+                    "in": "journey step type, user location, bus position",
+                    "does": "evaluateStepType → configureTracking → switchDataSource → managePolling",
+                    "out": "appropriate tracking configuration and ETA polling control"
+                  },
+                  
+                  "talks_to": {
+                    "map_bus_realtime": "configures tracking mode",
+                    "montevideo_api_service": "controls ETA polling timer"
+                  },
+                  
+                  "behavior": [
+                    "WALKING/WAITING: API tracking + ETA polling active",
+                    "RIDING_BUS: user location mode + ETA polling STOPPED", 
+                    "automatic mode switching on step transitions",
+                    "seamless data source switching"
+                  ],
+                  "role": "coordinator",
+                  
+                  "inputs": [{
+                    "name": "stepType",
+                    "type": "JourneyStepType",
+                    "description": "Current journey step",
+                    "source": "journey state machine"
+                  }],
+                  
+                  "outputs": [{
+                    "name": "trackingConfig",
+                    "type": "BusTrackingMode",
+                    "description": "Tracking mode configuration",
+                    "destination": "MapBusRealtime"
+                  }],
+                  
+                  "sideEffects": [
+                    "stops _seguimientoBusTimer when user boards bus",
+                    "switches map visualization data source",
+                    "prevents unnecessary API calls during bus riding"
+                  ],
+                  
+                  "flowNotes": "Implements the exact flow requirement: 'Stop sondeo ETA' when user transitions to riding bus, and 'Usuario = ubicación bus' mode switching"
+                },
+                
+                "location_tracker": {
+                  "id": "location_tracker",
+                  "name": "LocationTracker", 
+                  "sourcePath": "lib/journey/location_tracker.dart",
+                  "depth": 3,
+                  "purpose": "GPS tracking with geofence-based arrival detection",
+                  "type": "class",
+                  "concern": "Real-time location tracking and automatic arrival detection",
+                  
+                  "flow": {
+                    "in": "GPS permissions, destination coordinates, geofence configurations",
+                    "does": "requestPermissions → startTracking → monitorGeofences → detectArrivals → notifyCallbacks",
+                    "out": "location updates and arrival notifications"
+                  },
+                  
+                  "talks_to": {
+                    "geolocator": "GPS location services with speed data",
+                    "geometry_utils": "distance calculations for geofences"
+                  },
+                  
+                  "behavior": [
+                    "5-second GPS polling interval",
+                    "50-meter arrival threshold for geofences",
+                    "automatic arrival detection",
+                    "speed data collection for boarding detection"
+                  ],
+                  "role": "executor",
+                  
+                  "inputs": [{
+                    "name": "destinations",
+                    "type": "List<Coordenada>",
+                    "description": "Target locations for geofence setup", 
+                    "source": "journey management"
+                  }],
+                  
+                  "outputs": [{
+                    "name": "locationUpdate",
+                    "type": "Coordenada",
+                    "description": "Current user location with speed",
+                    "destination": "onLocationUpdate callback"
+                  }, {
+                    "name": "arrivalDetected",
+                    "type": "String",
+                    "description": "Geofence ID when arrival detected",
+                    "destination": "onArrivalDetected callback"
+                  }],
+                  
+                  "sideEffects": [
+                    "requests location permissions",
+                    "starts background GPS polling",
+                    "triggers automatic journey step transitions"
+                  ],
+                  
+                  "flowNotes": "Provides the foundation for automatic journey transitions by detecting when user arrives at destinations and providing speed data for bus boarding detection"
+                }
+              }
+            },
+            
+            "map_manager": {
+              "id": "map_manager",
+              "name": "MapManager",
+              "sourcePath": "lib/map_manager/map_manager.dart", 
+              "depth": 2,
+              "purpose": "Unified map state management with dynamic zoom and hybrid tracking",
+              "type": "class",
+              "concern": "Map visualization lifecycle, dynamic zoom, and tracking mode coordination",
+              
+              "flow": {
+                "in": "Route data, bus positions, phase changes, tracking mode switches",
+                "does": "initialize → render routes → manage dynamic zoom → coordinate hybrid tracking → optimize transitions",
+                "out": "Updated map visualization with intelligent camera control and hybrid data sources"
+              },
+              
+              "talks_to": {
+                "map_route_renderer": "renders route geometries on map",
+                "map_bus_realtime": "displays real-time bus positions with mode switching",
+                "map_camera_controller": "handles dynamic zoom for multiple points",
+                "map_cleanup": "manages layer lifecycle"
+              },
+              
+              "children": {
+                "map_camera_controller": {
+                  "id": "map_camera_controller",
+                  "name": "MapCameraController",
+                  "sourcePath": "lib/map_manager/map_camera_controller.dart",
+                  "depth": 3,
+                  "purpose": "Dynamic zoom control for multiple points of interest",
+                  "type": "class", 
+                  "concern": "Camera control and zoom optimization for bus + stop visualization",
+                  
+                  "flow": {
+                    "in": "multiple coordinates (bus + stop), current leg info",
+                    "does": "calculateBounds → addBusCoordinates → optimizePadding → animateCamera",
+                    "out": "optimal viewport showing all points of interest"
+                  },
+                  
+                  "talks_to": {
+                    "mapbox_maps_flutter": "camera control and animation API"
+                  },
+                  
+                  "behavior": [
+                    "multi-point bounding box calculation",
+                    "dynamic padding based on UI elements",
+                    "includes real-time bus positions in zoom",
+                    "smooth camera animations"
+                  ],
+                  "role": "executor",
+                  
+                  "inputs": [{
+                    "name": "coordinates",
+                    "type": "List<Coordenada>",
+                    "description": "Points to include in viewport (stop + bus)",
+                    "source": "journey leg data + bus tracking"
+                  }],
+                  
+                  "outputs": [{
+                    "name": "cameraAnimation",
+                    "type": "CameraOptions",
+                    "description": "Optimal camera position and zoom",
+                    "destination": "Mapbox map instance"
+                  }],
+                  
+                  "sideEffects": ["animates map camera to optimal zoom level"],
+                  
+                  "flowNotes": "Implements the exact requirement 'zoom dinámico parada-bus' by calculating optimal viewport to show both bus stop and approaching bus simultaneously"
+                },
+                
+                "map_bus_realtime": {
+                  "id": "map_bus_realtime",
+                  "name": "MapBusRealtime",
+                  "sourcePath": "lib/map_manager/map_bus_realtime.dart",
+                  "depth": 3,
+                  "purpose": "Hybrid bus tracking with automatic mode switching",
+                  "type": "class",
+                  "concern": "Real-time bus visualization with context-aware data sources",
+                  
+                  "flow": {
+                    "in": "bus positions, user location, tracking mode commands",
+                    "does": "manageTrackingMode → switchDataSource → animatePositions → updateTooltips",
+                    "out": "real-time bus visualization with appropriate data source"
+                  },
+                  
+                  "talks_to": {
+                    "mapbox_maps_flutter": "bus marker and animation management",
+                    "montevideo_api_service": "API-based bus position data",
+                    "location_tracker": "user location for riding mode"
+                  },
+                  
+                  "behavior": [
+                    "API_REALTIME mode for waiting/walking phases",
+                    "USER_LOCATION mode for riding bus phase", 
+                    "automatic mode switching on step transitions",
+                    "seamless animation between data sources"
+                  ],
+                  "role": "executor",
+                  
+                  "inputs": [{
+                    "name": "trackingMode",
+                    "type": "BusTrackingMode",
+                    "description": "API_REALTIME or USER_LOCATION",
+                    "source": "hybrid bus tracker"
+                  }],
+                  
+                  "outputs": [{
+                    "name": "busVisualization",
+                    "type": "Map markers and animations",
+                    "description": "Real-time bus position on map",
+                    "destination": "Mapbox map instance"
+                  }],
+                  
+                  "sideEffects": [
+                    "switches between API polling and user GPS",
+                    "manages bus marker animations",
+                    "coordinates with ETA polling lifecycle"
+                  ],
+                  
+                  "flowNotes": "Implements hybrid tracking where bus position comes from API when waiting, but switches to user location when riding, fulfilling 'Usuario = ubicación bus' requirement"
+                }
+              }
+            },
+            
+            "phase_overlays": {
+              "id": "phase_overlays",
+              "name": "Phase Overlays",
+              "sourcePath": "lib/ui/overlays/",
+              "depth": 2,
+              "purpose": "Phase-specific UI with automatic navigation integration",
+              "type": "namespace",
+              "concern": "Context-sensitive user interface with journey progress visualization",
+              
+              "children": {
+                "active_trip_overlay": {
+                  "id": "active_trip_overlay",
+                  "name": "ActiveTripOverlay", 
+                  "sourcePath": "lib/ui/overlays/active_trip_overlay.dart",
+                  "depth": 3,
+                  "purpose": "Journey guidance with automatic and manual navigation modes",
+                  "type": "class",
+                  "concern": "Step-by-step guidance with automatic transition detection",
+                  
+                  "flow": {
+                    "in": "journey steps, automatic transitions, location updates, bus tracking data",
+                    "does": "detectTransitions → displayProgress → showRealTimeData → manageNavigation → adaptToAutomaticMode",
+                    "out": "responsive guidance interface with automatic step progression"
+                  },
+                  
+                  "talks_to": {
+                    "journey_step_state": "displays automatic navigation progress",
+                    "app_logic_provider": "listens for automatic step transitions"
+                  },
+                  
+                  "behavior": [
+                    "automatic transition detection and UI adaptation",
+                    "dual mode: automatic vs manual navigation",
+                    "real-time progress visualization",
+                    "conditional UI elements based on navigation mode"
+                  ],
+                  "role": "executor",
+                  
+                  "inputs": [{
+                    "name": "stepTransitions",
+                    "type": "JourneyStepState changes",
+                    "description": "Automatic step progression events",
+                    "source": "journey state machine"
+                  }],
+                  
+                  "outputs": [{
+                    "name": "adaptiveUI",
+                    "type": "Widget",
+                    "description": "UI adapted to current navigation mode",
+                    "destination": "user interface"
+                  }],
+                  
+                  "sideEffects": ["adapts UI controls based on automatic navigation state"],
+                  
+                  "flowNotes": "Provides comprehensive journey guidance that automatically adapts UI when system detects step transitions, hiding manual controls during automatic navigation"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'package:bondi_uy/backend/contrato_ui/app_ui_state.dart';
 import 'map_manager.dart';
@@ -80,9 +79,51 @@ class MapCameraController {
         coordinatesForZoom.add(tramo.posicionPunto!);
       }
 
-      // Si es un tramo ESPERAR_BUS, incluir coordenadas del bus en tiempo real
+      // Si es ESPERAR_BUS: incluir bus y también la ubicación del usuario si está disponible
       if (tramo.tipo == TipoTramoViaje.ESPERAR_BUS) {
         _addBusCoordinatesForWaitingLeg(tramos, legIndex, coordinatesForZoom);
+
+        final userPos = mapManager.getCurrentUserLocation();
+        if (userPos != null) {
+          coordinatesForZoom.add(userPos);
+          print(
+            "[MapCameraController] Added user location for waiting leg zoom: (${userPos.latitud}, ${userPos.longitud})",
+          );
+        }
+      }
+
+      // Si es VIAJE_EN_BUS: incluir la ubicación del bus/usuario y la parada destino
+      if (tramo.tipo == TipoTramoViaje.VIAJE_EN_BUS) {
+        final busPos = mapManager.getCurrentBusPosition();
+        if (busPos != null) {
+          coordinatesForZoom.add(busPos);
+          print(
+            "[MapCameraController] Added bus/user position for riding leg zoom: (${busPos.latitud}, ${busPos.longitud})",
+          );
+        }
+        if (tramo.coordenadasParadaDestino != null) {
+          coordinatesForZoom.add(tramo.coordenadasParadaDestino!);
+          print(
+            "[MapCameraController] Added destination stop for riding leg zoom: (${tramo.coordenadasParadaDestino!.latitud}, ${tramo.coordenadasParadaDestino!.longitud})",
+          );
+        }
+      }
+
+      // Si es CAMINAR: incluir próxima parada y, si existe, una posición de bus para que el usuario tenga contexto
+      if (tramo.tipo == TipoTramoViaje.CAMINAR) {
+        if (tramo.coordenadasParadaDestino != null) {
+          coordinatesForZoom.add(tramo.coordenadasParadaDestino!);
+          print(
+            "[MapCameraController] Added target stop for walking leg zoom: (${tramo.coordenadasParadaDestino!.latitud}, ${tramo.coordenadasParadaDestino!.longitud})",
+          );
+        }
+        final busPos = mapManager.getCurrentBusPosition();
+        if (busPos != null) {
+          coordinatesForZoom.add(busPos);
+          print(
+            "[MapCameraController] Added bus position for walking leg zoom: (${busPos.latitud}, ${busPos.longitud})",
+          );
+        }
       }
 
       // Hacer zoom según las coordenadas disponibles
@@ -207,12 +248,8 @@ class MapCameraController {
 
   /// Obtener padding para tramo actual
   MbxEdgeInsets _getCurrentLegPadding() {
-    return MbxEdgeInsets(
-      top: 250.0,
-      left: 40.0,
-      bottom: 120.0, // Un poco más de espacio inferior
-      right: 40.0,
-    );
+    // Aumentar padding para evitar cortar el bus en el borde, especialmente en esperar bus
+    return MbxEdgeInsets(top: 260.0, left: 60.0, bottom: 160.0, right: 60.0);
   }
 
   /// Agregar coordenadas del bus en tiempo real para tramo de espera
@@ -266,5 +303,36 @@ class MapCameraController {
     print(
       "[MapCameraController] No bus coordinates available for waiting leg zoom",
     );
+  }
+
+  /// Ajuste dinámico (en vivo) entre parada y bus durante WAITING_FOR_BUS con ETA.
+  Future<void> updateWaitingBusViewport({
+    required TramoViajeMostrable waitingLeg,
+    required Coordenada busPosition,
+    Coordenada? userPosition,
+  }) async {
+    if (mapboxMap == null) return;
+    try {
+      final List<Coordenada> coords = [];
+      // Parada origen (o punto) del tramo de espera
+      if (waitingLeg.coordenadasParadaOrigen != null) {
+        coords.add(waitingLeg.coordenadasParadaOrigen!);
+      } else if (waitingLeg.posicionPunto != null) {
+        coords.add(waitingLeg.posicionPunto!);
+      }
+      // Bus realtime
+      coords.add(busPosition);
+      // Usuario ayuda a mantener contexto si se mueve alejándose
+      if (userPosition != null) {
+        coords.add(userPosition);
+      }
+      if (coords.length < 2) return; // Necesitamos al menos bus + parada
+      await _zoomToCoordinates(
+        coords,
+        _getCurrentLegPadding(), // Reusar padding de tramo actual
+      );
+    } catch (e) {
+      print("[MapCameraController] Error en updateWaitingBusViewport: $e");
+    }
   }
 }

@@ -148,3 +148,56 @@ List<Coordenada> getGeometrySegment(
 
   return fullGeometry.sublist(start, end + 1);
 }
+
+// Calcula la distancia mínima de un punto a un segmento de línea
+double distanceToLineSegment(
+  Coordenada point,
+  Coordenada lineStart,
+  Coordenada lineEnd,
+) {
+  // Convertir coordenadas a radianes para cálculos precisos
+  final pointLat = point.latitud * math.pi / 180;
+  final pointLon = point.longitud * math.pi / 180;
+  final startLat = lineStart.latitud * math.pi / 180;
+  final startLon = lineStart.longitud * math.pi / 180;
+  final endLat = lineEnd.latitud * math.pi / 180;
+  final endLon = lineEnd.longitud * math.pi / 180;
+
+  // Calcular vectores
+  final A = pointLat - startLat;
+  final B = pointLon - startLon;
+  final C = endLat - startLat;
+  final D = endLon - startLon;
+
+  final dot = A * C + B * D;
+  final lenSq = C * C + D * D;
+
+  Coordenada closestPoint;
+
+  if (lenSq == 0) {
+    // El segmento es un punto
+    closestPoint = lineStart;
+  } else {
+    final param = dot / lenSq;
+
+    if (param < 0) {
+      closestPoint = lineStart;
+    } else if (param > 1) {
+      closestPoint = lineEnd;
+    } else {
+      closestPoint = Coordenada(
+        latitud:
+            lineStart.latitud + param * (endLat - startLat) * 180 / math.pi,
+        longitud:
+            lineStart.longitud + param * (endLon - startLon) * 180 / math.pi,
+      );
+    }
+  }
+
+  return calculateHaversineDistance(
+    point.latitud,
+    point.longitud,
+    closestPoint.latitud,
+    closestPoint.longitud,
+  );
+}

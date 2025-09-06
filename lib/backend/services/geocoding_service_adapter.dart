@@ -70,4 +70,39 @@ class GeocodingServiceAdapter {
       return [];
     }
   }
+
+  Future<List<SugerenciaLugar>> reverseGeocode(Coordenada location) async {
+    if (_apiKey.isEmpty) {
+      print('Error: Mapbox Access Token no está configurado.');
+      return [];
+    }
+
+    final url =
+        'https://api.mapbox.com/geocoding/v5/mapbox.places/${location.longitud},${location.latitud}.json?access_token=$_apiKey&country=UY&language=es&types=address,poi';
+
+    try {
+      final response = await _httpClient.get(Uri.parse(url));
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final features = data['features'] as List?;
+        if (features != null) {
+          return features
+              .map(
+                (feature) =>
+                    SugerenciaLugar.fromJson(feature as Map<String, dynamic>),
+              )
+              .toList();
+        }
+        return [];
+      } else {
+        print(
+          'Error Reverse Geocoding API: ${response.statusCode} - ${response.body}',
+        );
+        return [];
+      }
+    } catch (e) {
+      print('Excepción en reverseGeocode: $e');
+      return [];
+    }
+  }
 }

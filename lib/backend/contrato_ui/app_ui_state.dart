@@ -3,6 +3,9 @@
 // Este archivo define el contrato de datos y estados que la capa de lógica (backend)
 // proveerá a la capa de UI. La UI consumirá este estado para renderizarse.
 
+import '../../journey/journey_step_state.dart';
+import '../../journey/route_dynamic_calculator.dart';
+
 // --- Definiciones Base (reutilizables en varios estados) ---
 
 class Coordenada {
@@ -173,7 +176,7 @@ class TramoViajeMostrable {
   final String? nombreParadaOrigen;
   final Coordenada? coordenadasParadaDestino;
   final String? nombreParadaDestino;
-  
+
   // Campo para acceder a la geometría completa de la línea de bus
   final String? shapeId; // Para obtener geometría completa desde shapes.geojson
 
@@ -475,6 +478,17 @@ class AppUiState {
   // Nuevo campo para el estado de cálculo de ruta
   final EstadoSolicitud estadoCalculoRuta;
 
+  // Campos para ubicación actual del usuario
+  final EstadoSolicitud estadoUbicacionActual;
+  final Coordenada? ubicacionActualUsuario;
+  final String? mensajeErrorUbicacion;
+
+  // NUEVOS campos para tracking automático y flujo de navegación inteligente
+  final JourneyStepState? currentJourneyStep;
+  final bool isAutomaticNavigationEnabled;
+  final Coordenada? currentUserLocation;
+  final RouteProgress? currentStepProgress;
+
   AppUiState({
     required this.faseActual,
     this.datosFaseInicial,
@@ -498,6 +512,15 @@ class AppUiState {
     this.mensajeInfoGlobal,
 
     this.estadoCalculoRuta = EstadoSolicitud.INICIAL,
+    this.estadoUbicacionActual = EstadoSolicitud.INICIAL,
+    this.ubicacionActualUsuario,
+    this.mensajeErrorUbicacion,
+
+    // NUEVOS campos para tracking automático
+    this.currentJourneyStep,
+    this.isAutomaticNavigationEnabled = false,
+    this.currentUserLocation,
+    this.currentStepProgress,
   }) {
     // Validaciones de consistencia de estado
     if (faseActual == FaseApp.INICIAL_SIN_BUSQUEDA &&
@@ -540,6 +563,15 @@ class AppUiState {
       mensajeInfoGlobal: null,
 
       estadoCalculoRuta: EstadoSolicitud.INICIAL,
+      estadoUbicacionActual: EstadoSolicitud.INICIAL,
+      ubicacionActualUsuario: null,
+      mensajeErrorUbicacion: null,
+
+      // NUEVOS campos para tracking automático
+      currentJourneyStep: null,
+      isAutomaticNavigationEnabled: false,
+      currentUserLocation: null,
+      currentStepProgress: null,
     );
   }
 
@@ -578,6 +610,20 @@ class AppUiState {
     String? mensajeInfoGlobal,
     bool clearMensajeInfoGlobal = false,
     EstadoSolicitud? estadoCalculoRuta,
+    EstadoSolicitud? estadoUbicacionActual,
+    Coordenada? ubicacionActualUsuario,
+    bool clearUbicacionActualUsuario = false,
+    String? mensajeErrorUbicacion,
+    bool clearMensajeErrorUbicacion = false,
+
+    // NUEVOS parámetros para tracking automático
+    JourneyStepState? currentJourneyStep,
+    bool clearCurrentJourneyStep = false,
+    bool? isAutomaticNavigationEnabled,
+    Coordenada? currentUserLocation,
+    bool clearCurrentUserLocation = false,
+    RouteProgress? currentStepProgress,
+    bool clearCurrentStepProgress = false,
   }) {
     return AppUiState(
       faseActual: faseActual ?? this.faseActual,
@@ -648,6 +694,32 @@ class AppUiState {
               ? null
               : mensajeInfoGlobal ?? this.mensajeInfoGlobal,
       estadoCalculoRuta: estadoCalculoRuta ?? this.estadoCalculoRuta,
+      estadoUbicacionActual:
+          estadoUbicacionActual ?? this.estadoUbicacionActual,
+      ubicacionActualUsuario:
+          clearUbicacionActualUsuario
+              ? null
+              : ubicacionActualUsuario ?? this.ubicacionActualUsuario,
+      mensajeErrorUbicacion:
+          clearMensajeErrorUbicacion
+              ? null
+              : mensajeErrorUbicacion ?? this.mensajeErrorUbicacion,
+
+      // NUEVOS campos para tracking automático
+      currentJourneyStep:
+          clearCurrentJourneyStep
+              ? null
+              : currentJourneyStep ?? this.currentJourneyStep,
+      isAutomaticNavigationEnabled:
+          isAutomaticNavigationEnabled ?? this.isAutomaticNavigationEnabled,
+      currentUserLocation:
+          clearCurrentUserLocation
+              ? null
+              : currentUserLocation ?? this.currentUserLocation,
+      currentStepProgress:
+          clearCurrentStepProgress
+              ? null
+              : currentStepProgress ?? this.currentStepProgress,
     );
   }
 
@@ -696,6 +768,7 @@ abstract class IAppLogic {
   void limpiarOrigenSeleccionado();
   void limpiarDestinoSeleccionado();
   void intercambiarOrigenYDestino();
+  Future<void> seleccionarUbicacionActualComoOrigen();
 
   Future<void> iniciarBusquedaDeRutas();
   Future<void> usuarioCanceloBusquedaOSeleccionRuta();

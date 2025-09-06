@@ -1,0 +1,248 @@
+{
+  "system": "Bondi UY - Location Flow Analysis",
+  "entryPoint": "lib/backend/providers/app_logic_provider.dart:_onUserLocationUpdate",
+
+  "modules": {
+    "location_flow_orchestrator": {
+      "id": "location_flow_orchestrator",
+      "name": "Location Flow Orchestrator",
+      "sourcePath": "lib/backend/providers/app_logic_provider.dart:_onUserLocationUpdate",
+      "depth": 0,
+      "purpose": "Orchestrates complete location workflow from GPS acquisition to map visualization with automatic journey progression",
+      "type": "function",
+      "concern": "Complete location data pipeline coordination with real-time visualization",
+
+      "flow": {
+        "in": "Coordenada from LocationTracker every 5 seconds",
+        "does": "validatePhase → updateMapLocation → calculateProgress → handleBusTracking → updateUI → checkTransitions",
+        "out": "Visual user location on map + automatic journey progression + UI updates"
+      },
+
+      "talks_to": {
+        "map_location_updater": "renders user location on map immediately",
+        "progress_calculator": "calculates journey progress asynchronously",
+        "bus_tracking_coordinator": "manages hybrid bus tracking modes",
+        "ui_state_updater": "notifies interface changes"
+      },
+
+      "behavior": [
+        "immediate map location update (line 1259)",
+        "asynchronous progress calculation to avoid blocking",
+        "hybrid bus tracking mode switching based on step type",
+        "automatic UI state synchronization",
+        "guards against disposed state"
+      ],
+      "role": "orchestrator",
+
+      "inputs": [
+        {
+          "name": "newLocation",
+          "type": "Coordenada",
+          "description": "Fresh GPS coordinates from LocationTracker",
+          "source": "LocationTracker.onLocationUpdate callback"
+        }
+      ],
+
+      "outputs": [
+        {
+          "name": "visualUpdate",
+          "type": "Map visualization + UI state",
+          "description": "Updated user location on map + journey progress in UI",
+          "destination": "MapManager + AppUiState + UI components"
+        }
+      ],
+
+      "dependencies": [
+        {
+          "moduleId": "map_location_updater",
+          "purpose": "immediate visual feedback on map",
+          "type": "call",
+          "isExternal": false,
+          "timing": "immediate"
+        }
+      ],
+
+      "sideEffects": [
+        "updates MapManager user location visualization",
+        "triggers AppUiState changes",
+        "switches bus tracking modes",
+        "logs location progress data"
+      ],
+
+      "flowNotes": "CRITICAL ISSUE: The map update happens but may not be visible due to layer ordering or rendering problems in Mapbox",
+
+      "children": {
+        "map_location_updater": {
+          "id": "map_location_updater",
+          "name": "Map Location Updater",
+          "sourcePath": "lib/backend/providers/app_logic_provider.dart:_updateUserLocationOnMap",
+          "depth": 1,
+          "purpose": "Bridges location updates to MapManager for immediate visual feedback",
+          "type": "function",
+          "concern": "Location visualization coordination between app logic and map rendering",
+
+          "flow": {
+            "in": "Coordenada from location orchestrator",
+            "does": "getMapManager → validateMapManager → callUpdateUserLocationClean → logResult",
+            "out": "User location rendered on map as blue circle"
+          },
+
+          "talks_to": {
+            "map_manager_provider": "accesses global MapManager instance",
+            "map_visualization_pipeline": "actual map rendering logic"
+          },
+
+          "behavior": [
+            "uses Riverpod provider to access MapManager",
+            "calls updateUserLocationClean for simplified rendering",
+            "includes error handling for null MapManager",
+            "logs success/failure states"
+          ],
+          "role": "coordinator",
+
+          "dependencies": [
+            {
+              "moduleId": "map_visualization_pipeline",
+              "purpose": "actual map rendering and layer management",
+              "type": "call",
+              "isExternal": false,
+              "timing": "immediate"
+            }
+          ],
+
+          "flowNotes": "Bridge function that connects app state to map visualization - POTENTIAL ISSUE HERE",
+
+          "children": {
+            "map_visualization_pipeline": {
+              "id": "map_visualization_pipeline",
+              "name": "Map Visualization Pipeline",
+              "sourcePath": "lib/map_manager/map_manager.dart:updateUserLocationClean",
+              "depth": 2,
+              "purpose": "Renders user location as visual circle on Mapbox map with error handling",
+              "type": "function",
+              "concern": "Simplified user location visualization without complex debugging",
+
+              "flow": {
+                "in": "Coordenada coordinates",
+                "does": "validateConditions → validateCoords → createGeoJSON → updateOrCreateSource → renderResult",
+                "out": "Blue circle marker on map at user location"
+              },
+
+              "talks_to": {
+                "condition_validator": "checks map readiness and phase",
+                "coordinate_validator": "validates GPS coordinate ranges",
+                "geojson_generator": "creates GeoJSON for Mapbox",
+                "mapbox_source_manager": "manages map data sources"
+              },
+
+              "behavior": [
+                "validates mapboxMap != null and _currentPhase == 'active_trip'",
+                "validates coordinate ranges before rendering",
+                "uses simplified source management (no complex debugging)",
+                "handles source existence with update-or-create pattern"
+              ],
+              "role": "coordinator",
+
+              "sideEffects": [
+                "updates 'user-location-source' in Mapbox",
+                "creates 'user-location-layer' if missing",
+                "registers source/layer for cleanup"
+              ],
+
+              "flowNotes": "CRITICAL: This is where the visual issue likely occurs - the source updates but visibility may be impacted",
+
+              "children": {
+                "condition_validator": {
+                  "id": "condition_validator",
+                  "name": "Map Rendering Condition Validator",
+                  "sourcePath": "lib/map_manager/map_manager.dart:lines 862-866",
+                  "depth": 3,
+                  "purpose": "Validates map readiness and correct app phase for location rendering",
+                  "type": "function",
+                  "concern": "Pre-render validation to prevent rendering errors",
+
+                  "flow": {
+                    "in": "MapManager state",
+                    "does": "checkMapboxMapNull → checkCurrentPhase → returnValidationResult",
+                    "out": "Boolean indicating readiness to render"
+                  },
+
+                  "behavior": [
+                    "ensures mapboxMap instance is not null",
+                    "validates _currentPhase == 'active_trip'",
+                    "returns early if conditions not met",
+                    "logs validation failure reasons"
+                  ],
+                  "role": "gateway",
+
+                  "flowNotes": "Gate function that prevents rendering in wrong conditions - POTENTIAL ISSUE if phase is incorrect"
+                },
+
+                "mapbox_source_manager": {
+                  "id": "mapbox_source_manager",
+                  "name": "Mapbox Source and Layer Manager",
+                  "sourcePath": "lib/map_manager/map_manager.dart:lines 897-910",
+                  "depth": 3,
+                  "purpose": "Manages Mapbox data source lifecycle and layer creation for user location",
+                  "type": "function",
+                  "concern": "Mapbox SDK interface for source/layer management",
+
+                  "flow": {
+                    "in": "GeoJSON data + source/layer configuration",
+                    "does": "checkSourceExists → updateExisting OR createSourceAndLayer → registerForCleanup",
+                    "out": "Active Mapbox source with visual layer"
+                  },
+
+                  "behavior": [
+                    "checks if 'user-location-source' exists",
+                    "updates existing source with new GeoJSON data",
+                    "creates new source + CircleLayer if missing",
+                    "registers source/layer for cleanup tracking"
+                  ],
+                  "role": "coordinator",
+
+                  "flowNotes": "KEY AREA: This directly interfaces with Mapbox SDK - source of potential rendering issues",
+
+                  "children": {
+                    "circle_layer_creator": {
+                      "id": "circle_layer_creator",
+                      "name": "User Location Circle Layer Creator",
+                      "sourcePath": "lib/map_manager/map_manager.dart:_createUserLocationClean",
+                      "depth": 4,
+                      "purpose": "Creates blue circle layer with specific styling for user location visualization",
+                      "type": "function",
+                      "concern": "Visual layer configuration and styling for user location",
+
+                      "flow": {
+                        "in": "Source/Layer IDs + styling configuration",
+                        "does": "removeExistingLayer → createGeoJsonSource → createCircleLayer → addToMap → register",
+                        "out": "Styled blue circle layer visible on map"
+                      },
+
+                      "behavior": [
+                        "removes existing layer to prevent conflicts",
+                        "creates GeoJsonSource with provided data",
+                        "creates CircleLayer with 8px radius",
+                        "applies blue color (0xFF2196F3) with white border",
+                        "sets 100% opacity for maximum visibility"
+                      ],
+                      "role": "executor",
+
+                      "sideEffects": [
+                        "adds CircleLayer to Mapbox map",
+                        "registers layer and source for tracking",
+                        "logs layer creation success"
+                      ],
+
+                      "flowNotes": "DEEPEST LEAF: This is where the actual visual element gets created - if map not showing user location, issue is likely here or in layer ordering"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

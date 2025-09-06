@@ -1,0 +1,187 @@
+SCOPE = "lib/main.dart"
+PROJECT_NAME = "Bondi UY" 
+OUTPUT = "docs/sonar"
+USER_FLOWS = """
+```mermaid
+flowchart TD
+    A["🔍 Usuario introduce origen y destino"] --> B["🔍 Usuario presiona buscar"]
+    B --> C["📱 App muestra carousel de opciones"]
+    C --> D{"🤔 Usuario explora opciones<br/>en carousel?"}
+    D -->|Sí| E["🗺️ Mapa muestra preview<br/>con zoom centrado"]
+    E --> F{"🚌 ¿Hay ETA para<br/>primera parada?"}
+    F -->|Sí| G["🚌 Se visualiza bus en tiempo real<br/>+ tramo verde a parada"]
+    F -->|No| H["📍 Solo se muestra preview básico"]
+    G --> I["▶️ Usuario selecciona opción<br/>e inicia viaje"]
+    H --> I
+    D -->|No| I
+    
+    I --> J["🎯 INICIO ACTIVE TRIP<br/>Sondeo bus en tiempo real"]
+    J --> K["🚶‍♂️ PASO 1: Caminar a parada"]
+    K --> L["📍 Ubicación cada 5s + tramo azul<br/>+ widget distancia + progreso"]
+    L --> M{"📍 ¿Usuario llegó<br/>a la parada?"}
+    M -->|No| L
+    M -->|Sí| N["🚏 PASO 2: Esperar bus"]
+    
+    N --> O{"🚌 ¿Hay ETA<br/>disponible?"}
+    O -->|No| P["📍 Mapa enfoca parada<br/>+ muestra línea a esperar"]
+    O -->|Sí| Q["🚌 Mapa enfoca parada + bus<br/>+ zoom dinámico parada-bus"]
+    
+    P --> R["⏱️ Monitor ubicación cada 5s<br/>¿Usuario se movió en tramo bus?"]
+    Q --> S["⏱️ Monitor ubicación cada 5s<br/>¿Usuario se movió en tramo bus?"]
+    
+    R --> T{"🚌 ¿Usuario subió al bus?"}
+    S --> U{"🚌 ¿Usuario subió al bus?"}
+    T -->|No| R
+    U -->|No| S
+    
+    T -->|Sí| V["🚌 PASO 3: En el bus<br/>Stop sondeo ETA<br/>Usuario = ubicación bus"]
+    U -->|Sí| V
+    
+    V --> W["🗺️ Mapa enfoca parada destino<br/>+ ubicación usuario/bus"]
+    W --> X{"📍 ¿Usuario llegó a<br/>parada destino?"}
+    X -->|No| W
+    X -->|Sí| Y["🚶‍♂️ Modo caminata default<br/>Próximo paso"]
+    
+    Y --> Z{"🤔 ¿Tipo de próximo paso?"}
+    Z -->|🚌 Esperar otro bus| AA["🚏 Reutilizar flujo espera bus<br/>(como PASO 2)"]
+    Z -->|🚶‍♂️ Caminar a otra parada| BB["🚶‍♂️ Reutilizar flujo caminata<br/>(como PASO 1)"]
+    Z -->|🎯 Caminar a destino final| CC["🚶‍♂️ Caminata al punto final<br/>(similar PASO 1)"]
+    
+    AA --> DD["🔄 Continuar con siguiente paso"]
+    BB --> DD
+    CC --> EE{"📍 ¿Usuario llegó al<br/>destino final?"}
+    EE -->|No| CC
+    EE -->|Sí| FF["✅ VIAJE FINALIZADO<br/>AUTOMÁTICAMENTE"]
+    
+    DD --> Y
+    
+    style A fill:#e1f5fe
+    style J fill:#c8e6c9
+    style K fill:#fff3e0
+    style N fill:#f3e5f5
+    style V fill:#e8f5e8
+    style FF fill:#c8e6c9
+```
+
+# 🔍 **SONAR Analysis - Advanced Module Flow Discovery**
+
+Analyze the codebase at **{{SCOPE}}** and create a comprehensive SONAR report following ACTUAL MODULE EXECUTION PATHS from entry points. This is NOT a file scan - trace real dependency chains and module usage.
+
+## Analysis Configuration
+- **Scope**: {{SCOPE}}
+- **Project**: {{PROJECT_NAME}}
+- **Output**: {{OUTPUT}}/modules.json
+- **Strategy**: Follow imports and real usage, trace execution paths
+- **Focus**: Map ALL modules relevant to {{USER_FLOWS}} execution
+
+## Process Instructions
+
+### 1. Entry Point Discovery
+- Start from main entry points in {{SCOPE}}
+- Identify the bootstrap sequence first
+
+### 2. Module Flow Tracing Strategy
+**CRITICAL**: This is dependency flow analysis, not file scanning.
+
+For each module found:
+- If **external** (IE node_modules) → register as dependency but DO NOT analyze deeper
+- If **internal** → analyze recursively following REAL usage
+- Identify: what it does, what it receives, what it produces
+- Follow actual function calls and instantiations, not just imports
+
+### 3. Analysis Rules
+- **Follow the execution path**: If activate() calls func1() which calls func2(), that's the path
+- **Track data flow**: How does information flow between modules?
+- **Real usage only**: Don't analyze unused imports or dead code
+- **Stop at externals**: Mark external dependencies but don't dive into stuff like node_modules or similar
+- **Focus on USER_FLOWS**: Prioritize modules involved in the specified user flows
+
+### 4. Module Identification
+For each module, determine:
+- **Concern**: What is this module's single responsibility?
+- **Flow**: What does it receive → process → output?
+- **Dependencies**: What other modules does THIS one actually use?
+- **Role**: What architectural role does it play?
+- **Depth**: Distance from entry point (automatically calculated by nesting)
+
+## Output Schema
+
+Create a single file **{{OUTPUT}}/modules.json** with this structure:
+
+```json
+{
+  "system": "{{PROJECT_NAME}}",
+  "entryPoint": "detected entry point path",
+  
+  "modules": {
+    "entry.point.identifier": {
+      "id": "entry.point.identifier",
+      "name": "moduleName",
+      "sourcePath": "relative/path/to/file.ts",
+      "depth": 0,
+      "purpose": "What this module does (1 line)",
+      "type": "function|class|object|interface|namespace",
+      "concern": "Single responsibility description",
+      
+      "flow": {
+        "in": "What it receives",
+        "does": "step1 → step2 → step3 (transformation pipeline)",
+        "out": "What it produces"
+      },
+      
+      "talks_to": {
+        "dependency.id": "specific purpose of this relationship",
+        "another.module": "why it uses this dependency"
+      },
+      
+      "behavior": ["key traits", "constraints", "patterns"],
+      "role": "orchestrator|executor|gateway|coordinator|storage",
+      
+      "inputs": [{
+        "name": "parameterName",
+        "type": "TypeScript type",
+        "description": "What this input represents",
+        "source": "parameter|import|context|global"
+      }],
+      
+      "outputs": [{
+        "name": "outputName", 
+        "type": "TypeScript type",
+        "description": "What this output represents",
+        "destination": "where this output goes"
+      }],
+      
+      "dependencies": [{
+        "moduleId": "target.module.id",
+        "purpose": "specific reason for using this",
+        "type": "import|instantiation|call|extends|composition",
+        "isExternal": false,
+        "timing": "startup|on-demand|lazy|eager"
+      }],
+      
+      "sideEffects": [
+        "modifies global state",
+        "creates files", 
+        "emits events"
+      ],
+      
+      "flowNotes": "Human-readable execution flow description",
+      
+      "children": [
+        "child.module.id": {
+            // Same schema as parent, nested as deep as we investigate
+            "id": "child.module.id",
+            "depth": 1,
+            // ... all other fields
+            
+            "children": [{
+                "grandchild.id": {
+                "depth": 2,
+                // ... recursively nested
+                }
+            }]
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,187 @@
+Rol: Eres un agente que lee el repo y construye progresivamente un único documento “ful-mapeo.md” con TODO lo importante (arquitectura, flujos finitos y TODAS las funciones con contratos y grafo de llamadas condicional).
+
+Salidas:
+- Escribe SIEMPRE el archivo completo en cada iteración, dentro de:
+  <<<WRITE /Users/felixandersson/dev/bondi-flutter/bondi_uy/docs/Bondi-UniDoc.md>>>
+  ...contenido completo del archivo...
+  <<<END_WRITE>>>
+- No imprimas nada fuera de ese bloque. Mensajes de progreso internos van dentro del doc en la sección <<<STATE_JSON>>>.
+
+Reglas globales:
+- Idioma: español.
+- Lectura de archivos: usa exclusivamente cat con rutas absolutas.
+  Ej: cat /Users/felixandersson/dev/bondi-flutter/bondi_uy/lib/backend/providers/app_logic_provider.dart
+- Alcance del análisis: código Dart en `lib/` (excluir `old/`, `test/`, auto-generados de plataformas).
+- Objetivo de cobertura: TODAS las funciones y métodos (incluyendo privados con “_”), excepto getters/setters triviales y constructores sin lógica.
+- IDs estables por función:
+  - Top-level: fileBase.fn → p.ej. map_manager.map_icons_loader.loadIcons
+  - Métodos: fileBase.Class.method → p.ej. map_manager.MapManager.updateUserLocationClean
+  - fileBase es la ruta desde `lib/` sin extensión, con `/` → `.` (ej: map_manager/map_manager.dart → map_manager.map_manager)
+- Catálogo en JSONL (1 JSON por línea), claves compactas:
+  - i id, f file, k kind("function"|"method"), a access("public"|"private"), p params[{n,t}], r return, s summary, pr preconditions[], e sideEffects[], c calls[{fn,w}], u usedInFlows[], t tags[]
+- Flujos finitos (FSM y pipelines) en JSON compacto y también 1–3 secuencias Mermaid.
+- Mantén JSON/JSONL válido (sin comas colgantes). No dupliques IDs.
+- Token budget: prioriza exactitud y compacidad. Resume `s` en ≤ 18 palabras.
+
+Estructura del archivo a construir (si no existe, créalo con esta plantilla):
+--- BONDI_UNIDOC v1 ---
+
+<<<META>>>
+system: Bondi UY
+repo_root: /Users/felixandersson/dev/bondi-flutter/bondi_uy
+generated_at: <ISO8601>
+version: 1
+<<<END>>>
+
+<<<PRIMER>>>
+[Resumen muy breve del sistema: objetivo, módulos clave, invariantes críticas]
+<<<END>>>
+
+<<<ARCH>>>
+{
+  "modules":[
+    {"id":"app_logic_provider","role":"orchestrator","talks_to":["location_tracker","map_manager","map_bus_realtime","services"],"entrypoints":["confirmarOpcionDeRutaEIniciarViaje","_onUserLocationUpdate"]},
+    {"id":"map_manager","role":"coordinator","talks_to":["map_route_renderer","map_bus_realtime","map_camera_controller","map_cleanup"]},
+    {"id":"map_bus_realtime","role":"executor","modes":["API_REALTIME","USER_LOCATION"]},
+    {"id":"location_tracker","role":"executor","outputs":["Coordenada@5s","arrivalEvent"]},
+    {"id":"route_dynamic_calculator","role":"executor"},
+    {"id":"map_route_renderer","role":"executor"},
+    {"id":"map_camera_controller","role":"executor"},
+    {"id":"map_cleanup","role":"executor"}
+  ],
+  "entrypoints":[
+    {"id":"main","calls":["AppHost"]},
+    {"id":"AppLogic.confirmarOpcionDeRutaEIniciarViaje","effect":"inicia viaje activo y tracking"}
+  ]
+}
+<<<END>>>
+
+<<<FLOWS_JSON>>>
+[
+  {
+    "fid":"journey_state_machine",
+    "n":"Journey State Machine",
+    "start":"WALKING_TO_STOP",
+    "S":["WALKING_TO_STOP","WAITING_FOR_BUS","RIDING_BUS","WALKING_TO_DESTINATION","COMPLETED"],
+    "T":[
+      {"from":"WALKING_TO_STOP","to":"WAITING_FOR_BUS","cond":"arrivalAt(stop)<=50m","acts":["_notifyStepTransition","_setupGeofencesForCurrentStep"]},
+      {"from":"WAITING_FOR_BUS","to":"RIDING_BUS","cond":"nearRoute<=100m && speed>2.0mps","acts":["MapBusRealtime.switchToUserLocationMode","_stopEtaPolling"]},
+      {"from":"RIDING_BUS","to":"WALKING_TO_STOP","cond":"arriveAt(next_bus_stop)","acts":["_setupGeofencesForCurrentStep"]},
+      {"from":"RIDING_BUS","to":"WALKING_TO_DESTINATION","cond":"arriveAt(destination_stop)","acts":["_setupGeofencesForCurrentStep"]},
+      {"from":"WALKING_TO_DESTINATION","to":"COMPLETED","cond":"arrivalAt(final_destination)","acts":["_completeJourney"]}
+    ]
+  },
+  {
+    "fid":"location_update_pipeline",
+    "n":"Location Update Pipeline",
+    "start":"RECEIVE_GPS",
+    "S":["RECEIVE_GPS","MAP_UPDATE","PROGRESS_UPDATE","TRACKING_SWITCH","UI_SYNC","DONE"],
+    "T":[
+      {"from":"RECEIVE_GPS","to":"MAP_UPDATE","cond":"always","acts":["map_manager.updateUserLocationClean"]},
+      {"from":"MAP_UPDATE","to":"PROGRESS_UPDATE","cond":"always","acts":["RouteDynamicCalculator.calculateProgress"]},
+      {"from":"PROGRESS_UPDATE","to":"TRACKING_SWITCH","cond":"step in {WAITING,RIDING}","acts":["_hybridBusTracker"]},
+      {"from":"TRACKING_SWITCH","to":"UI_SYNC","cond":"always","acts":["_emitAppUiState"]},
+      {"from":"UI_SYNC","to":"DONE","cond":"always"}
+    ]
+  }
+]
+<<<END>>>
+
+<<<FLOWS_MERMAID>>>
+```mermaid
+sequenceDiagram
+  autonumber
+  LocationTracker->>AppLogic: onLocationUpdate(Coordenada)
+  AppLogic->>MapManager: updateUserLocationClean(coord)
+  AppLogic->>RouteDynamicCalculator: calculateProgress(...)
+  RouteDynamicCalculator-->>AppLogic: progress
+  AppLogic->>MapBusRealtime: hybridTracking(stepType)
+  AppLogic->>UI: AppUiState (progreso/step)
+```
+<<<END>>>
+
+<<<FUNCTION_CATALOG_JSONL>>>
+[JSONL: 1 línea por función/método; apéndalo progresivamente sin duplicar IDs]
+<<<END>>>
+
+<<<PLAYBOOKS>>>
+- Ver ubicación en mapa: `app_logic._onUserLocationUpdate` → `map_manager.updateUserLocationClean`.
+- Cambiar a “usuario = bus”: `map_bus_realtime.switchToUserLocationMode` + `updateBusToUserLocation`.
+- Detener ETA en RIDING_BUS: transición WAITING_FOR_BUS→RIDING_BUS + `_stopEtaPolling`.
+<<<END>>>
+
+<<<STATE_JSON>>>
+{"processed_files":[],"pending":[],"stats":{"functions":0,"methods":0,"files":0},"last_pass":"none"}
+<<<END>>>
+
+Proceso iterativo (cada iteración haz TODO esto):
+1) Descubrir archivos (una vez o cuando falten en pending)
+   - Ejecuta:
+     find /Users/felixandersson/dev/bondi-flutter/bondi_uy/lib -type f -name "*.dart" | sort
+   - Llena `pending` con todas las rutas absolutas encontradas, excluyendo cualquier cosa en `old/` y `test/`.
+   - Si `STATE_JSON.pending` ya existe, úsalo y no lo regeneres salvo que esté vacío.
+
+2) Semilla (sólo si PRIMER/ARCH/FLOWS están vacíos)
+   - cat /Users/felixandersson/dev/bondi-flutter/bondi_uy/docs/sonar/modules.json (o modules_complete.json y location_flow_modules.json si existen) y sintetiza:
+     - PRIMER breve (≤ 200 palabras)
+     - ARCH consistente con módulos reales del código
+     - FLOWS_JSON con al menos los 2 flujos críticos de arriba
+   - Mantén los IDs/campos de ARCH y FLOWS_JSON exactamente como en la plantilla y refínalos más adelante con el código.
+
+3) Procesa N archivos por iteración (N≈5–10 según tokens)
+   - Toma los primeros N de `pending`, por cada uno:
+     a. cat <ruta absoluta>
+     b. Extrae TODAS las funciones y métodos no triviales:
+        - Detecta clases: `class NombreClase`
+        - Detecta métodos/funciones: líneas con tipo/retorno + nombre + (...) + { / => / async
+        - Incluye privados ("_") y estáticos; omite getters/setters simples.
+     c. Para cada función/método genera una entrada JSONL con:
+        - i (ID estable), f (ruta relativa desde lib/), k ("function"/"method"), a ("public"/"private")
+        - p (lista nombre/tipo; si no hay tipo explícito usa "dynamic"), r (tipo retorno si aparece; si no, "dynamic|void?")
+        - s (resumen breve ≤ 18 palabras)
+        - pr (precondiciones deducidas de guards/early returns/validaciones)
+        - e (side effects: timers, estado, red, mapbox, logs)
+        - c (llamadas; fn en formato ID si lo conoces o "symbol" si aún no; w condición “cuando” si se ve en if/switch/guards cercanos)
+        - u (usedInFlows: p.ej. ["location_update_pipeline"] si corresponde)
+        - t (tags: ["render","tracking","routing","state","api","utils","camera"])
+     d. Detección de llamadas y condiciones (heurísticas):
+        - Si la llamada está dentro de un if/switch, añade w con un resumen corto de la condición (ej: "phase=='active_trip'")
+        - Si hay await, no especial; pero anota side effects si evidente.
+     e. Añade cada JSON en <<<FUNCTION_CATALOG_JSONL>>> sin duplicar `i`. Si ya existe, actualiza reemplazando esa línea (mantén orden alfabético por `i` si reordenas).
+
+4) Flujos finitos (refinamiento incremental)
+   - Mientras procesas `app_logic_provider.dart`, `journey/*`, `map_manager/*`, actualiza <<<FLOWS_JSON>>>:
+     - journey_state_machine: transiciones, condiciones y acciones sacadas del código real.
+     - location_update_pipeline: pasos y acciones reales detectadas.
+   - Mantén los 2–3 flows Mermaid coherentes con FLOWS_JSON.
+
+5) Validaciones antes de imprimir
+   - JSON/JSONL válido (sin comas finales).
+   - IDs únicos; `c[].fn` apunta a un `i` existente cuando sea posible (si no, deja symbol y enlaza en pases siguientes).
+   - `STATE_JSON`: mueve archivos procesados de `pending` a `processed_files`, incrementa contadores de funciones/métodos y archivos.
+
+6) Política de edición del archivo
+   - Reescribe SIEMPRE el archivo completo dentro del bloque WRITE/END_WRITE.
+   - Conserva secciones y separadores exactamente.
+   - No mezcles narrativa con JSON/JSONL; no uses comillas tipográficas.
+
+7) Lotes siguientes
+   - Repite el paso 3 con los siguientes N archivos hasta que `pending` quede vacío.
+   - Al finalizar, marca `last_pass:"complete"` y asegura que `functions == total entradas JSONL`.
+
+Comandos útiles (sólo lectura con cat):
+- Listar archivos:
+  find /Users/felixandersson/dev/bondi-flutter/bondi_uy/lib -type f -name "*.dart" | sort
+- Leer archivo:
+  cat /Users/felixandersson/dev/bondi-flutter/bondi_uy/lib/map_manager/map_manager.dart
+
+Primera acción ahora:
+- Si el archivo no existe, créalo con la plantilla base (rellena META y PRIMER breve).
+- Inicializa STATE_JSON.pending con la lista de archivos de `lib/`.
+- Procesa primero: 
+  - lib/backend/providers/app_logic_provider.dart
+  - lib/map_manager/map_manager.dart
+  - lib/map_manager/map_bus_realtime.dart
+  - lib/journey/location_tracker.dart
+  - lib/journey/route_dynamic_calculator.dart
+- Imprime el archivo completo dentro de <<<WRITE ...>>>.

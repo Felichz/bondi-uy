@@ -1,18 +1,19 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:math' show sin, pi;
-import 'dart:typed_data';
-import 'dart:ui' as ui;
+// Eliminados imports no usados
+// import 'dart:typed_data';
+// import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'package:bondi_uy/backend/providers/app_logic_provider.dart';
 import 'package:bondi_uy/backend/contrato_ui/app_ui_state.dart';
-import 'package:bondi_uy/ui/widgets/bus_tooltip_widget.dart';
+// import 'package:bondi_uy/ui/widgets/bus_tooltip_widget.dart'; // No se usa actualmente
 import 'package:bondi_uy/utils/geometry_utils.dart';
-import 'package:bondi_uy/map_manager/map_manager.dart';
+// import 'package:bondi_uy/map_manager/map_manager.dart'; // No se usa directamente aquí
 import 'package:bondi_uy/ui/app_host.dart'; // Para acceder al mapManagerProvider
+import 'package:bondi_uy/journey/journey_step_state.dart';
+import 'package:bondi_uy/journey/route_dynamic_calculator.dart';
 
 class ActiveTripOverlay extends ConsumerStatefulWidget {
   final MapboxMap? mapboxMap;
@@ -25,16 +26,18 @@ class ActiveTripOverlay extends ConsumerStatefulWidget {
 
 class _ActiveTripOverlayState extends ConsumerState<ActiveTripOverlay> {
   int _currentLegIndex = 0;
-  bool _isAutoZoomEnabled = true;
-  bool _followUserLocation = true;
-  List<String> _activeRouteSourceIds = [];
-  List<String> _activeRouteLayerIds = [];
-  bool _iconsLoaded = false; // Para controlar la carga de iconos
+  // Limpiar flags no utilizados para mantener el estado minimal
+
+  // DIFF: Agregar listener para transiciones automáticas
+  bool _automaticNavigationEnabled = true;
+  // Estado previo no usado actualmente; dejar comentado para futuras mejoras
+  // JourneyStepState? _lastKnownStep;
 
   // Sistema de animación de flechas
-  Timer? _arrowAnimationTimer;
-  double _arrowAnimationPhase = 0.0;
-  List<String> _animatedArrowLayerIds = [];
+  // Sistema de animación no utilizado por ahora
+  // Timer? _arrowAnimationTimer;
+  // double _arrowAnimationPhase = 0.0;
+  // List<String> _animatedArrowLayerIds = [];
 
   // Sistema de bus en tiempo real
   Timer? _busTrackingTimer;
@@ -42,73 +45,52 @@ class _ActiveTripOverlayState extends ConsumerState<ActiveTripOverlay> {
   String? _currentBusDestination;
   Coordenada? _currentBusPosition;
   int? _currentBusEta;
-  bool? _currentBusIsRealTime;
+  // Indicador no utilizado directamente (se usa isBusEtaRealTime pasado al panel)
+  // bool? _currentBusIsRealTime;
 
   // Constantes para IDs de capas y fuentes de la ruta activa
-  static const String ACTIVE_WALK_SOURCE_PREFIX = 'active-walk-source-';
-  static const String ACTIVE_WALK_LAYER_PREFIX = 'active-walk-layer-';
-  static const String ACTIVE_BUS_SOURCE_PREFIX = 'active-bus-source-';
-  static const String ACTIVE_BUS_LAYER_PREFIX = 'active-bus-layer-';
-  static const String ACTIVE_WAIT_SOURCE_PREFIX = 'active-wait-source-';
-  static const String ACTIVE_WAIT_LAYER_PREFIX = 'active-wait-layer-';
-  static const String USER_LOCATION_SOURCE_ID = 'user-location-source';
-  static const String USER_LOCATION_LAYER_ID = 'user-location-layer';
+  // IDs de capas/sources no usados en este overlay tras la refactorización
+  // static const String ACTIVE_WALK_SOURCE_PREFIX = 'active-walk-source-';
+  // static const String ACTIVE_WALK_LAYER_PREFIX = 'active-walk-layer-';
+  // static const String ACTIVE_BUS_SOURCE_PREFIX = 'active-bus-source-';
+  // static const String ACTIVE_BUS_LAYER_PREFIX = 'active-bus-layer-';
+  // static const String ACTIVE_WAIT_SOURCE_PREFIX = 'active-wait-source-';
+  // static const String ACTIVE_WAIT_LAYER_PREFIX = 'active-wait-layer-';
+  // static const String USER_LOCATION_SOURCE_ID = 'user-location-source';
+  // static const String USER_LOCATION_LAYER_ID = 'user-location-layer';
 
   // Constantes para iconos
-  static const String STOP_ICON_IMAGE_ID = 'stop-icon';
-  static const String BUS_ICON_IMAGE_ID = 'bus-icon';
-  static const String INCOMING_BUS_SOURCE_ID = 'incoming-bus-source';
-  static const String INCOMING_BUS_LAYER_ID = 'incoming-bus-layer';
-  static const String BUS_APPROACH_LINE_SOURCE_ID = 'bus-approach-line-source';
-  static const String BUS_APPROACH_LINE_LAYER_ID = 'bus-approach-line-layer';
+  // static const String STOP_ICON_IMAGE_ID = 'stop-icon';
+  // static const String BUS_ICON_IMAGE_ID = 'bus-icon';
+  // static const String INCOMING_BUS_SOURCE_ID = 'incoming-bus-source';
+  // static const String INCOMING_BUS_LAYER_ID = 'incoming-bus-layer';
+  // static const String BUS_APPROACH_LINE_SOURCE_ID = 'bus-approach-line-source';
+  // static const String BUS_APPROACH_LINE_LAYER_ID = 'bus-approach-line-layer';
 
   // Constantes para el bus en tiempo real
-  static const String _realtimeBusLayerId = "realtime-bus-layer";
-  static const String _realtimeBusSourceId = "realtime-bus-source";
-  static const String _busApproachLineLayerId = "bus-approach-line-layer";
-  static const String _busApproachLineBorderLayerId =
-      "bus-approach-line-border-layer";
-  static const String _busApproachLineSourceId = "bus-approach-line-source";
+  // static const String _realtimeBusLayerId = "realtime-bus-layer";
+  // static const String _realtimeBusSourceId = "realtime-bus-source";
+  // static const String _busApproachLineLayerId = "bus-approach-line-layer";
+  // static const String _busApproachLineBorderLayerId =
+  //     "bus-approach-line-border-layer";
+  // static const String _busApproachLineSourceId = "bus-approach-line-source";
 
   // Constantes para el tooltip de "Voy en camino!"
-  static const String _busTooltipLayerId = "bus-tooltip-layer";
-  static const String _busTooltipIconId = "incoming-bus-tooltip";
+  // static const String _busTooltipLayerId = "bus-tooltip-layer";
+  // static const String _busTooltipIconId = "incoming-bus-tooltip";
 
   // Variables para la animación del tooltip flotante
-  Timer? _tooltipFloatTimer;
-  double _tooltipFloatPhase = 0.0;
-  double _lastTooltipOffset =
-      -5.0; // Offset base para posicionar arriba del bus (ajustado para estar más cerca)
+  // Timer? _tooltipFloatTimer;
+  // double _tooltipFloatPhase = 0.0;
+  // double _lastTooltipOffset =
+  //     -5.0; // Offset base para posicionar arriba del bus (ajustado para estar más cerca)
 
   // Propiedades de estilo
-  static const Map<String, dynamic> _WALK_LINE_PROPERTIES = {
-    'line-color': 0xFF448AFF,
-    'line-width': 4.0,
-    'line-opacity': 0.9,
-    'line-join': 'round',
-    'line-cap': 'round',
-  };
-  static const Map<String, dynamic> _BUS_LINE_PROPERTIES = {
-    'line-color': 0xFFFF5722,
-    'line-width': 5.0,
-    'line-opacity': 0.9,
-    'line-join': 'round',
-    'line-cap': 'round',
-  };
-  static const Map<String, dynamic> _WAIT_CIRCLE_PROPERTIES = {
-    'circle-color': 0xFFFFA500,
-    'circle-radius': 8.0,
-    'circle-stroke-width': 2.0,
-    'circle-stroke-color': 0xFFFFFFFF,
-    'circle-opacity': 0.9,
-  };
-  static const Map<String, dynamic> _BORDER_PROPERTIES = {
-    'line-color': 0xFF000000,
-    'line-width': 8.0,
-    'line-opacity': 1.0,
-    'line-join': 'round',
-    'line-cap': 'round',
-  };
+  // Propiedades de estilo no usadas directamente en el overlay
+  // static const Map<String, dynamic> _WALK_LINE_PROPERTIES = { ... };
+  // static const Map<String, dynamic> _BUS_LINE_PROPERTIES = { ... };
+  // static const Map<String, dynamic> _WAIT_CIRCLE_PROPERTIES = { ... };
+  // static const Map<String, dynamic> _BORDER_PROPERTIES = { ... };
 
   @override
   void initState() {
@@ -120,97 +102,13 @@ class _ActiveTripOverlayState extends ConsumerState<ActiveTripOverlay> {
 
   @override
   void dispose() {
-    _arrowAnimationTimer?.cancel();
+    // Cancelar timers activos
     _busTrackingTimer?.cancel();
-    _tooltipFloatTimer?.cancel();
     super.dispose();
   }
 
-  Future<void> _clearPreviousRoutePreview() async {
-    if (widget.mapboxMap == null) return;
-
-    print("[ActiveTripOverlay] Clearing previous route preview elements");
-
-    // Limpiar capas de route preview que podrían estar presentes de RouteOptionsOverlay
-    final previewLayerIds = [
-      // Preview layers de route options
-      'route-preview-walk-border',
-      'route-preview-walk',
-      'route-preview-bus-border',
-      'route-preview-bus',
-      'route-preview-wait',
-      'route-preview-boarding',
-      'route-preview-alighting',
-      // Bus real-time layers de preview
-      'preview-bus-realtime',
-      'preview-bus-approach-line',
-      'preview-bus-approach-line-border',
-      'preview-bus-tooltip',
-      // Animated arrow layers
-      'preview-bus-stop-boarding-0',
-      'preview-bus-stop-alighting-0',
-      'preview-bus-stop-boarding-1',
-      'preview-bus-stop-alighting-1',
-      'preview-bus-stop-boarding-2',
-      'preview-bus-stop-alighting-2',
-      'preview-bus-stop-boarding-3',
-      'preview-bus-stop-alighting-3',
-      'preview-bus-stop-boarding-4',
-      'preview-bus-stop-alighting-4',
-    ];
-
-    final previewSourceIds = [
-      // Preview sources de route options
-      'route-preview-walk-source',
-      'route-preview-bus-source',
-      'route-preview-wait-source',
-      'route-preview-boarding-source',
-      'route-preview-alighting-source',
-      // Bus real-time sources de preview
-      'preview-bus-realtime-source',
-      'preview-bus-approach-line-source',
-      'preview-bus-tooltip-source',
-      // Animated arrow sources
-      'preview-bus-stop-boarding-source-0',
-      'preview-bus-stop-alighting-source-0',
-      'preview-bus-stop-boarding-source-1',
-      'preview-bus-stop-alighting-source-1',
-      'preview-bus-stop-boarding-source-2',
-      'preview-bus-stop-alighting-source-2',
-      'preview-bus-stop-boarding-source-3',
-      'preview-bus-stop-alighting-source-3',
-      'preview-bus-stop-boarding-source-4',
-      'preview-bus-stop-alighting-source-4',
-    ];
-
-    // Limpiar capas
-    for (String layerId in previewLayerIds) {
-      try {
-        if (await widget.mapboxMap!.style.styleLayerExists(layerId)) {
-          await widget.mapboxMap!.style.removeStyleLayer(layerId);
-          print("[ActiveTripOverlay] Removed preview layer: $layerId");
-        }
-      } catch (e) {
-        print("[ActiveTripOverlay] Error removing preview layer $layerId: $e");
-      }
-    }
-
-    // Limpiar fuentes
-    for (String sourceId in previewSourceIds) {
-      try {
-        if (await widget.mapboxMap!.style.styleSourceExists(sourceId)) {
-          await widget.mapboxMap!.style.removeStyleSource(sourceId);
-          print("[ActiveTripOverlay] Removed preview source: $sourceId");
-        }
-      } catch (e) {
-        print(
-          "[ActiveTripOverlay] Error removing preview source $sourceId: $e",
-        );
-      }
-    }
-
-    print("[ActiveTripOverlay] Finished clearing route preview elements");
-  }
+  // Método de limpieza de elementos de previsualización (no usado actualmente tras la refactorización)
+  // Future<void> _clearPreviousRoutePreview() async { ... }
 
   Future<void> _initializeActiveTrip() async {
     print("[ActiveTripOverlay] Initializing active trip");
@@ -241,59 +139,21 @@ class _ActiveTripOverlayState extends ConsumerState<ActiveTripOverlay> {
     print("[ActiveTripOverlay] Active trip initialization complete");
   }
 
-  Future<void> _loadMapIcons() async {
-    if (widget.mapboxMap == null || _iconsLoaded) return;
+  // Carga de iconos (no utilizada directamente aquí; gestionada por MapManager)
+  // Future<void> _loadMapIcons() async { ... }
 
-    try {
-      // Cargar icono de parada
-      final MbxImage stopImage = await _loadIconImageFromAsset('stop_icon.png');
-      await widget.mapboxMap!.style.addStyleImage(
-        STOP_ICON_IMAGE_ID,
-        1.0,
-        stopImage,
-        false,
-        [],
-        [],
-        null,
-      );
+  // Future<MbxImage> _loadIconImageFromAsset(String assetName) async { ... }
 
-      // Cargar icono de bus
-      final MbxImage busImage = await _loadIconImageFromAsset(
-        'incoming_bus.png',
-      );
-      await widget.mapboxMap!.style.addStyleImage(
-        BUS_ICON_IMAGE_ID,
-        1.0,
-        busImage,
-        false,
-        [],
-        [],
-        null,
-      );
+  // DIFF: Nuevo método para transiciones automáticas
+  void _onAutomaticStepTransition(int newStepIndex) {
+    print('[ActiveTripOverlay] Automatic transition to step: $newStepIndex');
 
-      _iconsLoaded = true;
-      print("[ActiveTripOverlay] Icons loaded successfully");
-    } catch (e) {
-      print("[ActiveTripOverlay] Error loading icons: $e");
-    }
-  }
+    setState(() {
+      _currentLegIndex = newStepIndex;
+    });
 
-  Future<MbxImage> _loadIconImageFromAsset(String assetName) async {
-    final ByteData data = await rootBundle.load('assets/icons/$assetName');
-    final Uint8List bytes = data.buffer.asUint8List();
-    final ui.Codec codec = await ui.instantiateImageCodec(bytes);
-    final ui.FrameInfo frameInfo = await codec.getNextFrame();
-    final ui.Image image = frameInfo.image;
-
-    final ByteData? byteData = await image.toByteData(
-      format: ui.ImageByteFormat.png,
-    );
-    if (byteData == null) {
-      throw Exception('Failed to encode image to PNG');
-    }
-
-    final Uint8List pngBytes = byteData.buffer.asUint8List();
-    return MbxImage(width: image.width, height: image.height, data: pngBytes);
+    // Usar lógica existente para actualizar el mapa
+    _onLegSelected(newStepIndex);
   }
 
   void _onLegSelected(int legIndex) {
@@ -312,51 +172,112 @@ class _ActiveTripOverlayState extends ConsumerState<ActiveTripOverlay> {
       mapManager.updateCurrentLeg(legIndex, activeTripState.tramosDelViaje);
     }
 
-    // ELIMINADO: Ya no actualizamos tracking aquí, el sistema centralizado se encarga
+    // DIFF: Si es transición automática, actualizar tracking
+    if (_automaticNavigationEnabled) {
+      _updateTrackingForAutomaticMode(legIndex);
+    }
   }
 
-  void _updateBusTrackingForCurrentLeg() {
-    // ELIMINADO: Ya no manejamos tracking de bus aquí
-    // El sistema centralizado en AppLogicProvider + MapBusRealtime se encarga de todo
-    print("[ActiveTripOverlay] Bus tracking delegated to centralized system");
+  // DIFF: Nuevo método para manejar tracking en modo automático
+  void _updateTrackingForAutomaticMode(int legIndex) {
+    final activeTripState = ref.read(appLogicProvider).datosFaseViajeActivo;
+    if (activeTripState == null ||
+        legIndex >= activeTripState.tramosDelViaje.length)
+      return;
+
+    final currentTramo = activeTripState.tramosDelViaje[legIndex];
+    final appLogic = ref.read(appLogicProvider.notifier);
+
+    // Manejar tracking de bus según el tipo de paso
+    switch (currentTramo.tipo) {
+      case TipoTramoViaje.ESPERAR_BUS:
+        // Cuando esperamos el bus, necesitamos encontrar el próximo tramo de VIAJE_EN_BUS
+        final nextBusTramo = _findNextBusTramo(
+          activeTripState.tramosDelViaje,
+          legIndex,
+        );
+        if (nextBusTramo != null && nextBusTramo.idTramo.isNotEmpty) {
+          print(
+            '[ActiveTripOverlay] Iniciando seguimiento para tramo de bus: ${nextBusTramo.idTramo}',
+          );
+          appLogic.iniciarSeguimientoBusTiempoReal(
+            idViajeActivo: activeTripState.idViajeActivoConfirmado,
+            idTramoBus: nextBusTramo.idTramo,
+          );
+        } else {
+          print(
+            '[ActiveTripOverlay] No se encontró tramo de bus para seguimiento',
+          );
+          appLogic.detenerSeguimientoBusTiempoReal();
+        }
+        break;
+      case TipoTramoViaje.CAMINAR:
+        // Mientras el usuario camina hacia la parada, mantener el tracking de API
+        // para mostrar el bus que viene en camino con menor énfasis visual.
+        final nextBusTramo = _findNextBusTramo(
+          activeTripState.tramosDelViaje,
+          legIndex,
+        );
+        if (nextBusTramo != null && nextBusTramo.idTramo.isNotEmpty) {
+          print(
+            '[ActiveTripOverlay] (CAMINAR) Manteniendo tracking API para próximo bus: ${nextBusTramo.idTramo}',
+          );
+          appLogic.iniciarSeguimientoBusTiempoReal(
+            idViajeActivo: activeTripState.idViajeActivoConfirmado,
+            idTramoBus: nextBusTramo.idTramo,
+          );
+        } else {
+          // Si no hay un próximo tramo de bus identificado, no detener proactivamente
+          // para permitir futuros datos; solo loguear.
+          print(
+            '[ActiveTripOverlay] (CAMINAR) No se detectó próximo tramo de bus para tracking',
+          );
+        }
+        break;
+      case TipoTramoViaje.VIAJE_EN_BUS:
+        // El usuario está en el bus, cambiar a tracking del usuario
+        _switchToUserLocationTracking();
+        break;
+    }
   }
 
-  TramoViajeMostrable? _findNextBusSegment(
+  // Método para encontrar el próximo tramo de bus después de un tramo de espera
+  TramoViajeMostrable? _findNextBusTramo(
     List<TramoViajeMostrable> tramos,
-    int currentLegIndex,
+    int currentIndex,
   ) {
-    // ELIMINADO: Ya no necesitamos encontrar el próximo tramo de bus aquí
-    // El sistema centralizado se encarga de esto
+    // Buscar el próximo tramo de tipo VIAJE_EN_BUS después del índice actual
+    for (int i = currentIndex + 1; i < tramos.length; i++) {
+      if (tramos[i].tipo == TipoTramoViaje.VIAJE_EN_BUS) {
+        return tramos[i];
+      }
+    }
     return null;
   }
 
-  void _startBusTracking(TramoViajeMostrable tramo) {
-    // ELIMINADO: Ya no iniciamos tracking aquí
-    // El sistema centralizado se encarga de todo
-    print("[ActiveTripOverlay] Bus tracking handled by centralized system");
+  void _switchToUserLocationTracking() {
+    print('[ActiveTripOverlay] Switching to user location tracking mode');
+    // El MapBusRealtime debería cambiar a modo de tracking del usuario
+    final mapManager = ref.read(mapManagerProvider);
+    if (mapManager != null) {
+      // Esto se manejará en la extensión de MapBusRealtime
+      mapManager.busRealtime.switchToUserLocationMode();
+    }
   }
 
-  void _stopBusTracking() {
-    // ELIMINADO: Ya no detenemos tracking aquí
-    // El sistema centralizado se encarga de todo
-    print("[ActiveTripOverlay] Bus tracking handled by centralized system");
-  }
-
-  Future<void> _updateBusPosition(
-    Coordenada position,
-    int etaMinutes,
-    bool isRealTime,
-  ) async {
-    // ELIMINADO: Ya no actualizamos posición aquí
-    // El sistema centralizado se encarga de todo
-    print("[ActiveTripOverlay] Bus position handled by centralized system");
-  }
+  // Métodos antiguos de tracking de bus eliminados tras refactorización.
 
   @override
   Widget build(BuildContext context) {
     final appUiState = ref.watch(appLogicProvider);
     final appLogic = ref.read(appLogicProvider.notifier);
     final activeTripState = appUiState.datosFaseViajeActivo;
+
+    // DIFF: Obtener estado de progreso automático
+    final currentJourneyStep = appUiState.currentJourneyStep;
+    final currentStepProgress = appUiState.currentStepProgress;
+    final isAutomaticNavigationEnabled =
+        appUiState.isAutomaticNavigationEnabled;
 
     // Reaccionar a cambios en el sondeo de bus en tiempo real
     ref.listen<AppUiState>(appLogicProvider, (previous, next) {
@@ -371,6 +292,31 @@ class _ActiveTripOverlayState extends ConsumerState<ActiveTripOverlay> {
           prevState?.seguimientoBusRealDisponibleEnTramoActual !=
               nextState?.seguimientoBusRealDisponibleEnTramoActual) {
         _handleRealtimeBusUpdate(nextState);
+      }
+
+      // DIFF: Listener para transiciones automáticas
+      // Detectar cambios en el paso del journey automático
+      final prevJourneyStep = previous?.currentJourneyStep;
+      final nextJourneyStep = next.currentJourneyStep;
+
+      // Detectar transiciones automáticas del step
+      if (prevJourneyStep?.stepIndex != nextJourneyStep?.stepIndex &&
+          _automaticNavigationEnabled &&
+          nextJourneyStep != null) {
+        print(
+          '[ActiveTripOverlay] Auto step transition detected: ${prevJourneyStep?.stepIndex} → ${nextJourneyStep.stepIndex}',
+        );
+        _onAutomaticStepTransition(nextJourneyStep.stepIndex);
+      }
+
+      // Detectar cambio de modo de navegación automática
+      final prevAutoEnabled = previous?.isAutomaticNavigationEnabled ?? false;
+      final nextAutoEnabled = next.isAutomaticNavigationEnabled;
+      if (prevAutoEnabled != nextAutoEnabled) {
+        print(
+          '[ActiveTripOverlay] Automatic navigation mode changed: $prevAutoEnabled → $nextAutoEnabled',
+        );
+        _automaticNavigationEnabled = nextAutoEnabled;
       }
     });
 
@@ -436,6 +382,10 @@ class _ActiveTripOverlayState extends ConsumerState<ActiveTripOverlay> {
       currentBusLine: effectiveBusLine,
       isBusEtaRealTime: isRealtimeAvailable,
       currentBusDestination: effectiveBusDestination,
+      // DIFF: Pasar datos de progreso automático
+      currentJourneyStep: currentJourneyStep,
+      currentStepProgress: currentStepProgress,
+      isAutomaticNavigationEnabled: isAutomaticNavigationEnabled,
     );
   }
 
@@ -475,6 +425,10 @@ class _ActiveTripInstructionsPanel extends StatelessWidget {
   final String? currentBusLine;
   final bool isBusEtaRealTime;
   final String? currentBusDestination;
+  // DIFF: Nuevos parámetros para progreso automático
+  final JourneyStepState? currentJourneyStep;
+  final RouteProgress? currentStepProgress;
+  final bool isAutomaticNavigationEnabled;
 
   const _ActiveTripInstructionsPanel({
     required this.activeTripState,
@@ -486,6 +440,10 @@ class _ActiveTripInstructionsPanel extends StatelessWidget {
     required this.currentBusLine,
     required this.isBusEtaRealTime,
     required this.currentBusDestination,
+    // DIFF: Nuevos parámetros
+    this.currentJourneyStep,
+    this.currentStepProgress,
+    required this.isAutomaticNavigationEnabled,
   });
 
   @override
@@ -514,6 +472,13 @@ class _ActiveTripInstructionsPanel extends StatelessWidget {
           left: 12,
           right: 12,
           child: _buildNavigationPanel(context, theme),
+        ),
+
+        // Botón toggle de animaciones - esquina inferior izquierda
+        Positioned(
+          bottom: 80, // Arriba del panel de navegación
+          left: 16,
+          child: _buildAnimationToggleButton(context),
         ),
       ],
     );
@@ -587,6 +552,28 @@ class _ActiveTripInstructionsPanel extends StatelessWidget {
                           fontSize: 20,
                         ),
                       ),
+                      // DIFF: Mostrar indicador de navegación automática
+                      if (isAutomaticNavigationEnabled) ...[
+                        const SizedBox(height: 2),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.assistant_navigation,
+                              size: 12,
+                              color: theme.colorScheme.primary,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Navegación Automática',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.primary,
+                                fontWeight: FontWeight.w500,
+                                fontSize: 10,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -624,7 +611,23 @@ class _ActiveTripInstructionsPanel extends StatelessWidget {
               ),
             ),
 
+            // DIFF: Mostrar instrucciones automáticas si está habilitado
+            if (isAutomaticNavigationEnabled && currentJourneyStep != null) ...[
+              const SizedBox(height: 6),
+              Text(
+                _getAutomaticInstructions(),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontStyle: FontStyle.italic,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+
             const SizedBox(height: 10),
+
+            // DIFF: Mostrar progreso dinámico si está disponible
+            _buildDynamicProgress(context, theme),
 
             // Chips informativos - más compactos
             _buildAdditionalInfo(context, tramo, theme),
@@ -634,24 +637,78 @@ class _ActiveTripInstructionsPanel extends StatelessWidget {
     );
   }
 
+  // DIFF: Nuevo método para mostrar progreso dinámico
+  Widget _buildDynamicProgress(BuildContext context, ThemeData theme) {
+    // Diseño actualizado: se elimina el panel de progreso porcentual por no aportar valor.
+    // Mantener la firma por compatibilidad y devolver vacío.
+    return const SizedBox.shrink();
+  }
+
   Widget _buildAdditionalInfo(
     BuildContext context,
     TramoViajeMostrable tramo,
     ThemeData theme,
   ) {
+    // Paso ESPERAR_BUS: mostrar datos dinámicos relevantes (línea, ETA en tiempo real y distancia bus→parada)
+    if (tramo.tipo == TipoTramoViaje.ESPERAR_BUS) {
+      final chips = <Widget>[];
+
+      // Línea de bus (si está disponible en el tramo)
+      if (tramo.nombreLineaBus != null) {
+        chips.addAll([
+          _buildCompactInfoChip(
+            icon: Icons.directions_bus,
+            label: 'L${tramo.nombreLineaBus}',
+            color: Colors.orange.shade600,
+            theme: theme,
+          ),
+          const SizedBox(width: 8),
+        ]);
+      }
+
+      // ETA en tiempo real (priorizar estado actual; fallback al tramo)
+      final int? etaMin = currentBusEta ?? tramo.minutosEstimadosLlegadaBus;
+      final bool etaIsRealTime =
+          isBusEtaRealTime || (tramo.esTiempoRealBus == true);
+      if (etaMin != null) {
+        chips.addAll([
+          _buildCompactInfoChip(
+            icon: etaIsRealTime ? Icons.gps_fixed : Icons.schedule,
+            label: '$etaMin min',
+            color:
+                etaIsRealTime ? Colors.green.shade600 : Colors.orange.shade600,
+            theme: theme,
+          ),
+          const SizedBox(width: 8),
+        ]);
+      }
+
+      // Distancia bus → parada (dinámica). Si no hay posición de bus, no se muestra
+      final double? busDistanceM = _computeBusDistanceToStop(tramo);
+      if (busDistanceM != null) {
+        chips.add(
+          _buildCompactInfoChip(
+            icon: Icons.straighten,
+            label: _formatMeters(busDistanceM),
+            color: Colors.green.shade600,
+            theme: theme,
+          ),
+        );
+      }
+
+      return Row(children: chips);
+    }
+
+    // Resto de pasos: mantener esquema previo (tiempo del tramo y distancia del tramo si aplica)
     return Row(
       children: [
-        // Tiempo
         _buildCompactInfoChip(
           icon: Icons.access_time,
           label: _formatDuration(tramo.duracionEstimadaSegundos),
           color: Colors.blue.shade600,
           theme: theme,
         ),
-
         const SizedBox(width: 8),
-
-        // Distancia
         if (tramo.distanciaMetros > 0) ...[
           _buildCompactInfoChip(
             icon: Icons.straighten,
@@ -661,8 +718,6 @@ class _ActiveTripInstructionsPanel extends StatelessWidget {
           ),
           const SizedBox(width: 8),
         ],
-
-        // Línea de bus
         if (tramo.nombreLineaBus != null) ...[
           _buildCompactInfoChip(
             icon: Icons.directions_bus,
@@ -672,21 +727,6 @@ class _ActiveTripInstructionsPanel extends StatelessWidget {
           ),
           const SizedBox(width: 8),
         ],
-
-        // ETA del bus
-        if (tramo.minutosEstimadosLlegadaBus != null)
-          _buildCompactInfoChip(
-            icon:
-                tramo.esTiempoRealBus == true
-                    ? Icons.gps_fixed
-                    : Icons.schedule,
-            label: '${tramo.minutosEstimadosLlegadaBus}min',
-            color:
-                tramo.esTiempoRealBus == true
-                    ? Colors.green.shade600
-                    : Colors.orange.shade600,
-            theme: theme,
-          ),
       ],
     );
   }
@@ -722,7 +762,38 @@ class _ActiveTripInstructionsPanel extends StatelessWidget {
     );
   }
 
+  // Calcula la distancia actual entre la posición del bus y la parada origen de este tramo de espera.
+  // Si no hay posición de bus o no se puede determinar la parada, devuelve null.
+  double? _computeBusDistanceToStop(TramoViajeMostrable tramo) {
+    if (currentBusPosition == null) return null;
+
+    // Para ESPERAR_BUS, la parada suele venir en posicionPunto; fallback a coordenadasParadaOrigen.
+    final stop = tramo.posicionPunto ?? tramo.coordenadasParadaOrigen;
+    if (stop == null) return null;
+
+    final d = calculateHaversineDistance(
+      currentBusPosition!.latitud,
+      currentBusPosition!.longitud,
+      stop.latitud,
+      stop.longitud,
+    );
+    return d;
+  }
+
+  // Formatea una distancia en metros a una representación amigable (m o km).
+  String _formatMeters(double meters) {
+    if (meters >= 1000) {
+      return '${(meters / 1000).toStringAsFixed(1)} km';
+    }
+    return '${meters.round()} m';
+  }
+
   Widget _buildNavigationPanel(BuildContext context, ThemeData theme) {
+    // DIFF: Hide manual navigation panel when automatic navigation is enabled
+    if (isAutomaticNavigationEnabled) {
+      return const SizedBox.shrink();
+    }
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 2),
       child: Card(
@@ -884,8 +955,6 @@ class _ActiveTripInstructionsPanel extends StatelessWidget {
         return 'Esperar Bus';
       case TipoTramoViaje.VIAJE_EN_BUS:
         return 'Viaje en Bus';
-      default:
-        return 'Paso';
     }
   }
 
@@ -897,8 +966,6 @@ class _ActiveTripInstructionsPanel extends StatelessWidget {
         return Icons.schedule;
       case TipoTramoViaje.VIAJE_EN_BUS:
         return Icons.directions_bus;
-      default:
-        return Icons.help_outline;
     }
   }
 
@@ -910,8 +977,6 @@ class _ActiveTripInstructionsPanel extends StatelessWidget {
         return Colors.orange;
       case TipoTramoViaje.VIAJE_EN_BUS:
         return Colors.green;
-      default:
-        return Colors.grey;
     }
   }
 
@@ -929,8 +994,6 @@ class _ActiveTripInstructionsPanel extends StatelessWidget {
           return 'Sube al bus con destino a ${tramo.destinoFinalDelBus}';
         }
         return 'Viaja en el bus hasta tu parada de destino';
-      default:
-        return tramo.descripcion;
     }
   }
 
@@ -939,5 +1002,77 @@ class _ActiveTripInstructionsPanel extends StatelessWidget {
     final minutes = duration.inMinutes;
     if (minutes < 1) return "< 1 min";
     return '$minutes min';
+  }
+
+  // DIFF: Nuevo método para instrucciones automáticas
+  String _getAutomaticInstructions() {
+    if (currentJourneyStep == null) return '';
+
+    switch (currentJourneyStep!.type) {
+      case JourneyStepType.WALKING_TO_STOP:
+        return 'Te guiaremos automáticamente hasta la parada de bus';
+      case JourneyStepType.WAITING_FOR_BUS:
+        return 'Detectaremos automáticamente cuando subas al bus';
+      case JourneyStepType.RIDING_BUS:
+        return 'Te avisaremos automáticamente cuando llegar tu parada';
+      case JourneyStepType.WALKING_TO_DESTINATION:
+        return 'Te guiaremos automáticamente hasta tu destino final';
+    }
+  }
+
+  // DIFF: Botón para toggle de animaciones
+  Widget _buildAnimationToggleButton(BuildContext context) {
+    return Consumer(
+      builder: (context, ref, child) {
+        final appLogic = ref.read(appLogicProvider.notifier);
+        final animationsEnabled = appLogic.animationsEnabled;
+
+        return Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            color: animationsEnabled ? Colors.blue : Colors.grey[600],
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.3),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () {
+                appLogic.toggleAnimations();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      animationsEnabled
+                          ? 'Animaciones desactivadas'
+                          : 'Animaciones activadas',
+                    ),
+                    duration: const Duration(seconds: 2),
+                    backgroundColor:
+                        animationsEnabled ? Colors.red : Colors.green,
+                  ),
+                );
+              },
+              borderRadius: BorderRadius.circular(28),
+              child: Center(
+                child: Icon(
+                  animationsEnabled
+                      ? Icons.animation
+                      : Icons.animation_outlined,
+                  size: 28,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 }

@@ -193,6 +193,19 @@ class _MockAppLogic implements IAppLogic {
   }
 
   @override
+  Future<void> seleccionarUbicacionActualComoOrigen() async {
+    // Mock: simplemente escribe un origen fijo simulado
+    final fake = Coordenada(latitud: -34.905, longitud: -56.19);
+    _updateState(
+      _appUiStateNotifier.state.copyWith(
+        puntoOrigenParaBusqueda: fake,
+        nombreLugarOrigenSeleccionado: 'Ubicación actual (mock)',
+      ),
+    );
+    print("_MockAppLogic: seleccionarUbicacionActualComoOrigen (mock) -> $fake");
+  }
+
+  @override
   Future<void> usuarioEscribioEnCampoOrigen(String texto) async {
     print("_MockAppLogic: usuarioEscribioEnCampoOrigen: $texto");
 

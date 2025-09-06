@@ -12,15 +12,21 @@ class MapCleanup {
   Future<void> clearAll() async {
     if (mapboxMap == null) return;
 
-    print("[MapCleanup] Clearing all map elements");
+    print("[MapCleanup] === LIMPIANDO TODOS LOS ELEMENTOS DEL MAPA ===");
+    print("[MapCleanup] Llamado desde: ${StackTrace.current}");
 
+    print("[MapCleanup] 🗑️ Limpiando rutas...");
     await clearRoute();
+    print("[MapCleanup] 🗑️ Limpiando elementos de fase inicial...");
     await clearInitialPhaseElements();
+    print("[MapCleanup] 🗑️ Limpiando ubicación del usuario...");
+    await clearUserLocation();
 
     // Limpiar registros del manager
+    print("[MapCleanup] 🗑️ Limpiando registros del manager...");
     mapManager.clearRegistrations();
 
-    print("[MapCleanup] All map elements cleared");
+    print("[MapCleanup] ✅ === TODOS LOS ELEMENTOS LIMPIADOS ===");
   }
 
   /// Limpiar elementos de ruta (unificado para preview y active trip)
@@ -111,6 +117,24 @@ class MapCleanup {
     print("[MapCleanup] Preview bus elements cleared successfully");
   }
 
+  /// Limpiar ubicación del usuario
+  Future<void> clearUserLocation() async {
+    if (mapboxMap == null) return;
+
+    print("[MapCleanup] === LIMPIANDO UBICACIÓN DEL USUARIO ===");
+    print("[MapCleanup] Stack trace: ${StackTrace.current}");
+
+    const String sourceId = 'user-location-source';
+    const String layerId = 'user-location-layer';
+
+    print("[MapCleanup] 🗑️ Eliminando capa '$layerId'...");
+    await _removeLayerSafely(layerId);
+    print("[MapCleanup] 🗑️ Eliminando fuente '$sourceId'...");
+    await _removeSourceSafely(sourceId);
+
+    print("[MapCleanup] ✅ === UBICACIÓN DEL USUARIO LIMPIADA ===");
+  }
+
   /// Limpiar capas que empiecen con un prefijo específico
   Future<void> _clearLayersWithPrefix(String prefix) async {
     if (mapboxMap == null) return;
@@ -156,12 +180,14 @@ class MapCleanup {
     if (mapboxMap == null) return;
 
     try {
-      if (await mapboxMap!.style.styleLayerExists(layerId)) {
+      final layerExists = await mapboxMap!.style.styleLayerExists(layerId);
+
+      if (layerExists) {
         await mapboxMap!.style.removeStyleLayer(layerId);
         print("[MapCleanup] Removed layer: $layerId");
       }
     } catch (e) {
-      print("[MapCleanup] Error removing layer $layerId: $e");
+      print("[MapCleanup] ❌ Error eliminando capa '$layerId': $e");
     }
   }
 
@@ -170,12 +196,14 @@ class MapCleanup {
     if (mapboxMap == null) return;
 
     try {
-      if (await mapboxMap!.style.styleSourceExists(sourceId)) {
+      final sourceExists = await mapboxMap!.style.styleSourceExists(sourceId);
+
+      if (sourceExists) {
         await mapboxMap!.style.removeStyleSource(sourceId);
         print("[MapCleanup] Removed source: $sourceId");
       }
     } catch (e) {
-      print("[MapCleanup] Error removing source $sourceId: $e");
+      print("[MapCleanup] ❌ Error eliminando fuente '$sourceId': $e");
     }
   }
 }

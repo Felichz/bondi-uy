@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
+import 'package:flutter/services.dart';
 import 'package:bondi_uy/backend/providers/app_logic_provider.dart';
 import 'package:bondi_uy/backend/contrato_ui/app_ui_state.dart';
 import 'package:bondi_uy/map_manager/map_manager.dart';
@@ -11,6 +13,10 @@ import 'package:bondi_uy/ui/overlays/active_trip_overlay.dart';
 
 // Provider global para el MapManager
 final mapManagerProvider = StateProvider<MapManager?>((ref) => null);
+// Dev: estado de grabación (para feedback visual)
+// Eliminado: grabación manual
+// Dev: velocidad de reproducción
+final devReplaySpeedProvider = StateProvider<double>((ref) => 1.0);
 
 class AppHost extends ConsumerStatefulWidget {
   const AppHost({super.key});
@@ -139,6 +145,7 @@ class _AppHostState extends ConsumerState<AppHost> {
               ),
           ],
         ),
+        floatingActionButton: kDebugMode ? _DevFab() : null,
       ),
     );
   }
@@ -356,7 +363,7 @@ class _AppHostState extends ConsumerState<AppHost> {
 
     print("[AppHost] Initializing MapManager");
 
-    mapManager = MapManager(mapboxMap);
+    mapManager = MapManager(mapboxMap, ref: ref);
 
     // Hacer el MapManager accesible globalmente vía provider
     ref.read(mapManagerProvider.notifier).state = mapManager;
@@ -379,5 +386,104 @@ class _AppHostState extends ConsumerState<AppHost> {
     mapManager!.initialize().catchError((e) {
       print("[AppHost] Error reinitializing MapManager: $e");
     });
+  }
+}
+
+class _DevFab extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final app = ref.read(appLogicProvider.notifier);
+    // Eliminado: estado de grabación
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        // Controles de velocidad
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            FloatingActionButton.small(
+              heroTag: 'dev_speed_down',
+              backgroundColor: Colors.grey.shade700,
+              tooltip: 'Reducir velocidad',
+              child: const Icon(Icons.remove),
+              onPressed: () {
+                final current = ref.read(devReplaySpeedProvider);
+                final next = (current - 0.5).clamp(0.25, 3.0);
+                ref.read(devReplaySpeedProvider.notifier).state = next;
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Velocidad: ${next.toStringAsFixed(2)}x'),
+                      duration: const Duration(milliseconds: 800),
+                    ),
+                  );
+                }
+              },
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.6),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Consumer(
+                builder: (_, ref, __) {
+                  final speed = ref.watch(devReplaySpeedProvider);
+                  return Text(
+                    '${speed.toStringAsFixed(2)}x',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            FloatingActionButton.small(
+              heroTag: 'dev_speed_up',
+              backgroundColor: Colors.grey.shade700,
+              tooltip: 'Aumentar velocidad',
+              child: const Icon(Icons.add),
+              onPressed: () {
+                final current = ref.read(devReplaySpeedProvider);
+                final next = (current + 0.5).clamp(0.25, 3.0);
+                ref.read(devReplaySpeedProvider.notifier).state = next;
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Velocidad: ${next.toStringAsFixed(2)}x'),
+                      duration: const Duration(milliseconds: 800),
+                    ),
+                  );
+                }
+              },
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        FloatingActionButton.small(
+          heroTag: 'dev_simulate_trip',
+          backgroundColor: Colors.blue,
+          tooltip: 'Simular viaje (ruta actual)',
+          child: const Icon(Icons.play_arrow),
+          onPressed: () async {
+            final speed = ref.read(devReplaySpeedProvider);
+            await app.devStartTripSimulation(speed: speed);
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Simulación iniciada'),
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            }
+          },
+        ),
+        // Eliminado: botón de grabación manual
+      ],
+    );
   }
 }

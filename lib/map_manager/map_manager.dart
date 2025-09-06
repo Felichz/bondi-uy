@@ -1,7 +1,9 @@
-import 'package:flutter/material.dart';
+import 'dart:convert';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'package:bondi_uy/backend/contrato_ui/app_ui_state.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'map_route_renderer.dart';
+import 'package:bondi_uy/providers/app_providers.dart';
 import 'map_bus_realtime.dart';
 import 'map_icons_loader.dart';
 import 'map_camera_controller.dart';
@@ -11,6 +13,7 @@ import 'map_cleanup.dart';
 /// Centraliza toda la lógica de renderizado, animaciones y estado
 class MapManager {
   final MapboxMap? mapboxMap;
+  final WidgetRef? ref;
 
   // Submódulos especializados
   late final MapRouteRenderer _routeRenderer;
@@ -28,7 +31,7 @@ class MapManager {
   // Trackear la opción actualmente en preview para optimizar transiciones
   String? _currentPreviewOptionId;
 
-  MapManager(this.mapboxMap) {
+  MapManager(this.mapboxMap, {this.ref}) {
     _routeRenderer = MapRouteRenderer(mapboxMap, this);
     _busRealtime = MapBusRealtime(mapboxMap, this);
     _iconsLoader = MapIconsLoader(mapboxMap, this);
@@ -126,8 +129,19 @@ class MapManager {
       await _busRealtime.initializeActiveTripTracking(activeTripState);
     }
 
+    // Inicializar visualización de ubicación del usuario
+    print(
+      "[MapManager] 📍 Inicializando visualización de ubicación del usuario...",
+    );
+    await _initializeUserLocationVisualization();
+    print("[MapManager] 📍 Visualización de ubicación inicializada");
+
+    print("[MapManager] 🏁 Cambiando fase a 'active_trip'...");
     _currentPhase = 'active_trip';
     _currentPreviewOptionId = null; // Limpiar preview tracking
+    print(
+      "[MapManager] ✅ Fase cambiada a 'active_trip' - listo para recibir ubicaciones del usuario",
+    );
   }
 
   /// Iniciar tracking para viaje activo (simplificado)
@@ -137,16 +151,19 @@ class MapManager {
     print("[MapManager] Starting active trip tracking");
 
     try {
-      // 1. Detener animaciones del preview
+      // 1) Detener animaciones del preview
       _busRealtime.stopPreviewAnimations();
 
-      // 2. ELIMINADO: No limpiar elementos de buses para mantener ETA y tramo verde
-      // await _cleanup.clearPreviewBusElements();
+      // 2) LIMPIEZA CRÍTICA: eliminar elementos de buses del preview
+      //    para evitar que en active_trip se mezclen con los elementos "main".
+      //    Esto previene que updateBusPosition escriba en fuentes/capas de preview
+      //    y muestre buses de otros segmentos.
+      await _cleanup.clearPreviewBusElements();
 
-      // 3. Configurar tracking de bus manteniendo los elementos visuales existentes
+      // 3) Configurar tracking de bus para active trip
       await _busRealtime.initializeActiveTripTracking(activeTripState);
 
-      // 4. Ajustar zoom para active trip
+      // 4) Ajustar zoom para active trip
       await _cameraController.zoomToActiveTrip(activeTripState.tramosDelViaje);
 
       print("[MapManager] Successfully started active trip tracking");
@@ -181,6 +198,29 @@ class MapManager {
     bool isRealTime,
   ) async {
     await _busRealtime.updateBusPosition(position, etaMinutes, isRealTime);
+    // Cámara dinámica durante espera: si estamos en active_trip y el tramo actual es WAITING_FOR_BUS
+    try {
+      if (_currentPhase == 'active_trip' && ref != null) {
+        final appState = ref!.read(appUiStateProvider); // requiere provider global
+        final active = appState.datosFaseViajeActivo;
+        final currentStep = appState.currentJourneyStep;
+        if (active != null && currentStep != null) {
+          if (currentStep.stepIndex < active.tramosDelViaje.length) {
+            final tramo = active.tramosDelViaje[currentStep.stepIndex];
+            if (tramo.tipo == TipoTramoViaje.ESPERAR_BUS && etaMinutes >= 0) {
+              final userPos = getCurrentUserLocation();
+              await _cameraController.updateWaitingBusViewport(
+                waitingLeg: tramo,
+                busPosition: position,
+                userPosition: userPos,
+              );
+            }
+          }
+        }
+      }
+    } catch (e) {
+      print('[MapManager] Error dynamic camera waiting bus: $e');
+    }
   }
 
   /// Mostrar fase inicial (para InitialPhaseOverlay)
@@ -275,6 +315,695 @@ class MapManager {
   /// Obtener posición actual del bus en tiempo real
   Coordenada? getCurrentBusPosition() {
     return _busRealtime.currentBusPosition;
+  }
+
+  /// Almacenar y exponer ubicación actual del usuario para cálculos de cámara
+  Coordenada? _currentUserLocation;
+  Coordenada? getCurrentUserLocation() => _currentUserLocation;
+
+  /// Inicializar visualización de ubicación del usuario
+  Future<void> _initializeUserLocationVisualization() async {
+    if (mapboxMap == null) return;
+
+    print("[MapManager] Initializing user location visualization");
+
+    try {
+      // No cargar icono - usaremos CircleLayer directamente en updateUserLocation()
+      print(
+        "[MapManager] User location visualization initialized - using CircleLayer approach",
+      );
+    } catch (e) {
+      print("[MapManager] Error initializing user location visualization: $e");
+    }
+  }
+
+  /// Actualizar ubicación del usuario en el mapa
+  Future<void> updateUserLocation(Coordenada userLocation) async {
+    print("[MapManager] === INICIO ACTUALIZACIÓN UBICACIÓN USUARIO ===");
+    print(
+      "[MapManager] Ubicación recibida: ${userLocation.latitud}, ${userLocation.longitud}",
+    );
+    print("[MapManager] MapboxMap disponible: ${mapboxMap != null}");
+    print("[MapManager] Fase actual: $_currentPhase");
+
+    if (mapboxMap == null) {
+      print("[MapManager] ❌ Condiciones no válidas para actualizar ubicación");
+      print("[MapManager] MapboxMap nulo: ${mapboxMap == null}");
+      return;
+    }
+
+    // CORREGIDO: Permitir ubicación del usuario en TODAS las fases
+    print("[MapManager] ✅ Condiciones válidas - procediendo con actualización");
+
+    // DEBUGGING ADICIONAL: Verificar el estado actual del mapa
+    print("[MapManager] 🔍 === ESTADO DEL MAPA ANTES DE ACTUALIZAR ===");
+    const String sourceId = 'user-location-source';
+    const String layerId = 'user-location-layer';
+
+    try {
+      final sourceExists = await mapboxMap!.style.styleSourceExists(sourceId);
+      final layerExists = await mapboxMap!.style.styleLayerExists(layerId);
+      print("[MapManager] 🔍 Fuente '$sourceId' existe: $sourceExists");
+      print("[MapManager] 🔍 Capa '$layerId' existe: $layerExists");
+
+      if (sourceExists) {
+        // Intentar obtener datos actuales de la fuente
+        try {
+          await mapboxMap!.style.getSource(sourceId) as GeoJsonSource;
+          print("[MapManager] 🔍 Fuente obtenida exitosamente");
+          // TODO: No podemos obtener los datos directamente, pero al menos sabemos que existe
+        } catch (e) {
+          print("[MapManager] 🔍 Error obteniendo fuente: $e");
+        }
+      }
+
+      if (layerExists) {
+        // Verificar propiedades de la capa
+        try {
+          // Obtener visibilidad
+          final visibility = await mapboxMap!.style.getStyleLayerProperty(
+            layerId,
+            'visibility',
+          );
+          print("[MapManager] 🔍 Visibilidad de capa: $visibility");
+
+          // Obtener opacidad
+          final opacity = await mapboxMap!.style.getStyleLayerProperty(
+            layerId,
+            'circle-opacity',
+          );
+          print("[MapManager] 🔍 Opacidad de capa: $opacity");
+
+          // Obtener color
+          final color = await mapboxMap!.style.getStyleLayerProperty(
+            layerId,
+            'circle-color',
+          );
+          print("[MapManager] 🔍 Color de capa: $color");
+
+          // Obtener radio
+          final radius = await mapboxMap!.style.getStyleLayerProperty(
+            layerId,
+            'circle-radius',
+          );
+          print("[MapManager] 🔍 Radio de capa: $radius");
+        } catch (e) {
+          print("[MapManager] 🔍 Error obteniendo propiedades de capa: $e");
+        }
+      }
+
+      // Verificar orden de capas
+      try {
+        final allLayers = await mapboxMap!.style.getStyleLayers();
+        final layerIndex = allLayers.indexWhere(
+          (layer) => layer?.id == layerId,
+        );
+        print(
+          "[MapManager] 🔍 Capa '$layerId' está en posición: $layerIndex de ${allLayers.length} capas totales",
+        );
+
+        // Mostrar las últimas 5 capas para ver si nuestra capa está siendo tapada
+        if (allLayers.length > 5) {
+          final lastLayers =
+              allLayers.skip(allLayers.length - 5).map((l) => l?.id).toList();
+          print("[MapManager] 🔍 Últimas 5 capas (en orden): $lastLayers");
+        }
+      } catch (e) {
+        print("[MapManager] 🔍 Error obteniendo capas: $e");
+      }
+    } catch (e) {
+      print("[MapManager] 🔍 Error en verificación de estado: $e");
+    }
+
+    print("[MapManager] 🔍 === FIN ESTADO DEL MAPA ===");
+
+    try {
+      const String sourceId = 'user-location-source';
+      const String layerId = 'user-location-layer';
+
+      print("[MapManager] 🗺️ Verificando si fuente '$sourceId' ya existe...");
+      final sourceExists = await mapboxMap!.style.styleSourceExists(sourceId);
+      print("[MapManager] 🗺️ Fuente existe: $sourceExists");
+
+      // Validar coordenadas
+      if (userLocation.latitud.isNaN ||
+          userLocation.longitud.isNaN ||
+          userLocation.latitud.abs() > 90 ||
+          userLocation.longitud.abs() > 180) {
+        print(
+          "[MapManager] ❌ Coordenadas inválidas: ${userLocation.latitud}, ${userLocation.longitud}",
+        );
+        return;
+      }
+
+      // Crear feature de ubicación del usuario
+      final userLocationFeature = {
+        "type": "Feature",
+        "geometry": {
+          "type": "Point",
+          "coordinates": [userLocation.longitud, userLocation.latitud],
+        },
+        "properties": {"type": "user-location"},
+      };
+
+      final sourceData = {
+        "type": "FeatureCollection",
+        "features": [userLocationFeature],
+      };
+
+      print(
+        "[MapManager] 📄 GeoJSON válido creado para coordenadas: [${userLocation.longitud}, ${userLocation.latitud}]",
+      );
+
+      if (sourceExists) {
+        print("[MapManager] 🔄 Actualizando fuente existente...");
+        print(
+          "[MapManager] 🔄 Coordenadas anteriores vs nuevas para detectar cambio visual...",
+        );
+        try {
+          final source =
+              await mapboxMap!.style.getSource(sourceId) as GeoJsonSource;
+          await source.updateGeoJSON(json.encode(sourceData));
+          print(
+            "[MapManager] ✅ Fuente GeoJSON actualizada - DEBERÍAMOS ver movimiento visual",
+          );
+
+          // DEBUGGING: Verificar que la fuente realmente contiene los nuevos datos
+          try {
+            await mapboxMap!.style.getSource(sourceId) as GeoJsonSource;
+            print(
+              "[MapManager] 🔍 Verificación post-actualización: fuente obtenida correctamente",
+            );
+            print(
+              "[MapManager] 🔍   - Nuevas coordenadas deberían ser: [${userLocation.longitud}, ${userLocation.latitud}]",
+            );
+          } catch (verifyError) {
+            print(
+              "[MapManager] ⚠️ Error verificando actualización: $verifyError",
+            );
+          }
+        } catch (e) {
+          print("[MapManager] ❌ Error actualizando fuente existente: $e");
+          print("[MapManager] 🔄 Intentando recrear fuente...");
+
+          // Si falla la actualización, intentar eliminar y recrear
+          try {
+            await mapboxMap!.style.removeStyleSource(sourceId);
+            print("[MapManager] 🗑️ Fuente eliminada");
+          } catch (removeError) {
+            print("[MapManager] ⚠️ Error eliminando fuente: $removeError");
+          }
+
+          // Recrear la fuente
+          await _createUserLocationSourceAndLayer(
+            sourceId,
+            layerId,
+            sourceData,
+          );
+        }
+      } else {
+        print("[MapManager] 🆕 Creando nueva fuente y capa...");
+        await _createUserLocationSourceAndLayer(sourceId, layerId, sourceData);
+      }
+
+      print(
+        "[MapManager] ✅ === UBICACIÓN USUARIO ACTUALIZADA EXITOSAMENTE ===",
+      );
+
+      // DEBUGGING ADICIONAL: Verificar el estado DESPUÉS de la actualización
+      print("[MapManager] 🔍 === ESTADO DEL MAPA DESPUÉS DE ACTUALIZAR ===");
+
+      try {
+        final sourceExistsAfter = await mapboxMap!.style.styleSourceExists(
+          sourceId,
+        );
+        final layerExistsAfter = await mapboxMap!.style.styleLayerExists(
+          layerId,
+        );
+        print("[MapManager] 🔍 POST-UPDATE: Fuente existe: $sourceExistsAfter");
+        print("[MapManager] 🔍 POST-UPDATE: Capa existe: $layerExistsAfter");
+
+        if (layerExistsAfter) {
+          // Verificar propiedades críticas después de la actualización
+          try {
+            final visibilityAfter = await mapboxMap!.style
+                .getStyleLayerProperty(layerId, 'visibility');
+            final opacityAfter = await mapboxMap!.style.getStyleLayerProperty(
+              layerId,
+              'circle-opacity',
+            );
+            final colorAfter = await mapboxMap!.style.getStyleLayerProperty(
+              layerId,
+              'circle-color',
+            );
+            final radiusAfter = await mapboxMap!.style.getStyleLayerProperty(
+              layerId,
+              'circle-radius',
+            );
+
+            print("[MapManager] 🔍 POST-UPDATE: Visibilidad: $visibilityAfter");
+            print("[MapManager] 🔍 POST-UPDATE: Opacidad: $opacityAfter");
+            print("[MapManager] 🔍 POST-UPDATE: Color: $colorAfter");
+            print("[MapManager] 🔍 POST-UPDATE: Radio: $radiusAfter");
+
+            // Verificar si la capa está visible
+            final isVisible = visibilityAfter != 'none';
+            final hasOpacity =
+                opacityAfter.toString() != 'none' &&
+                opacityAfter.toString() != '0';
+            final hasRadius =
+                radiusAfter.toString() != 'none' &&
+                radiusAfter.toString() != '0';
+
+            print("[MapManager] 🔍 POST-UPDATE: ¿Visible?: $isVisible");
+            print("[MapManager] 🔍 POST-UPDATE: ¿Con opacidad?: $hasOpacity");
+            print("[MapManager] 🔍 POST-UPDATE: ¿Con radio?: $hasRadius");
+
+            if (!isVisible || !hasOpacity || !hasRadius) {
+              print(
+                "[MapManager] ⚠️ PROBLEMA POTENCIAL: La capa puede no ser visible",
+              );
+              print(
+                "[MapManager] ⚠️   - Visibility = '$visibilityAfter' (debería ser 'visible' o no 'none')",
+              );
+              print(
+                "[MapManager] ⚠️   - Opacity = '$opacityAfter' (debería ser > 0)",
+              );
+              print(
+                "[MapManager] ⚠️   - Radius = '$radiusAfter' (debería ser > 0)",
+              );
+            } else {
+              print(
+                "[MapManager] ✅ La capa parece estar configurada correctamente para ser visible",
+              );
+            }
+          } catch (propError) {
+            print(
+              "[MapManager] 🔍 Error obteniendo propiedades post-actualización: $propError",
+            );
+          }
+        }
+
+        // Verificar si hay problemas de orden de capas
+        try {
+          final allLayersAfter = await mapboxMap!.style.getStyleLayers();
+          final userLayerIndex = allLayersAfter.indexWhere(
+            (layer) => layer?.id == layerId,
+          );
+
+          print(
+            "[MapManager] 🔍 POST-UPDATE: Posición de capa usuario: $userLayerIndex de ${allLayersAfter.length}",
+          );
+
+          // Contar cuántas capas están encima de la capa del usuario
+          final layersAbove = allLayersAfter.length - 1 - userLayerIndex;
+          print(
+            "[MapManager] 🔍 POST-UPDATE: Capas encima del usuario: $layersAbove",
+          );
+
+          if (layersAbove > 10) {
+            print(
+              "[MapManager] ⚠️ POSIBLE PROBLEMA: Muchas capas ($layersAbove) encima de la ubicación del usuario",
+            );
+            print(
+              "[MapManager] ⚠️ La capa del usuario podría estar siendo tapada por otras capas",
+            );
+
+            // Mostrar las capas que están encima
+            final upperLayers =
+                allLayersAfter
+                    .skip(userLayerIndex + 1)
+                    .take(5)
+                    .map((l) => l?.id)
+                    .toList();
+            print(
+              "[MapManager] ⚠️ Primeras 5 capas que la tapan: $upperLayers",
+            );
+          }
+        } catch (layerOrderError) {
+          print(
+            "[MapManager] 🔍 Error verificando orden de capas: $layerOrderError",
+          );
+        }
+
+        // Intento experimental: Forzar re-renderizado moviendo la capa al final
+        try {
+          print(
+            "[MapManager] 🔬 EXPERIMENTO: Moviendo capa al final para asegurar visibilidad...",
+          );
+          await mapboxMap!.style.moveStyleLayer(
+            layerId,
+            null,
+          ); // null = mover al final
+          print("[MapManager] 🔬 Capa movida al final exitosamente");
+        } catch (moveError) {
+          print("[MapManager] 🔬 Error moviendo capa al final: $moveError");
+        }
+      } catch (postUpdateError) {
+        print(
+          "[MapManager] 🔍 Error en verificación post-actualización: $postUpdateError",
+        );
+      }
+
+      print("[MapManager] 🔍 === FIN ESTADO POST-ACTUALIZACIÓN ===");
+    } catch (e) {
+      print("[MapManager] ❌ === ERROR ACTUALIZANDO UBICACIÓN USUARIO ===");
+      print("[MapManager] ❌ Error: $e");
+      print("[MapManager] ❌ Tipo: ${e.runtimeType}");
+      print("[MapManager] ❌ Stack trace: ${StackTrace.current}");
+    }
+  }
+
+  /// Crear fuente y capa de ubicación del usuario
+  Future<void> _createUserLocationSourceAndLayer(
+    String sourceId,
+    String layerId,
+    Map<String, dynamic> sourceData,
+  ) async {
+    print("[MapManager] 🆕 === CREANDO FUENTE Y CAPA DE UBICACIÓN ===");
+
+    try {
+      // Verificar si la capa existe y eliminarla
+      print("[MapManager] 🗑️ Verificando si capa '$layerId' existe...");
+      final layerExists = await mapboxMap!.style.styleLayerExists(layerId);
+      if (layerExists) {
+        print("[MapManager] 🗑️ Eliminando capa existente...");
+        await mapboxMap!.style.removeStyleLayer(layerId);
+      }
+
+      // Crear fuente nueva
+      print("[MapManager] 📂 Creando nueva fuente '$sourceId'...");
+      try {
+        await mapboxMap!.style.addSource(
+          GeoJsonSource(id: sourceId, data: json.encode(sourceData)),
+        );
+        registerSource(sourceId);
+        print("[MapManager] ✅ Fuente '$sourceId' creada y registrada");
+      } catch (e) {
+        if (e.toString().contains('already exists') ||
+            e.toString().contains('Source \'$sourceId\' already exists')) {
+          print(
+            "[MapManager] ⚠️ Fuente '$sourceId' ya existe - actualizando en su lugar...",
+          );
+          try {
+            final source =
+                await mapboxMap!.style.getSource(sourceId) as GeoJsonSource;
+            await source.updateGeoJSON(json.encode(sourceData));
+            print(
+              "[MapManager] ✅ Fuente '$sourceId' actualizada después de error 'already exists'",
+            );
+          } catch (updateError) {
+            print(
+              "[MapManager] ❌ Error actualizando fuente después de 'already exists': $updateError",
+            );
+            rethrow;
+          }
+        } else {
+          print("[MapManager] ❌ Error creando fuente '$sourceId': $e");
+          rethrow;
+        }
+      }
+
+      // Crear capa del círculo azul para la ubicación del usuario
+      // CRUCIAL: Agregar la capa AL FINAL (encima de todas las demás) para asegurar visibilidad
+      print("[MapManager] 🔵 Creando capa de círculo azul '$layerId'...");
+      try {
+        // EXPERIMENTO: Crear capa con propiedades más agresivas para debug
+        await mapboxMap!.style.addLayer(
+          CircleLayer(
+            id: layerId,
+            sourceId: sourceId,
+            circleRadius: 15.0, // Radio más grande para debug
+            circleColor: 0xFFFF0000, // ROJO para debug (más visible)
+            circleStrokeWidth: 3.0, // Borde más grueso
+            circleStrokeColor: 0xFFFFFFFF, // Borde blanco
+            circleOpacity: 1.0, // Máxima opacidad
+            circleStrokeOpacity: 1.0,
+            // visibility: 'visible', // No podemos usar string, omitir para usar por defecto
+          ),
+        );
+        registerLayer(layerId);
+        print(
+          "[MapManager] ✅ Capa '$layerId' creada - ROJO DEBUG, radio: 15px, borde: 3px",
+        );
+
+        // Verificaciones exhaustivas INMEDIATAS
+        final layerExists = await mapboxMap!.style.styleLayerExists(layerId);
+        final sourceExistsAfterLayer = await mapboxMap!.style.styleSourceExists(
+          sourceId,
+        );
+        print("[MapManager] 🔍 Verificación INMEDIATA después de crear capa:");
+        print("[MapManager] 🔍   - Capa '$layerId' existe: $layerExists");
+        print(
+          "[MapManager] 🔍   - Fuente '$sourceId' existe: $sourceExistsAfterLayer",
+        );
+
+        if (!layerExists) {
+          print(
+            "[MapManager] ❌ PROBLEMA CRÍTICO: La capa no existe después de crearla!",
+          );
+          throw Exception("Layer $layerId was not created successfully");
+        }
+
+        // Verificar propiedades inmediatamente después de crear
+        try {
+          final immediateVisibility = await mapboxMap!.style
+              .getStyleLayerProperty(layerId, 'visibility');
+          final immediateOpacity = await mapboxMap!.style.getStyleLayerProperty(
+            layerId,
+            'circle-opacity',
+          );
+          final immediateColor = await mapboxMap!.style.getStyleLayerProperty(
+            layerId,
+            'circle-color',
+          );
+          final immediateRadius = await mapboxMap!.style.getStyleLayerProperty(
+            layerId,
+            'circle-radius',
+          );
+
+          print(
+            "[MapManager] 🔍 Propiedades INMEDIATAS de la capa recién creada:",
+          );
+          print("[MapManager] 🔍   - Visibilidad: $immediateVisibility");
+          print("[MapManager] 🔍   - Opacidad: $immediateOpacity");
+          print("[MapManager] 🔍   - Color: $immediateColor");
+          print("[MapManager] 🔍   - Radio: $immediateRadius");
+
+          // Verificar si las propiedades son las esperadas
+          final expectedColor = 0xFFFF0000; // ROJO
+          final expectedRadius = 15.0;
+
+          if (immediateColor != expectedColor) {
+            print(
+              "[MapManager] ⚠️ Color no coincide: esperado $expectedColor, obtenido $immediateColor",
+            );
+          }
+          if (immediateRadius != expectedRadius) {
+            print(
+              "[MapManager] ⚠️ Radio no coincide: esperado $expectedRadius, obtenido $immediateRadius",
+            );
+          }
+        } catch (immediatePropError) {
+          print(
+            "[MapManager] ❌ Error obteniendo propiedades inmediatas: $immediatePropError",
+          );
+        }
+
+        // EXPERIMENTO ADICIONAL: Forzar que la capa esté al final inmediatamente
+        try {
+          print("[MapManager] 🔬 Moviendo capa recién creada al final...");
+          await mapboxMap!.style.moveStyleLayer(layerId, null);
+          print(
+            "[MapManager] 🔬 Capa movida al final inmediatamente después de crear",
+          );
+
+          // Verificar posición después de mover
+          final layersAfterMove = await mapboxMap!.style.getStyleLayers();
+          final positionAfterMove = layersAfterMove.indexWhere(
+            (layer) => layer?.id == layerId,
+          );
+          print(
+            "[MapManager] 🔬 Posición después de mover: $positionAfterMove de ${layersAfterMove.length}",
+          );
+
+          if (positionAfterMove != layersAfterMove.length - 1) {
+            print("[MapManager] ⚠️ La capa NO está al final después de mover!");
+          } else {
+            print("[MapManager] ✅ La capa está correctamente al final");
+          }
+        } catch (moveError) {
+          print("[MapManager] ❌ Error moviendo capa al final: $moveError");
+        }
+      } catch (e) {
+        if (e.toString().contains('already exists') ||
+            e.toString().contains('Layer \'$layerId\' already exists')) {
+          print(
+            "[MapManager] ⚠️ Capa '$layerId' ya existe - actualizando propiedades...",
+          );
+
+          // Si la capa ya existe, actualizar sus propiedades para hacerla más visible
+          try {
+            await mapboxMap!.style.setStyleLayerProperty(
+              layerId,
+              'circle-radius',
+              8.0,
+            );
+            await mapboxMap!.style.setStyleLayerProperty(
+              layerId,
+              'circle-color',
+              0xFF2196F3,
+            );
+            await mapboxMap!.style.setStyleLayerProperty(
+              layerId,
+              'circle-opacity',
+              1.0,
+            );
+            print(
+              "[MapManager] ✅ Propiedades de capa existente actualizadas a AZUL y radio 8",
+            );
+          } catch (propError) {
+            print("[MapManager] ❌ Error actualizando propiedades: $propError");
+          }
+
+          registerLayer(layerId); // Asegurar que esté registrada
+        } else {
+          print("[MapManager] ❌ Error creando capa '$layerId': $e");
+          rethrow;
+        }
+      }
+      print("[MapManager] ✅ === FUENTE Y CAPA CREADAS EXITOSAMENTE ===");
+    } catch (e) {
+      print("[MapManager] ❌ === ERROR CREANDO FUENTE Y CAPA ===");
+      print("[MapManager] ❌ Error: $e");
+      print("[MapManager] ❌ Tipo: ${e.runtimeType}");
+      rethrow;
+    }
+  }
+
+  /// VERSIÓN LIMPIA: Actualizar ubicación del usuario (simplificada)
+  Future<void> updateUserLocationClean(Coordenada userLocation) async {
+    print(
+      "[MapManager] [CLEAN] Updating user location: ${userLocation.latitud}, ${userLocation.longitud}",
+    );
+    print("[MapManager] [CLEAN] Current phase: $_currentPhase");
+
+    if (mapboxMap == null) {
+      print("[MapManager] [CLEAN] Cannot update - mapboxMap is null");
+      return;
+    }
+
+    // CORREGIDO: Permitir ubicación en TODAS las fases, no solo active_trip
+    print(
+      "[MapManager] [CLEAN] Phase validation passed - proceeding with location update",
+    );
+
+    // Guardar última ubicación del usuario para zooms contextuales
+    _currentUserLocation = userLocation;
+
+    try {
+      const String sourceId = 'user-location-source';
+      const String layerId = 'user-location-layer';
+
+      // Validar coordenadas
+      if (userLocation.latitud.isNaN ||
+          userLocation.longitud.isNaN ||
+          userLocation.latitud.abs() > 90 ||
+          userLocation.longitud.abs() > 180) {
+        print("[MapManager] [CLEAN] Invalid coordinates");
+        return;
+      }
+
+      // Crear GeoJSON para la ubicación
+      final sourceData = {
+        "type": "FeatureCollection",
+        "features": [
+          {
+            "type": "Feature",
+            "geometry": {
+              "type": "Point",
+              "coordinates": [userLocation.longitud, userLocation.latitud],
+            },
+            "properties": {"type": "user-location"},
+          },
+        ],
+      };
+
+      // Actualizar o crear fuente
+      final sourceExists = await mapboxMap!.style.styleSourceExists(sourceId);
+      if (sourceExists) {
+        print("[MapManager] [CLEAN] 🔄 About to call updateGeoJSON...");
+        final source =
+            await mapboxMap!.style.getSource(sourceId) as GeoJsonSource;
+        await source.updateGeoJSON(json.encode(sourceData));
+        print(
+          "[MapManager] [CLEAN] ✅ updateGeoJSON completed - MAP SHOULD UPDATE NOW",
+        );
+        print(
+          "[MapManager] [CLEAN] 📍 New coordinates pushed to map: [${userLocation.longitud}, ${userLocation.latitud}]",
+        );
+        print(
+          "[MapManager] [CLEAN] 🔵 CÍRCULO AZUL DEBERÍA MOVERSE VISUALMENTE AHORA - ${DateTime.now()}",
+        );
+        print("[MapManager] [CLEAN] User location source updated");
+      } else {
+        await _createUserLocationClean(sourceId, layerId, sourceData);
+      }
+    } catch (e) {
+      print("[MapManager] [CLEAN] Error updating user location: $e");
+    }
+  }
+
+  /// VERSIÓN LIMPIA: Crear fuente y capa de ubicación del usuario
+  Future<void> _createUserLocationClean(
+    String sourceId,
+    String layerId,
+    Map<String, dynamic> sourceData,
+  ) async {
+    try {
+      // Limpiar capa existente si existe
+      final layerExists = await mapboxMap!.style.styleLayerExists(layerId);
+      if (layerExists) {
+        await mapboxMap!.style.removeStyleLayer(layerId);
+      }
+
+      // Crear fuente nueva
+      print("[MapManager] [CLEAN] 📂 About to create GeoJSON source...");
+      await mapboxMap!.style.addSource(
+        GeoJsonSource(id: sourceId, data: json.encode(sourceData)),
+      );
+      print(
+        "[MapManager] [CLEAN] ✅ GeoJSON source created - DATA LOADED TO MAP",
+      );
+      registerSource(sourceId);
+
+      // Crear capa del círculo azul - SIMPLIFICADA
+      print("[MapManager] [CLEAN] 🔵 About to create CircleLayer...");
+      await mapboxMap!.style.addLayer(
+        CircleLayer(
+          id: layerId,
+          sourceId: sourceId,
+          circleRadius: 8.0,
+          circleColor: 0xFF2196F3, // Azul Material Design
+          circleStrokeWidth: 2.0,
+          circleStrokeColor: 0xFFFFFFFF, // Borde blanco
+          circleOpacity: 1.0,
+          circleStrokeOpacity: 1.0,
+        ),
+      );
+      registerLayer(layerId);
+      print(
+        "[MapManager] [CLEAN] ✅ CircleLayer created - CIRCLE SHOULD BE VISIBLE NOW",
+      );
+      print(
+        "[MapManager] [CLEAN] 📍 Circle created at: [${sourceData['features'][0]['geometry']['coordinates'][0]}, ${sourceData['features'][0]['geometry']['coordinates'][1]}]",
+      );
+
+      print("[MapManager] [CLEAN] User location layer created successfully");
+    } catch (e) {
+      print("[MapManager] [CLEAN] Error creating user location layer: $e");
+      rethrow;
+    }
   }
 
   /// Acceso directo a submódulos para casos específicos

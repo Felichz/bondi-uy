@@ -3,9 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_typeahead/flutter_typeahead.dart';
 import 'dart:async';
 import 'package:bondi_uy/backend/contrato_ui/app_ui_state.dart'; // Para SugerenciaLugar y EstadoSolicitud
-// TODO: Importar IAppLogic y su provider
-// Ejemplo: import 'package:bondi_uy/backend/contrato_ui/app_logic_interface.dart';
-// Ejemplo: import 'package:bondi_uy/backend/providers/app_logic_provider.dart';
+import 'package:bondi_uy/backend/providers/app_logic_provider.dart'; // Para appLogicProvider
 
 class AppComposeWithOrigin extends ConsumerStatefulWidget {
   final String hintText;
@@ -14,6 +12,7 @@ class AppComposeWithOrigin extends ConsumerStatefulWidget {
   final void Function(String) onTextChanged;
   final void Function(SugerenciaLugar) onSuggestionSelected;
   final void Function() onClear;
+  final VoidCallback? onCurrentLocationTap;
   final bool autoFocus;
   final FocusNode? focusNode;
   final String? initialValue;
@@ -26,6 +25,7 @@ class AppComposeWithOrigin extends ConsumerStatefulWidget {
     required this.onTextChanged,
     required this.onSuggestionSelected,
     required this.onClear,
+    this.onCurrentLocationTap,
     this.autoFocus = false,
     this.focusNode,
     this.initialValue,
@@ -190,6 +190,38 @@ class _AppComposeWithOriginState extends ConsumerState<AppComposeWithOrigin> {
               vertical: 12.0,
               horizontal: 10.0,
             ),
+            prefixIcon:
+                widget.hintText.toLowerCase().contains('origen')
+                    ? Consumer(
+                      builder: (context, ref, child) {
+                        final appUiState = ref.watch(appLogicProvider);
+                        final isLoadingLocation =
+                            appUiState.estadoUbicacionActual ==
+                            EstadoSolicitud.CARGANDO;
+
+                        return IconButton(
+                          icon:
+                              isLoadingLocation
+                                  ? SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        Theme.of(context).primaryColor,
+                                      ),
+                                    ),
+                                  )
+                                  : const Icon(Icons.my_location),
+                          tooltip: 'Usar mi ubicación',
+                          onPressed:
+                              isLoadingLocation
+                                  ? null
+                                  : widget.onCurrentLocationTap,
+                        );
+                      },
+                    )
+                    : null,
             suffixIcon: Row(
               mainAxisSize: MainAxisSize.min,
               children: [

@@ -18,7 +18,8 @@ enum ZoomTargetType {
 
 class ZoomTarget {
   final ZoomTargetType tipo;
-  final List<Map<String, double>>? puntos; // Assuming points are List of {'latitude': lat, 'longitude': lon} or similar
+  final List<Map<String, double>>?
+  puntos; // Assuming points are List of {'latitude': lat, 'longitude': lon} or similar
   final int? indiceTramo; // Corresponds to legIndex for ZoomTargetType.leg
   final Coordenada? puntoUnico;
 

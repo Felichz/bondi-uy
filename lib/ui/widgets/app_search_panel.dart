@@ -49,6 +49,25 @@ class _AppSearchPanelState extends ConsumerState<AppSearchPanel> {
     final appLogic = ref.read(appLogicProvider.notifier);
     final bool isPanelExpanded = _isPanelExpanded;
 
+    // Escuchar errores de ubicación para mostrar snackbars
+    ref.listen<AppUiState>(appLogicProvider, (previous, next) {
+      if (previous?.mensajeErrorUbicacion != next.mensajeErrorUbicacion &&
+          next.mensajeErrorUbicacion != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(next.mensajeErrorUbicacion!),
+            duration: const Duration(seconds: 4),
+            backgroundColor: Colors.red[700],
+            action: SnackBarAction(
+              label: 'OK',
+              onPressed: () {},
+              textColor: Colors.white,
+            ),
+          ),
+        );
+      }
+    });
+
     void _handleSearchRoute() {
       if (appUiState.puntoOrigenParaBusqueda != null &&
           appUiState.puntoDestinoParaBusqueda != null) {
@@ -286,6 +305,9 @@ class _AppSearchPanelState extends ConsumerState<AppSearchPanel> {
                 },
                 onClear: () {
                   appLogic.limpiarOrigenSeleccionado();
+                },
+                onCurrentLocationTap: () {
+                  appLogic.seleccionarUbicacionActualComoOrigen();
                 },
                 focusNode: _origenFocusNode,
                 autoFocus: appUiState.puntoOrigenParaBusqueda == null,
