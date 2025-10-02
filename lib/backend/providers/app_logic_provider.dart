@@ -12,6 +12,7 @@ import '../../journey/journey_step_state.dart';
 import '../../journey/route_dynamic_calculator.dart';
 // Eliminado: herramientas de grabación manual
 import '../../devtools/trip_simulator.dart';
+import 'package:bondi_uy/utils/feature_logger.dart';
 import '../../ui/app_host.dart'; // Para acceder al mapManagerProvider
 import '../../map_manager/map_bus_realtime.dart'; // Para BusTrackingMode
 import '../../utils/geometry_utils.dart';
@@ -64,11 +65,15 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
   // Dev recorder para grabar/reproducir eventos de ubicación y bus
   TripSimulator? _tripSimulator;
   DateTime? _lastDevMockPush; // Para throttle de simulador
+  DateTime? _lastDevBusPush;
+  Coordenada? _lastDevBusPos;
   // Histéresis de boarding
   int _busBoardingPositiveCount = 0;
   DateTime? _lastBusBoardingEval;
   static const int _busBoardingRequiredConsecutive = 5; // 5 positivos (~5s)
-  static const Duration _busBoardingEvalMinSpacing = Duration(milliseconds: 900); // ventana ~1s
+  static const Duration _busBoardingEvalMinSpacing = Duration(
+    milliseconds: 900,
+  ); // ventana ~1s
   static const double _departureThresholdMeters = 90.0; // abandono de parada
 
   AppLogicNotifier(
@@ -1479,6 +1484,19 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
 
   // DIFF: Callback de actualización de ubicación
   void _onUserLocationUpdate(Coordenada newLocation) {
+    // Feature logs
+    try {
+      FeatureLogger().log(
+        'auto_nav',
+        'location_update',
+        data: {
+          'lat': newLocation.latitud,
+          'lon': newLocation.longitud,
+          'step': _currentJourneyStep?.stepIndex,
+          'type': _currentJourneyStep?.type.toString(),
+        },
+      );
+    } catch (_) {}
     // Eliminado: registro dev de ubicación del usuario
     print("[LOCATION_UPDATE] 📍 === NUEVA UBICACIÓN DETECTADA ====");
     print(
@@ -1531,11 +1549,25 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
       "[LOCATION_UPDATE] 🗺️ Actualizando ubicación en mapa inmediatamente...",
     );
     _updateUserLocationOnMap(newLocation);
+    try {
+      FeatureLogger().log(
+        'journey',
+        'user_loc_pushed_to_map',
+        data: {'lat': newLocation.latitud, 'lon': newLocation.longitud},
+      );
+    } catch (_) {}
 
     // NUEVO: Detectar transición automática de WAITING_FOR_BUS a RIDING_BUS
     if (_currentJourneyStep!.type == JourneyStepType.WAITING_FOR_BUS) {
       _monitorDepartureFromStop(newLocation);
       _checkForBusBoarding(newLocation);
+      try {
+        FeatureLogger().log(
+          'auto_nav',
+          'waiting_bus_checks',
+          data: {'step': _currentJourneyStep?.stepIndex},
+        );
+      } catch (_) {}
     }
 
     // DIFF: Manear tracking híbrido de bus
@@ -1573,6 +1605,17 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
             currentJourneyStep: _currentJourneyStep,
             currentStepProgress: progress,
           );
+          try {
+            FeatureLogger().log(
+              'auto_nav',
+              'progress',
+              data: {
+                'pct': progress.percentageComplete.toStringAsFixed(1),
+                'remain_m': progress.remainingDistance.toStringAsFixed(0),
+                'remain_s': progress.remainingTimeSeconds,
+              },
+            );
+          } catch (_) {}
 
           print("[LOCATION_UPDATE] ✅ Estado actualizado con nuevo progreso");
         })
@@ -1598,17 +1641,31 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
       }
     }
     _lastDevMockPush = now;
-    // Reusar pipeline normal de actualización
-    _onUserLocationUpdate(location);
+    // Reusar pipeline real vía LocationTracker para mantener geofences/velocidad
+    if (_locationTracker != null) {
+      _locationTracker!.injectLocationUpdate(location);
+    } else {
+      _onUserLocationUpdate(location);
+    }
   }
 
   // ====== DEV: Simulación basada en la ruta actual (sin dataset) ======
   Future<void> devStartTripSimulation({double speed = 1.0}) async {
     // Capturar última posición real del bus ANTES de limpiar estado
     final lastBusPos = state.datosFaseViajeActivo?.posicionActualBusReal;
-    // Apagar cualquier tracking real para no competir
+    // Apagar seguimiento API para no competir
     await detenerSeguimientoBusTiempoReal();
-    _pauseOnlyLocationTracker();
+    // Asegurar tracker en modo feed externo para mantener pipeline real
+    if (_locationTracker == null) {
+      final created = LocationTracker(
+        onLocationUpdate: _onUserLocationUpdate,
+        onArrivalDetected: _onArrivalDetected,
+        isTestMode: false,
+      );
+      _locationTracker = created;
+      await _locationTracker!.startTracking();
+    }
+    _locationTracker!.enterExternalFeedMode();
     final mapManager = _ref.read(mapManagerProvider);
     if (mapManager != null) {
       // En fases previas (caminar/espera) queremos mostrar aproximación del bus (API-like)
@@ -1647,6 +1704,29 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
     print(
       '[DEV_SIM] Push bus realtime: pos=${pos.latitud},${pos.longitud} eta=$etaMinutes',
     );
+    // Throttle anti-jitter para updates de bus simulados
+    const int throttleMs = 700; // mínimo intervalo entre updates
+    const double minMoveMeters = 4.0; // ignorar micro-movimientos
+    final now = DateTime.now();
+    if (_lastDevBusPush != null) {
+      final diff = now.difference(_lastDevBusPush!).inMilliseconds;
+      if (diff < throttleMs) {
+        return;
+      }
+    }
+    if (_lastDevBusPos != null) {
+      final d = calculateHaversineDistance(
+        _lastDevBusPos!.latitud,
+        _lastDevBusPos!.longitud,
+        pos.latitud,
+        pos.longitud,
+      );
+      if (d < minMoveMeters) {
+        return;
+      }
+    }
+    _lastDevBusPush = now;
+    _lastDevBusPos = pos;
     final active = state.datosFaseViajeActivo;
     if (active == null) return;
     state = state.copyWith(
@@ -1681,12 +1761,24 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
   void _checkForBusBoarding(Coordenada userLocation) {
     print("[BUS_BOARDING] 🚌 === VERIFICANDO SUBIDA AL BUS ====");
 
+    try {
+      FeatureLogger().log(
+        'auto_nav',
+        'check_boarding',
+        data: {
+          'lat': userLocation.latitud,
+          'lon': userLocation.longitud,
+          'speed': (_locationTracker?.currentSpeed ?? 0.0).toStringAsFixed(2),
+          'step': _currentJourneyStep?.stepIndex,
+        },
+      );
+    } catch (_) {}
+
     final activeTripState = state.datosFaseViajeActivo;
     if (activeTripState == null) {
       print("[BUS_BOARDING] ⚠️ No hay viaje activo");
       return;
     }
-  
 
     // Obtener velocidad real del usuario del LocationTracker
     final userSpeed = _locationTracker?.currentSpeed ?? 0.0;
@@ -1737,6 +1829,40 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
       );
       print("[BUS_BOARDING] ✅ === FIN VERIFICACIÓN SUBIDA AL BUS ====");
       return;
+    }
+
+    // FORZAR SUBIDA si el bus pasó/llegó a la parada y el usuario está en la parada (o muy cerca)
+    try {
+      final stopOrigin = nextBusSegment.coordenadasParadaOrigen;
+      if (stopOrigin != null) {
+        final distToStop = calculateHaversineDistance(
+          userLocation.latitud,
+          userLocation.longitud,
+          stopOrigin.latitud,
+          stopOrigin.longitud,
+        );
+        print(
+          "[BUS_BOARDING] 📏 Distancia usuario a parada origen: ${distToStop.toStringAsFixed(1)}m",
+        );
+        // Umbral de 30m para considerar que el usuario está en la parada
+        if (distToStop <= 30.0) {
+          print(
+            "[BUS_BOARDING] ✅ Gate: bus pasó/llegó + usuario en parada → SUBIDA FORZADA",
+          );
+          try {
+            FeatureLogger().log(
+              'auto_nav',
+              'boarding_detected_gate',
+              data: {'dist_m': distToStop.toStringAsFixed(1)},
+            );
+          } catch (_) {}
+          _busBoardingPositiveCount = _busBoardingRequiredConsecutive;
+          _transitionToNextStep();
+          return;
+        }
+      }
+    } catch (e) {
+      print("[BUS_BOARDING] ⚠️ Error en gate forzado: $e");
     }
 
     // Obtener puntos de la ruta del bus desde geometriaPolilinea
@@ -1805,9 +1931,7 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
         "[BUS_BOARDING] ⏳ Usuario lento (${(userSpeed * 3.6).toStringAsFixed(1)} km/h) - espera continúa",
       );
     } else {
-      print(
-        "[BUS_BOARDING] ⏳ Proximidad / dirección insuficiente todavía",
-      );
+      print("[BUS_BOARDING] ⏳ Proximidad / dirección insuficiente todavía");
     }
 
     print("[BUS_BOARDING] ✅ === FIN VERIFICACIÓN SUBIDA AL BUS ====");
@@ -1821,7 +1945,8 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
     if (idx <= 0 || idx >= active.tramosDelViaje.length) return;
     final waitingTramo = active.tramosDelViaje[idx];
     if (waitingTramo.tipo != TipoTramoViaje.ESPERAR_BUS) return;
-    final stop = waitingTramo.coordenadasParadaOrigen ?? waitingTramo.posicionPunto;
+    final stop =
+        waitingTramo.coordenadasParadaOrigen ?? waitingTramo.posicionPunto;
     if (stop == null) return;
     final dist = calculateHaversineDistance(
       userLocation.latitud,
@@ -1834,7 +1959,9 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
       if (prevIdx >= 0) {
         final prevTramo = active.tramosDelViaje[prevIdx];
         if (prevTramo.tipo == TipoTramoViaje.CAMINAR) {
-          print('[DEPARTURE] Usuario se alejó ${dist.toStringAsFixed(1)}m → volver a paso caminar index=$prevIdx');
+          print(
+            '[DEPARTURE] Usuario se alejó ${dist.toStringAsFixed(1)}m → volver a paso caminar index=$prevIdx',
+          );
           _currentJourneyStep = JourneyStepState(
             stepIndex: prevIdx,
             type: JourneyStepType.WALKING_TO_STOP,
@@ -2004,6 +2131,17 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
 
   // DIFF: Callback de llegada detectada
   void _onArrivalDetected(String geofenceId) {
+    try {
+      FeatureLogger().log(
+        'auto_nav',
+        'arrival_detected',
+        data: {
+          'geofence': geofenceId,
+          'step': _currentJourneyStep?.stepIndex,
+          'type': _currentJourneyStep?.type.toString(),
+        },
+      );
+    } catch (_) {}
     print("[ARRIVAL_DETECTION] 🎯 === LLEGADA DETECTADA ====");
     print("[ARRIVAL_DETECTION] 🎯 Geofence ID: $geofenceId");
     print(
@@ -2023,6 +2161,13 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
 
   // DIFF: Transición automática al siguiente paso
   void _transitionToNextStep() {
+    try {
+      FeatureLogger().log(
+        'auto_nav',
+        'transition_start',
+        data: {'from': _currentJourneyStep?.stepIndex},
+      );
+    } catch (_) {}
     print("[STEP_TRANSITION] 🔄 === TRANSICIÓN AUTOMÁTICA ====");
     print(
       "[STEP_TRANSITION] 🔄 Paso actual: ${_currentJourneyStep?.stepIndex}",
@@ -2033,6 +2178,9 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
 
     if (_currentJourneyStep == null || !_automaticNavigationEnabled) {
       print("[STEP_TRANSITION] ❌ Condiciones no válidas - abortando");
+      try {
+        FeatureLogger().log('auto_nav', 'transition_abort');
+      } catch (_) {}
       return;
     }
 
@@ -2051,6 +2199,9 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
         "[STEP_TRANSITION] 🏁 VIAJE COMPLETADO - todos los pasos finalizados",
       );
       _completeJourney();
+      try {
+        FeatureLogger().log('auto_nav', 'journey_complete');
+      } catch (_) {}
       return;
     }
 
@@ -2075,6 +2226,13 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
       startTime: DateTime.now(),
     );
     print("[STEP_TRANSITION] ✅ Nuevo paso configurado");
+    try {
+      FeatureLogger().log(
+        'journey',
+        'step_configured',
+        data: {'index': nextStepIndex, 'type': nextStepType.toString()},
+      );
+    } catch (_) {}
 
     // Reconfigurar geofences
     print("[STEP_TRANSITION] 🎯 Reconfigurando geofences...");
@@ -2085,16 +2243,29 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
     print("[STEP_TRANSITION] 🚌 Configurando modo de tracking de bus...");
     _configureBusTrackingForStep(nextStepType);
     print("[STEP_TRANSITION] ✅ Tracking de bus configurado");
+    try {
+      FeatureLogger().log('journey', 'bus_tracking_configured');
+    } catch (_) {}
 
     // Notificar cambio a UI
     print("[STEP_TRANSITION] 📱 Notificando cambio a UI...");
     _notifyStepTransition();
     print("[STEP_TRANSITION] ✅ UI notificada");
+    try {
+      FeatureLogger().log('journey', 'ui_notified_step');
+    } catch (_) {}
 
     print("[STEP_TRANSITION] ✅ === TRANSICIÓN COMPLETADA ====");
     print(
       "[STEP_TRANSITION] ✅ Nuevo paso activo: $nextStepIndex (${nextStepType})",
     );
+    try {
+      FeatureLogger().log(
+        'auto_nav',
+        'transition_done',
+        data: {'to': nextStepIndex},
+      );
+    } catch (_) {}
   }
 
   // DIFF: Métodos auxiliares
@@ -2155,7 +2326,8 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
   }
 
   Future<RouteProgress> _calculateStepProgress(Coordenada userLocation) async {
-    if (_currentJourneyStep == null || _currentJourneyStep!.destination == null) {
+    if (_currentJourneyStep == null ||
+        _currentJourneyStep!.destination == null) {
       return RouteProgress(
         percentageComplete: 0,
         remainingDistance: 0,
@@ -2193,6 +2365,7 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
     final poly = tramo.geometriaPolilinea;
     // Si hay polilínea, usarla para progreso real
     if (poly != null && poly.length >= 2) {
+      // Distancia total
       double total = 0.0;
       for (int i = 0; i < poly.length - 1; i++) {
         total += calculateHaversineDistance(
@@ -2202,38 +2375,23 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
           poly[i + 1].longitud,
         );
       }
-      // Buscar vértice más cercano (MVP; se puede mejorar proyectando sobre segmentos)
-      int closestIdx = 0;
-      double minDist = double.infinity;
-      for (int i = 0; i < poly.length; i++) {
-        final d = calculateHaversineDistance(
-          userLocation.latitud,
-          userLocation.longitud,
-          poly[i].latitud,
-          poly[i].longitud,
-        );
-        if (d < minDist) {
-          minDist = d;
-          closestIdx = i;
-        }
-      }
-      double remaining = minDist;
-      for (int i = closestIdx; i < poly.length - 1; i++) {
-        remaining += calculateHaversineDistance(
-          poly[i].latitud,
-          poly[i].longitud,
-          poly[i + 1].latitud,
-          poly[i + 1].longitud,
-        );
-      }
-      final completed = (total - remaining).clamp(0.0, total);
-      final pct = total > 0 ? ((completed / total) * 100.0).clamp(0.0, 100.0) : 0.0;
-  int remainingSecs;
-  // Reusar heurísticas: si es bus, usar velocidad bus (30km/h), si no caminar (5km/h)
-  const double walkingSpeedMps = 1.4;
-  const double busSpeedMps = 8.33;
-  final speed = _currentJourneyStep!.type == JourneyStepType.RIDING_BUS ? busSpeedMps : walkingSpeedMps;
-  remainingSecs = speed > 0 ? (remaining / speed).round() : 0;
+      // Metros recorridos usando proyección a segmento
+      final completed = RouteDynamicCalculator.progressAlongPolyline(
+        point: userLocation,
+        polyline: poly,
+      );
+      final remaining = (total - completed).clamp(0.0, total);
+      final pct =
+          total > 0 ? ((completed / total) * 100.0).clamp(0.0, 100.0) : 0.0;
+      int remainingSecs;
+      // Reusar heurísticas: si es bus, usar velocidad bus (30km/h), si no caminar (5km/h)
+      const double walkingSpeedMps = 1.4;
+      const double busSpeedMps = 8.33;
+      final speed =
+          _currentJourneyStep!.type == JourneyStepType.RIDING_BUS
+              ? busSpeedMps
+              : walkingSpeedMps;
+      remainingSecs = speed > 0 ? (remaining / speed).round() : 0;
       return RouteProgress(
         percentageComplete: pct,
         remainingDistance: remaining,
@@ -2311,6 +2469,18 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
 
     // Usar el método existente de LocationTracker
     _locationTracker!.setupGeofencesForStep([destination], [geofenceId]);
+    try {
+      FeatureLogger().log(
+        'geofence',
+        'configured',
+        data: {
+          'id': geofenceId,
+          'lat': destination.latitud,
+          'lon': destination.longitud,
+          'type': _currentJourneyStep!.type.toString(),
+        },
+      );
+    } catch (_) {}
 
     print("[GEOFENCE_SETUP] ✅ Geofence configurado exitosamente");
     print("[GEOFENCE_SETUP] ✅ === FIN CONFIGURACIÓN GEOFENCES ====");
@@ -2426,7 +2596,7 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
           // Solo si el usuario está cerca de la ruta del bus
           if (isOnBusRoute) {
             print("[HYBRID_BUS] 🎯 Usuario confirmado en ruta del bus");
-            _updateBusToUserLocation(userLocation);
+            // Mantener icono de usuario default; no mover icono de bus al usuario
           } else {
             print(
               "[HYBRID_BUS] ⚠️ Usuario no está en la ruta del bus esperada",
@@ -2491,8 +2661,9 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
         print(
           "[BUS_TRACKING_CONFIG] 🚌 En el bus - cambiando a tracking del usuario",
         );
-        // Usuario está en el bus, cambiar a tracking del usuario
-        await mapManager.busRealtime.switchToUserLocationMode();
+        // No cambiar icono del usuario a icono de bus (mantener claridad visual)
+        // Limpiar cualquier rastro de modo USER_LOCATION previo para evitar capas duplicadas
+        mapManager.busRealtime.stopAllTracking();
 
         // Limpiar elementos de buses de preview/API que no correspondan en viaje
         await mapManager.cleanup.clearPreviewBusElements();
@@ -2650,6 +2821,13 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
             print(
               "[WAITING_FALLBACK] ✅ Usuario cerca de ruta + velocidad alta = SUBIDA DETECTADA",
             );
+            try {
+              FeatureLogger().log(
+                'auto_nav',
+                'boarding_detected',
+                data: {'near_route': true},
+              );
+            } catch (_) {}
             _waitingForBusFallbackTimer?.cancel();
             _waitingForBusFallbackTimer = null;
             _transitionToNextStep();
@@ -2658,6 +2836,9 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
             print(
               "[WAITING_FALLBACK] ⏳ Velocidad alta pero no cerca de ruta del bus",
             );
+            try {
+              FeatureLogger().log('auto_nav', 'boarding_not_near_route');
+            } catch (_) {}
           }
         } else {
           print(

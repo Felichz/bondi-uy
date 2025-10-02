@@ -24,7 +24,7 @@ String get OTP_BASE_URL {
   if (_otpTunnelId != null && _otpTunnelId!.isNotEmpty) {
     return "https://$_otpTunnelId.ngrok-free.app/otp/routers/default/plan";
   }
-  return "http://192.168.1.21:8080/otp/routers/default/plan";
+  return "http://192.168.1.80:8080/otp/routers/default/plan";
 }
 
 const int OTP_NUM_ITINERARIES = 5; // Número de itinerarios a solicitar
@@ -38,11 +38,11 @@ String get OTP_GRAPHQL_ENDPOINT_URL {
   if (_otpTunnelId != null && _otpTunnelId!.isNotEmpty) {
     return "https://$_otpTunnelId.ngrok-free.app/otp/routers/default/index/graphql";
   }
-  return "http://192.168.1.21:8080/otp/routers/default/index/graphql";
+  return "http://192.168.1.80:8080/otp/routers/default/index/graphql";
 }
 // Configuración de IPs:
 // - Para emulador Android: usar "http://10.0.2.2:8080/otp/routers/default/index/graphql"
-// - Para dispositivo físico en WiFi: usar "http://192.168.1.21:8080/otp/routers/default/index/graphql"
+// - Para dispositivo físico en WiFi: usar "http://192.168.1.80:8080/otp/routers/default/index/graphql"
 // - Para web: usar la IP de la máquina host en la red local
 
 // --- Modelos Internos Simplificados (similares a los del código antiguo para parsear OTP) ---

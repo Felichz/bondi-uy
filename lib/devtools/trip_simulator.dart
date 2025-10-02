@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'package:bondi_uy/utils/feature_logger.dart';
 
 import '../backend/contrato_ui/app_ui_state.dart';
 import '../backend/providers/app_logic_provider.dart';
@@ -19,12 +20,15 @@ class TripSimulator {
   static const double _userWalkToDestSecs = 10.0;
 
   DateTime? _startTime;
+  bool _ridePhaseLogged = false;
+  bool _waitPhaseLogged = false;
 
   // Traces
   List<Coordenada> _userWalkToStop = [];
   List<Coordenada> _busApproach = [];
   List<Coordenada> _busRide = [];
   List<Coordenada> _userWalkToDest = [];
+  int _lastApproachIdx = 0; // asegurar monotonicidad
 
   TripSimulator(
     this.notifier, {
@@ -58,6 +62,19 @@ class TripSimulator {
         _userWalkToDest.isEmpty) {
       return;
     }
+
+    try {
+      FeatureLogger().log(
+        'sim',
+        'start',
+        data: {
+          'walk_pts': _userWalkToStop.length,
+          'bus_app_pts': _busApproach.length,
+          'ride_pts': _busRide.length,
+          'walk_dest_pts': _userWalkToDest.length,
+        },
+      );
+    } catch (_) {}
 
     _startTime = DateTime.now();
     _timer = Timer.periodic(const Duration(milliseconds: 200), (_) => _tick());
@@ -222,18 +239,33 @@ class TripSimulator {
       final idx = ((p * (_userWalkToStop.length - 1))).round();
       final userPos = _userWalkToStop[idx];
       notifier.devPushMockUserLocation(userPos);
+      if (!_waitPhaseLogged && p >= 1.0) {
+        _waitPhaseLogged = true;
+        try {
+          FeatureLogger().log('sim', 'wait_phase_start');
+        } catch (_) {}
+      }
     }
 
     // 2) Bus aproximándose a la parada [0, busApproachT]
     if (_busApproach.isNotEmpty) {
       final pBus = (elapsed / busApproachT).clamp(0.0, 1.0);
-      final idxBus = ((pBus * (_busApproach.length - 1))).round();
+      // Monotonía: usar floor y clamp para evitar retrocesos por redondeo
+      var idxBus = (pBus * (_busApproach.length - 1)).floor();
+      if (idxBus < 0) idxBus = 0;
+      if (idxBus > _lastApproachIdx)
+        idxBus = idxBus;
+      else
+        idxBus = _lastApproachIdx;
+      if (idxBus >= _busApproach.length) idxBus = _busApproach.length - 1;
+      _lastApproachIdx = idxBus;
       final busPos = _busApproach[idxBus];
       int etaMinutes = 0;
       if (elapsed < busApproachT) {
         final remaining = busApproachT - elapsed;
         etaMinutes = math.max(1, (remaining / 60.0).ceil());
       }
+      // Reducir frecuencia de pushes: solo en cambios de índice o cada ~400ms
       _pushBusRealtime(busPos, etaMinutes);
     }
 
@@ -245,6 +277,12 @@ class TripSimulator {
       final ridePos = _busRide[idxRide];
       // usuario “pegado” al bus
       notifier.devPushMockUserLocation(ridePos);
+      if (!_ridePhaseLogged) {
+        _ridePhaseLogged = true;
+        try {
+          FeatureLogger().log('sim', 'ride_phase_start');
+        } catch (_) {}
+      }
       // ETA durante ride no es relevante; mantener 0 o 1 para que el overlay no lo esconda
       _pushBusRealtime(ridePos, 1);
     }

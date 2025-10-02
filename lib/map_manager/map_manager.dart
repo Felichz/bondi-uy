@@ -8,6 +8,7 @@ import 'map_bus_realtime.dart';
 import 'map_icons_loader.dart';
 import 'map_camera_controller.dart';
 import 'map_cleanup.dart';
+import 'package:bondi_uy/utils/feature_logger.dart';
 
 /// Módulo unificado para el manejo completo del estado del mapa
 /// Centraliza toda la lógica de renderizado, animaciones y estado
@@ -197,11 +198,40 @@ class MapManager {
     int etaMinutes,
     bool isRealTime,
   ) async {
-    await _busRealtime.updateBusPosition(position, etaMinutes, isRealTime);
+    // Si estamos en RIDING_BUS y ya pegamos la ubicación del usuario al bus,
+    // evitamos actualizar el símbolo de bus realtime para no alternar entre user y bus.
+    bool skipBusSymbolUpdate = false;
+    try {
+      if (_currentPhase == 'active_trip' && ref != null) {
+        final appState = ref!.read(appUiStateProvider);
+        final currentStep = appState.currentJourneyStep;
+        if (currentStep != null &&
+            currentStep.type.toString().contains('RIDING_BUS')) {
+          skipBusSymbolUpdate = true;
+        }
+      }
+    } catch (_) {}
+    if (!skipBusSymbolUpdate) {
+      await _busRealtime.updateBusPosition(position, etaMinutes, isRealTime);
+    }
+    try {
+      FeatureLogger().log(
+        'journey',
+        'bus_pos',
+        data: {
+          'lat': position.latitud,
+          'lon': position.longitud,
+          'eta': etaMinutes,
+          'rt': isRealTime,
+        },
+      );
+    } catch (_) {}
     // Cámara dinámica durante espera: si estamos en active_trip y el tramo actual es WAITING_FOR_BUS
     try {
       if (_currentPhase == 'active_trip' && ref != null) {
-        final appState = ref!.read(appUiStateProvider); // requiere provider global
+        final appState = ref!.read(
+          appUiStateProvider,
+        ); // requiere provider global
         final active = appState.datosFaseViajeActivo;
         final currentStep = appState.currentJourneyStep;
         if (active != null && currentStep != null) {
@@ -214,12 +244,23 @@ class MapManager {
                 busPosition: position,
                 userPosition: userPos,
               );
+              FeatureLogger().camera(
+                'dynamic_wait_viewport',
+                data: {
+                  'eta_min': etaMinutes,
+                  'step': currentStep.stepIndex,
+                  'hasUser': userPos != null,
+                },
+              );
             }
           }
         }
       }
     } catch (e) {
-      print('[MapManager] Error dynamic camera waiting bus: $e');
+      FeatureLogger().camera(
+        'dynamic_wait_viewport:error',
+        data: {'e': e.toString()},
+      );
     }
   }
 
@@ -315,6 +356,47 @@ class MapManager {
   /// Obtener posición actual del bus en tiempo real
   Coordenada? getCurrentBusPosition() {
     return _busRealtime.currentBusPosition;
+  }
+
+  // NUEVO: Notificar interacción manual del usuario con la cámara (gesto pan/zoom/rotate)
+  void notifyUserCameraInteraction() {
+    FeatureLogger().camera('gesture:camera_interaction');
+    _cameraController.notifyManualInteraction();
+  }
+
+  // NUEVO: Fallback para style reload - re-crear capas críticas si desaparecieron
+  Future<void> verifyAndRestoreStyleElements() async {
+    if (mapboxMap == null) return;
+    print(
+      '[MapManager] 🔁 Verificando elementos críticos tras style reload...',
+    );
+    try {
+      // Usuario
+      const userSource = 'user-location-source';
+      const userLayer = 'user-location-layer';
+      final userSourceExists = await mapboxMap!.style.styleSourceExists(
+        userSource,
+      );
+      final userLayerExists = await mapboxMap!.style.styleLayerExists(
+        userLayer,
+      );
+      if (!userSourceExists || !userLayerExists) {
+        print(
+          '[MapManager] ♻️ Restaurando user location (source=$userSourceExists, layer=$userLayerExists)',
+        );
+        _currentUserLocation != null
+            ? await updateUserLocationClean(_currentUserLocation!)
+            : await _createUserLocationClean(userSource, userLayer, {
+              'type': 'FeatureCollection',
+              'features': [],
+            });
+      }
+
+      // TODO: Agregar restauración de capas de ruta y buses si se detecta su ausencia
+      // (Requiere conocer IDs exactos usados en MapRouteRenderer / MapBusRealtime)
+    } catch (e) {
+      print('[MapManager] ❌ Error en verifyAndRestoreStyleElements: $e');
+    }
   }
 
   /// Almacenar y exponer ubicación actual del usuario para cálculos de cámara
@@ -1012,4 +1094,101 @@ class MapManager {
   MapIconsLoader get iconsLoader => _iconsLoader;
   MapCameraController get cameraController => _cameraController;
   MapCleanup get cleanup => _cleanup;
+
+  // Called when auto-follow resumes to perform semantic recenter (e.g., WAITING_FOR_BUS leg)
+  Future<void> handleAutoFollowResumed() async {
+    try {
+      if (_currentPhase != 'active_trip' || ref == null) return;
+      final appState = ref!.read(appUiStateProvider);
+      final active = appState.datosFaseViajeActivo;
+      final currentStep = appState.currentJourneyStep;
+      if (active == null || currentStep == null) return;
+      if (currentStep.stepIndex >= active.tramosDelViaje.length) return;
+      final tramo = active.tramosDelViaje[currentStep.stepIndex];
+      final busPos = getCurrentBusPosition();
+      final userPos = getCurrentUserLocation();
+      final List<Coordenada> coords = [];
+      // Construir coords según tipo de tramo
+      switch (tramo.tipo) {
+        case TipoTramoViaje.ESPERAR_BUS:
+          if (tramo.coordenadasParadaOrigen != null) {
+            coords.add(tramo.coordenadasParadaOrigen!);
+          } else if (tramo.posicionPunto != null) {
+            coords.add(tramo.posicionPunto!);
+          }
+          if (busPos != null) coords.add(busPos);
+          if (userPos != null) coords.add(userPos);
+          break;
+        case TipoTramoViaje.CAMINAR:
+          if (tramo.geometriaPolilinea != null &&
+              tramo.geometriaPolilinea!.isNotEmpty) {
+            coords.addAll(tramo.geometriaPolilinea!.take(30)); // sample inicial
+          }
+          if (tramo.coordenadasParadaDestino != null)
+            coords.add(tramo.coordenadasParadaDestino!);
+          if (userPos != null) coords.add(userPos);
+          if (busPos != null)
+            coords.add(
+              busPos,
+            ); // contexto si cercano (filtro interno ya aplicado antes)
+          break;
+        case TipoTramoViaje.VIAJE_EN_BUS:
+          if (tramo.geometriaPolilinea != null &&
+              tramo.geometriaPolilinea!.isNotEmpty) {
+            coords.addAll(tramo.geometriaPolilinea!.take(40));
+          }
+          if (busPos != null) coords.add(busPos);
+          if (tramo.coordenadasParadaDestino != null)
+            coords.add(tramo.coordenadasParadaDestino!);
+          if (userPos != null) coords.add(userPos);
+          break;
+        default:
+          if (tramo.geometriaPolilinea != null &&
+              tramo.geometriaPolilinea!.isNotEmpty) {
+            coords.addAll(tramo.geometriaPolilinea!);
+          } else if (tramo.posicionPunto != null) {
+            coords.add(tramo.posicionPunto!);
+          }
+          if (userPos != null) coords.add(userPos);
+          if (busPos != null) coords.add(busPos);
+      }
+
+      if (coords.length < 2) {
+        FeatureLogger().camera(
+          'auto_follow:semantic_recentering_skip_insufficient',
+        );
+        return;
+      }
+      _cameraController.prepareImmediateAnimation();
+      FeatureLogger().camera(
+        'auto_follow:semantic_recentering',
+        data: {
+          'coords': coords.length,
+          'hasUser': userPos != null,
+          'hasBus': busPos != null,
+          'tipo': tramo.tipo.toString(),
+        },
+      );
+      if (tramo.tipo == TipoTramoViaje.ESPERAR_BUS &&
+          busPos != null &&
+          (tramo.coordenadasParadaOrigen != null ||
+              tramo.posicionPunto != null)) {
+        await _cameraController.updateWaitingBusViewport(
+          waitingLeg: tramo,
+          busPosition: busPos,
+          userPosition: userPos,
+        );
+      } else {
+        await _cameraController.zoomToCurrentLeg(
+          currentStep.stepIndex,
+          active.tramosDelViaje,
+        );
+      }
+    } catch (e) {
+      FeatureLogger().camera(
+        'auto_follow:semantic_recentering_error',
+        data: {'e': e.toString()},
+      );
+    }
+  }
 }

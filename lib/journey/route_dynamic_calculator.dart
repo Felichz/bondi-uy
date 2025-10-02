@@ -3,6 +3,72 @@ import '../backend/contrato_ui/app_ui_state.dart';
 import '../utils/geometry_utils.dart';
 
 class RouteDynamicCalculator {
+  // NUEVO: Calcular progreso a lo largo de una polilínea arbitraria usando proyección a segmento
+  static double progressAlongPolyline({
+    required Coordenada point,
+    required List<Coordenada> polyline,
+  }) {
+    if (polyline.length < 2) return 0.0;
+    // Calcular distancias acumuladas
+    final cumulative = <double>[0.0];
+    double acc = 0.0;
+    for (int i = 0; i < polyline.length - 1; i++) {
+      acc += calculateHaversineDistance(
+        polyline[i].latitud,
+        polyline[i].longitud,
+        polyline[i + 1].latitud,
+        polyline[i + 1].longitud,
+      );
+      cumulative.add(acc);
+    }
+
+    // Encontrar segmento más cercano proyectando
+    double bestDist = double.infinity;
+    double bestAlong = 0.0;
+    for (int i = 0; i < polyline.length - 1; i++) {
+      final a = polyline[i];
+      final b = polyline[i + 1];
+      // Aproximación plana local para proyección
+      final latRad = a.latitud * pi / 180.0;
+      final kx = 111320.0 * cos(latRad);
+      const ky = 111320.0;
+      final ax = a.longitud * kx;
+      final ay = a.latitud * ky;
+      final bx = b.longitud * kx;
+      final by = b.latitud * ky;
+      final px = point.longitud * kx;
+      final py = point.latitud * ky;
+      final vx = bx - ax;
+      final vy = by - ay;
+      final wx = px - ax;
+      final wy = py - ay;
+      final segLen2 = vx * vx + vy * vy;
+      double t = 0.0;
+      if (segLen2 > 0) {
+        t = (wx * vx + wy * vy) / segLen2;
+        if (t < 0) t = 0;
+        else if (t > 1) t = 1;
+      }
+      final projx = ax + t * vx;
+      final projy = ay + t * vy;
+      final dx = px - projx;
+      final dy = py - projy;
+      final dist = sqrt(dx * dx + dy * dy); // metros aprox
+      if (dist < bestDist) {
+        bestDist = dist;
+        // Distancia acumulada hasta inicio + t * segmento
+        final segMeters = calculateHaversineDistance(
+          a.latitud,
+          a.longitud,
+          b.latitud,
+          b.longitud,
+        );
+        bestAlong = cumulative[i] + t * segMeters;
+      }
+    }
+    // Retorna metros recorridos y usuario puede dividir por total (último cumulative)
+    return bestAlong.clamp(0.0, cumulative.last);
+  }
   static Future<RouteProgress> calculateProgress({
     required Coordenada startLocation,
     required Coordenada currentLocation,

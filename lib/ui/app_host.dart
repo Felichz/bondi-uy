@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:bondi_uy/backend/providers/app_logic_provider.dart';
 import 'package:bondi_uy/backend/contrato_ui/app_ui_state.dart';
 import 'package:bondi_uy/map_manager/map_manager.dart';
+import 'package:bondi_uy/utils/feature_logger.dart';
+import 'dart:math' as math;
 
 import 'package:bondi_uy/ui/overlays/initial_phase_overlay.dart';
 import 'package:bondi_uy/ui/overlays/route_options_overlay.dart';
@@ -29,6 +31,163 @@ class _AppHostState extends ConsumerState<AppHost> {
   MapboxMap? mapboxMap;
   MapManager? mapManager;
   FaseApp? _lastPhase;
+
+  // NUEVO: métricas de eventos de mapa
+  int _cameraChangeCount = 0;
+  int _mapIdleCount = 0;
+  int _tapCount = 0;
+  DateTime _lastCameraAggLog = DateTime.fromMillisecondsSinceEpoch(0);
+  DateTime _lastIdleAggLog = DateTime.fromMillisecondsSinceEpoch(0);
+  // Heurística de gesto real del usuario (tap reciente)
+  DateTime? _lastUserTap;
+  DateTime _lastGestureLog = DateTime.fromMillisecondsSinceEpoch(0);
+  Point? _lastCameraCenter;
+  double? _lastCameraZoom;
+
+  static const _aggEvery = 50; // log agregado cada 50 eventos
+  static const _aggInterval = Duration(seconds: 5); // o cada 5s mínimo
+  static const _postAnimationGrace = Duration(milliseconds: 900);
+  static const _debugSampleInterval = Duration(seconds: 5);
+  DateTime _lastGestureDebugSample = DateTime.fromMillisecondsSinceEpoch(0);
+  int _moveEvalCount = 0;
+  int _moveTrueCount = 0;
+  bool _lastMoveOkState = false;
+
+  void _logMapEvent(String type, {Map<String, Object?>? data}) {
+    FeatureLogger().log('map_evt', type, data: data);
+  }
+
+  void _handleCameraChange(event) {
+    _cameraChangeCount++;
+    double? zoom;
+    double? bearing;
+    double? pitch;
+    Point? center;
+    try {
+      final cs = (event as dynamic).cameraState;
+      zoom = cs?.zoom; bearing = cs?.bearing; pitch = cs?.pitch; center = cs?.center;
+    } catch (_) {}
+    final now = DateTime.now();
+
+    // GRACE: ignorar eventos inmediatamente después de animación para no marcar como drag (solo log early/late)
+    final lastAnimEnd = mapManager?.cameraController.lastAnimationEnd;
+    if (lastAnimEnd != null) {
+      final sinceMs = now.difference(lastAnimEnd).inMilliseconds;
+      if (sinceMs < _postAnimationGrace.inMilliseconds) {
+        final ratio = sinceMs / _postAnimationGrace.inMilliseconds;
+        if (ratio < 0.1 || (ratio > 0.9 && ratio < 1.0)) {
+          FeatureLogger().camera('gesture:ignore_post_anim', data: {'ms': sinceMs});
+        }
+        return;
+      }
+    }
+
+    final dueByCount = _cameraChangeCount % _aggEvery == 1;
+    final dueByTime = now.difference(_lastCameraAggLog) >= _aggInterval;
+    if (dueByCount || dueByTime) {
+      _lastCameraAggLog = now;
+      _logMapEvent('camera_change', data: {
+        'count': _cameraChangeCount,
+        if (zoom != null) 'z': zoom.toStringAsFixed(2),
+        if (bearing != null) 'br': bearing.toStringAsFixed(1),
+        if (pitch != null) 'p': pitch.toStringAsFixed(1),
+        'sinceTapMs': _lastUserTap == null ? -1 : now.difference(_lastUserTap!).inMilliseconds,
+      });
+    }
+
+    // Ignorar eventos generados por animaciones de cámara
+    if (mapManager?.cameraController.isAnimating == true) {
+      return;
+    }
+
+    final movementOk = _movementExceeded(center, zoom);
+    _moveEvalCount++;
+    if (movementOk) _moveTrueCount++;
+    if (movementOk && !_lastMoveOkState) {
+      FeatureLogger().camera('gesture:move_transition_true', data: {
+        'tapAgoMs': _lastUserTap == null ? -1 : now.difference(_lastUserTap!).inMilliseconds
+      });
+    }
+    _lastMoveOkState = movementOk;
+    if (now.difference(_lastGestureDebugSample) >= _debugSampleInterval) {
+      FeatureLogger().camera('gesture:move_sample', data: {
+        'evals': _moveEvalCount,
+        'true': _moveTrueCount,
+        'pctTrue': _moveEvalCount == 0 ? 0 : ((_moveTrueCount / _moveEvalCount) * 100).toStringAsFixed(1)
+      });
+      _lastGestureDebugSample = now;
+      _moveEvalCount = 0;
+      _moveTrueCount = 0;
+    }
+
+    // Tap reciente → gesto legítimo inmediato
+    if (_lastUserTap != null && now.difference(_lastUserTap!) < const Duration(milliseconds: 1500)) {
+      if (movementOk) _pauseAutoFollowReason('tap_move');
+      return;
+    }
+
+    // Heurística drag: sin tap reciente, suficientes eventos y movimiento real
+    if (movementOk && _recentDragWindow.addAndCheck(now)) {
+      _pauseAutoFollowReason('drag_detected');
+    }
+  }
+
+  void _pauseAutoFollowReason(String reason) {
+    final now = DateTime.now();
+    // Throttle logs de pausa (mínimo 800ms entre logs de este tipo)
+    if (now.difference(_lastGestureLog) < const Duration(milliseconds: 800)) return;
+    _lastGestureLog = now;
+    mapManager?.notifyUserCameraInteraction();
+    mapManager?.cameraController.resetLastBounds();
+    FeatureLogger().camera('gesture:$reason');
+  }
+
+  bool _movementExceeded(Point? center, double? zoom) {
+    if (center == null || zoom == null) return false;
+    if (_lastCameraCenter == null) { _lastCameraCenter = center; _lastCameraZoom = zoom; return false; }
+    // Thresholds (más estrictos)
+    const minMetersShift = 25.0; // antes 10
+    const minZoomDelta = 0.15;   // antes 0.08
+    final fase = ref.read(appLogicProvider).faseActual;
+    double centerShiftMeters = 0.0;
+    try {
+      // Cálculo rápido planar aproximado (no haversine) suficiente para threshold pequeño
+      final dx = (center.coordinates.lng - _lastCameraCenter!.coordinates.lng) * 111320 *
+          math.cos((_lastCameraCenter!.coordinates.lat + center.coordinates.lat) / 2 * math.pi / 180);
+      final dy = (center.coordinates.lat - _lastCameraCenter!.coordinates.lat) * 110540;
+      centerShiftMeters = math.sqrt(dx * dx + dy * dy);
+    } catch (_) {}
+
+    final zoomDelta = (zoom - (_lastCameraZoom ?? zoom)).abs();
+    bool exceeded = centerShiftMeters > minMetersShift || zoomDelta > minZoomDelta;
+    if (_lastUserTap == null && fase == FaseApp.MOSTRANDO_OPCIONES_RUTA) {
+      // En preview exigir ambos (evita que sólo el auto ajuste de zoom dispare detección)
+      exceeded = centerShiftMeters > minMetersShift && zoomDelta > minZoomDelta;
+    }
+    if (exceeded) { _lastCameraCenter = center; _lastCameraZoom = zoom; }
+    return exceeded;
+  }
+
+  void _handleMapIdle(event) {
+    _mapIdleCount++;
+    final now = DateTime.now();
+    final dueByCount = _mapIdleCount % _aggEvery == 1;
+    final dueByTime = now.difference(_lastIdleAggLog) >= _aggInterval;
+    if (dueByCount || dueByTime) {
+      _lastIdleAggLog = now;
+      _logMapEvent('map_idle', data: {
+        'count': _mapIdleCount,
+        'sinceTapMs': _lastUserTap == null ? -1 : now.difference(_lastUserTap!).inMilliseconds,
+      });
+    }
+  }
+
+  void _handleTap(dynamic gestureContext) {
+    _tapCount++;
+    _lastUserTap = DateTime.now();
+    _logMapEvent('tap', data: {'count': _tapCount});
+    mapManager?.notifyUserCameraInteraction();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -84,6 +243,18 @@ class _AppHostState extends ConsumerState<AppHost> {
                 if (mapManager != null) {
                   _reinitializeMapManager();
                 }
+              },
+              // NUEVO: Notificar cualquier cambio de cámara continuo (arrastre / pinch)
+              onCameraChangeListener: (event) {
+                _handleCameraChange(event);
+              },
+              // NUEVO: Cuando la cámara se detiene (idle) podemos registrar también
+              onMapIdleListener: (event) {
+                _handleMapIdle(event);
+              },
+              // NUEVO: Tap básico para pausar auto-follow
+              onTapListener: (gestureContext) {
+                _handleTap(gestureContext);
               },
             ),
 
@@ -387,6 +558,14 @@ class _AppHostState extends ConsumerState<AppHost> {
       print("[AppHost] Error reinitializing MapManager: $e");
     });
   }
+
+  @override
+  void initState() {
+    super.initState();
+    _recentDragWindow = _DragWindow(maxEvents: 8, within: const Duration(milliseconds: 1200));
+  }
+
+  late _DragWindow _recentDragWindow;
 }
 
 class _DevFab extends ConsumerWidget {
@@ -485,5 +664,18 @@ class _DevFab extends ConsumerWidget {
         // Eliminado: botón de grabación manual
       ],
     );
+  }
+}
+
+class _DragWindow {
+  final int maxEvents;
+  final Duration within;
+  final List<DateTime> _events = [];
+  _DragWindow({required this.maxEvents, required this.within});
+  bool addAndCheck(DateTime now) {
+    _events.add(now);
+    // Purge antiguos
+    _events.removeWhere((t) => now.difference(t) > within);
+    return _events.length >= maxEvents;
   }
 }

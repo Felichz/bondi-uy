@@ -1,5 +1,6 @@
 import '../backend/contrato_ui/app_ui_state.dart';
 import '../utils/geometry_utils.dart';
+import 'package:bondi_uy/utils/feature_logger.dart';
 import 'dart:async';
 import 'package:geolocator/geolocator.dart';
 
@@ -13,6 +14,8 @@ class LocationReading {
 
 class LocationTracker {
   Timer? _trackingTimer;
+  StreamSubscription<Position>?
+  _positionSubscription; // NUEVO: stream de posiciones
   final Function(Coordenada) onLocationUpdate;
   final Function(String) onArrivalDetected;
   final bool isTestMode;
@@ -25,8 +28,15 @@ class LocationTracker {
   double _currentSpeed = 0.0; // m/s
 
   static const int UPDATE_INTERVAL_MS = 5000;
+  static const int STREAM_MIN_INTERVAL_MS =
+      1000; // Min intervalo entre notificaciones al app
   static const double ARRIVAL_THRESHOLD_METERS = 50.0;
   static const int MAX_LOCATION_HISTORY = 10; // Mantener últimas 10 lecturas
+
+  DateTime? _lastStreamDispatch; // Controlar throttling de stream
+  bool _streamActive = false;
+  // NUEVO: modo de alimentación externa (simulación)
+  bool _externalFeedMode = false;
 
   LocationTracker({
     required this.onLocationUpdate,
@@ -107,7 +117,7 @@ class LocationTracker {
       "[LOCATION_TRACKER] 📍 Umbral de llegada: ${ARRIVAL_THRESHOLD_METERS}m",
     );
 
-    if (!isTestMode) {
+    if (!isTestMode && !_externalFeedMode) {
       // Verificar permisos de ubicación solo en modo real
       print("[LOCATION_TRACKER] 🔐 Verificando permisos de ubicación...");
       LocationPermission permission = await Geolocator.checkPermission();
@@ -142,13 +152,74 @@ class LocationTracker {
     print(
       "[LOCATION_TRACKER] ✅ Timer configurado - actualizando cada ${UPDATE_INTERVAL_MS}ms",
     );
+
+    // Intentar iniciar stream de posición para mayor responsividad
+    if (!isTestMode && !_externalFeedMode) {
+      await _startPositionStream();
+    } else {
+      print("[LOCATION_TRACKER] 🧪 Saltando position stream en modo test");
+    }
     print("[LOCATION_TRACKER] ✅ === LOCATION TRACKER INICIADO ====");
   }
 
   Future<void> stopTracking() async {
     _trackingTimer?.cancel();
     _trackingTimer = null;
+    await _positionSubscription?.cancel();
+    _positionSubscription = null;
+    _streamActive = false;
     _activeGeofences.clear();
+  }
+
+  Future<void> _startPositionStream() async {
+    print("[LOCATION_TRACKER] 📡 Intentando iniciar PositionStream...");
+    try {
+      final locationSettings = const LocationSettings(
+        accuracy: LocationAccuracy.best,
+        distanceFilter: 3, // ~3m
+      );
+      _positionSubscription = Geolocator.getPositionStream(
+        locationSettings: locationSettings,
+      ).listen(
+        _onStreamPosition,
+        onError: (e) {
+          print("[LOCATION_TRACKER] ⚠️ Error en stream: $e");
+        },
+      );
+      _streamActive = true;
+      print("[LOCATION_TRACKER] ✅ PositionStream iniciado");
+    } catch (e) {
+      print("[LOCATION_TRACKER] ❌ No se pudo iniciar stream: $e");
+    }
+  }
+
+  void _onStreamPosition(Position pos) {
+    final now = DateTime.now();
+    if (_lastStreamDispatch != null &&
+        now.difference(_lastStreamDispatch!).inMilliseconds <
+            STREAM_MIN_INTERVAL_MS) {
+      // Throttle
+      return;
+    }
+    _lastStreamDispatch = now;
+
+    final newLoc = Coordenada(latitud: pos.latitude, longitud: pos.longitude);
+    _lastKnownLocation = newLoc;
+    _calculateSpeed(newLoc);
+    onLocationUpdate(newLoc);
+    _checkArrivals(newLoc); // Permite detección más rápida de llegada
+    // Feature logs
+    try {
+      FeatureLogger().log(
+        'geofence',
+        'stream_position',
+        data: {
+          'lat': newLoc.latitud,
+          'lon': newLoc.longitud,
+          'spd': _currentSpeed.toStringAsFixed(2),
+        },
+      );
+    } catch (_) {}
   }
 
   Future<void> _performLocationUpdate() async {
@@ -157,6 +228,12 @@ class LocationTracker {
       "[LOCATION_TRACKER] ⏰ INICIO de ciclo de 5 segundos - ${DateTime.now()}",
     );
     try {
+      if (_externalFeedMode) {
+        print(
+          "[LOCATION_TRACKER] 🧪 ExternalFeedMode activo - no se consulta GPS",
+        );
+        return; // Inyección externa manejará onLocationUpdate + geofences
+      }
       print("[LOCATION_TRACKER] 📡 Solicitando ubicación GPS...");
       final newLocation = await _getCurrentGPSLocation();
       if (newLocation != null) {
@@ -185,6 +262,17 @@ class LocationTracker {
         onLocationUpdate(newLocation);
         print("[LOCATION_TRACKER] 🎯 Verificando llegadas...");
         _checkArrivals(newLocation);
+        try {
+          FeatureLogger().log(
+            'geofence',
+            'timer_position',
+            data: {
+              'lat': newLocation.latitud,
+              'lon': newLocation.longitud,
+              'spd': _currentSpeed.toStringAsFixed(2),
+            },
+          );
+        } catch (_) {}
         print(
           "[LOCATION_TRACKER] ⏰ FIN de ciclo de 5 segundos - ${DateTime.now()}",
         );
@@ -197,6 +285,27 @@ class LocationTracker {
       print("[LOCATION_TRACKER] ❌ Error: $e");
       print("[LOCATION_TRACKER] ❌ Tipo: ${e.runtimeType}");
     }
+  }
+
+  // NUEVO: activar modo de feed externo para simulación
+  void enterExternalFeedMode() {
+    print("[LOCATION_TRACKER] 🧪 Activando ExternalFeedMode (simulación)");
+    _externalFeedMode = true;
+    // Cancelar stream si estaba activo para evitar que sobrescriba la inyección externa
+    _positionSubscription?.cancel();
+    _positionSubscription = null;
+    _streamActive = false;
+  }
+
+  // NUEVO: inyectar ubicación simulada manteniendo pipeline real
+  void injectLocationUpdate(Coordenada location) {
+    print(
+      "[LOCATION_TRACKER] 🧪 InjectLocationUpdate: ${location.latitud}, ${location.longitud}",
+    );
+    _lastKnownLocation = location;
+    _calculateSpeed(location);
+    onLocationUpdate(location);
+    _checkArrivals(location);
   }
 
   Future<Coordenada?> _getCurrentGPSLocation() async {
@@ -313,6 +422,13 @@ class LocationTracker {
           "[LOCATION_TRACKER] 🏁 Distancia: ${distance.toStringAsFixed(1)}m",
         );
         print("[LOCATION_TRACKER] 🏁 Notificando llegada...");
+        try {
+          FeatureLogger().log(
+            'geofence',
+            'arrival',
+            data: {'id': geofence.id, 'dist_m': distance.toStringAsFixed(1)},
+          );
+        } catch (_) {}
         onArrivalDetected(geofence.id);
         print("[LOCATION_TRACKER] ✅ Llegada notificada");
       }

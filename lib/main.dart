@@ -9,12 +9,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 // Ejemplo: import 'package:bondi_uy/ui/screens/app_shell.dart';
 
 import 'package:bondi_uy/ui/app_host.dart'; // Import the new AppHost widget
+import 'package:bondi_uy/utils/feature_logger.dart';
 
-void main() {
+void main() async {
   // Cualquier inicialización previa a runApp (si es necesaria) iría aquí.
   // Por ejemplo, WidgetsFlutterBinding.ensureInitialized(); si se usan plugins
   // que lo requieran antes. Para Mapbox, esto es común.
   WidgetsFlutterBinding.ensureInitialized();
+  // Init feature logger (clean logs each run)
+  try {
+    await FeatureLogger().init(clean: true);
+  } catch (e) {
+    // ignore: avoid_print
+    print('FeatureLogger init error: $e');
+  }
 
   // TODO: Configuración inicial de Mapbox si se requiere a nivel global aquí
   // como el token de acceso, aunque a veces se hace en el widget del mapa.

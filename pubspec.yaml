@@ -45,6 +45,7 @@ dependencies:
   geodesy: ^0.10.2
   geolocator: ^13.0.1
   collection: ^1.18.0
+  path_provider: ^2.1.4
   # Eliminado: path_provider (persistencia de grabaciones ya no se usa)
 
 dev_dependencies:
