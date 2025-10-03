@@ -326,13 +326,10 @@ class _InitialPhaseViewState extends ConsumerState<InitialPhaseView> {
       List<Coordenada> pointsToZoom = [];
       bool shouldZoom = false;
 
-      if (previous?.puntoOrigenParaBusqueda != next.puntoOrigenParaBusqueda ||
-          previous?.nombreLugarOrigenSeleccionado !=
-              next.nombreLugarOrigenSeleccionado) {
-        shouldZoom = true;
-      }
-      if (next.puntoOrigenParaBusqueda != null) {
-        pointsToZoom.add(next.puntoOrigenParaBusqueda!);
+      // GRANDMA FIRST: Sin punto de origen manual, solo destino
+      // El origen siempre es la ubicación actual del usuario
+      if (next.ubicacionActualUsuario != null) {
+        pointsToZoom.add(next.ubicacionActualUsuario!);
       }
 
       if (previous?.puntoDestinoParaBusqueda != next.puntoDestinoParaBusqueda ||

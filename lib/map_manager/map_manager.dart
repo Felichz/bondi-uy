@@ -3,12 +3,13 @@ import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'package:bondi_uy/backend/contrato_ui/app_ui_state.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'map_route_renderer.dart';
-import 'package:bondi_uy/providers/app_providers.dart';
+import 'package:bondi_uy/backend/providers/app_logic_provider.dart';
 import 'map_bus_realtime.dart';
 import 'map_icons_loader.dart';
 import 'map_camera_controller.dart';
 import 'map_cleanup.dart';
 import 'package:bondi_uy/utils/feature_logger.dart';
+import 'renderers/map_state_manager.dart';
 
 /// Módulo unificado para el manejo completo del estado del mapa
 /// Centraliza toda la lógica de renderizado, animaciones y estado
@@ -22,12 +23,11 @@ class MapManager {
   late final MapIconsLoader _iconsLoader;
   late final MapCameraController _cameraController;
   late final MapCleanup _cleanup;
+  late final MapStateManager _stateManager;
 
   // Estado interno
   bool _isInitialized = false;
   String? _currentPhase;
-  List<String> _activeSources = [];
-  List<String> _activeLayers = [];
 
   // Trackear la opción actualmente en preview para optimizar transiciones
   String? _currentPreviewOptionId;
@@ -38,6 +38,7 @@ class MapManager {
     _iconsLoader = MapIconsLoader(mapboxMap, this);
     _cameraController = MapCameraController(mapboxMap, this);
     _cleanup = MapCleanup(mapboxMap, this);
+    _stateManager = MapStateManager();
   }
 
   /// Inicializar el manager (cargar iconos, configurar mapa)
@@ -83,9 +84,9 @@ class MapManager {
     _currentPreviewOptionId = route.idOpcion;
 
     // Renderizar nueva ruta (solo si cambió o no hay capas)
-    if (needsRedraw || _activeLayers.isEmpty) {
+    if (needsRedraw || !_stateManager.hasActiveElements) {
       print(
-        "[MapManager] Rendering route (needsRedraw: $needsRedraw, activeLayers: ${_activeLayers.length})",
+        "[MapManager] Rendering route (needsRedraw: $needsRedraw, activeLayers: ${_stateManager.activeLayers.length})",
       );
       await _routeRenderer.renderRoute(route.tramosParaPreview);
 
@@ -202,13 +203,12 @@ class MapManager {
     // evitamos actualizar el símbolo de bus realtime para no alternar entre user y bus.
     bool skipBusSymbolUpdate = false;
     try {
+      // GRANDMA FIRST: currentJourneyStep ya no está en AppUiState
+      // Si necesario, exponer desde JourneyManager
+      // Por ahora, no saltamos la actualización
       if (_currentPhase == 'active_trip' && ref != null) {
-        final appState = ref!.read(appUiStateProvider);
-        final currentStep = appState.currentJourneyStep;
-        if (currentStep != null &&
-            currentStep.type.toString().contains('RIDING_BUS')) {
-          skipBusSymbolUpdate = true;
-        }
+        // TODO: Exponer paso actual desde JourneyManager si necesario
+        skipBusSymbolUpdate = false;
       }
     } catch (_) {}
     if (!skipBusSymbolUpdate) {
@@ -229,30 +229,31 @@ class MapManager {
     // Cámara dinámica durante espera: si estamos en active_trip y el tramo actual es WAITING_FOR_BUS
     try {
       if (_currentPhase == 'active_trip' && ref != null) {
-        final appState = ref!.read(
-          appUiStateProvider,
-        ); // requiere provider global
+        final appState = ref!.read(appLogicProvider);
         final active = appState.datosFaseViajeActivo;
-        final currentStep = appState.currentJourneyStep;
-        if (active != null && currentStep != null) {
-          if (currentStep.stepIndex < active.tramosDelViaje.length) {
-            final tramo = active.tramosDelViaje[currentStep.stepIndex];
-            if (tramo.tipo == TipoTramoViaje.ESPERAR_BUS && etaMinutes >= 0) {
-              final userPos = getCurrentUserLocation();
-              await _cameraController.updateWaitingBusViewport(
-                waitingLeg: tramo,
-                busPosition: position,
-                userPosition: userPos,
-              );
-              FeatureLogger().camera(
-                'dynamic_wait_viewport',
-                data: {
-                  'eta_min': etaMinutes,
-                  'step': currentStep.stepIndex,
-                  'hasUser': userPos != null,
-                },
-              );
-            }
+        // GRANDMA FIRST: currentJourneyStep ya no está en AppUiState
+        // TODO: Exponer índice de paso actual desde JourneyManager si necesario
+        // Por ahora, asumimos que estamos en el primer paso que es ESPERAR_BUS
+        if (active != null && active.tramosDelViaje.isNotEmpty) {
+          // Buscar el primer tramo de ESPERAR_BUS como fallback
+          final tramoEspera = active.tramosDelViaje.firstWhere(
+            (t) => t.tipo == TipoTramoViaje.ESPERAR_BUS,
+            orElse: () => active.tramosDelViaje.first,
+          );
+          if (tramoEspera.tipo == TipoTramoViaje.ESPERAR_BUS && etaMinutes >= 0) {
+            final userPos = getCurrentUserLocation();
+            await _cameraController.updateWaitingBusViewport(
+              waitingLeg: tramoEspera,
+              busPosition: position,
+              userPosition: userPos,
+            );
+            FeatureLogger().camera(
+              'dynamic_wait_viewport',
+              data: {
+                'eta_min': etaMinutes,
+                'hasUser': userPos != null,
+              },
+            );
           }
         }
       }
@@ -287,30 +288,25 @@ class MapManager {
   }
 
   /// Registrar fuente activa para tracking
-  void registerSource(String sourceId) {
-    if (!_activeSources.contains(sourceId)) {
-      _activeSources.add(sourceId);
-    }
-  }
+  void registerSource(String sourceId) => _stateManager.registerSource(sourceId);
 
   /// Registrar capa activa para tracking
-  void registerLayer(String layerId) {
-    if (!_activeLayers.contains(layerId)) {
-      _activeLayers.add(layerId);
-    }
-  }
+  void registerLayer(String layerId) => _stateManager.registerLayer(layerId);
+
+  /// Desregistrar fuente activa
+  void unregisterSource(String sourceId) => _stateManager.unregisterSource(sourceId);
+
+  /// Desregistrar capa activa
+  void unregisterLayer(String layerId) => _stateManager.unregisterLayer(layerId);
 
   /// Obtener todas las fuentes activas
-  List<String> get activeSources => List.unmodifiable(_activeSources);
+  List<String> get activeSources => _stateManager.activeSources;
 
   /// Obtener todas las capas activas
-  List<String> get activeLayers => List.unmodifiable(_activeLayers);
+  List<String> get activeLayers => _stateManager.activeLayers;
 
   /// Limpiar registros de fuentes y capas
-  void clearRegistrations() {
-    _activeSources.clear();
-    _activeLayers.clear();
-  }
+  void clearRegistrations() => _stateManager.clearAll();
 
   /// Ocultar etiquetas de ciudad que interfieren
   Future<void> _hideCityLabels() async {
@@ -1099,12 +1095,13 @@ class MapManager {
   Future<void> handleAutoFollowResumed() async {
     try {
       if (_currentPhase != 'active_trip' || ref == null) return;
-      final appState = ref!.read(appUiStateProvider);
+      final appState = ref!.read(appLogicProvider);
       final active = appState.datosFaseViajeActivo;
-      final currentStep = appState.currentJourneyStep;
-      if (active == null || currentStep == null) return;
-      if (currentStep.stepIndex >= active.tramosDelViaje.length) return;
-      final tramo = active.tramosDelViaje[currentStep.stepIndex];
+      // GRANDMA FIRST: currentJourneyStep ya no está en AppUiState
+      // TODO: Exponer índice de paso actual desde JourneyManager
+      // Por ahora, usar el primer tramo como fallback
+      if (active == null || active.tramosDelViaje.isEmpty) return;
+      final tramo = active.tramosDelViaje.first;
       final busPos = getCurrentBusPosition();
       final userPos = getCurrentUserLocation();
       final List<Coordenada> coords = [];
@@ -1180,7 +1177,7 @@ class MapManager {
         );
       } else {
         await _cameraController.zoomToCurrentLeg(
-          currentStep.stepIndex,
+          0, // Usar primer tramo como fallback
           active.tramosDelViaje,
         );
       }
@@ -1189,6 +1186,103 @@ class MapManager {
         'auto_follow:semantic_recentering_error',
         data: {'e': e.toString()},
       );
+    }
+  }
+
+  // ============================================================================
+  // ZOOM DINÁMICO PARA JOURNEY EVENTS
+  // ============================================================================
+
+  /// Ajustar zoom dinámicamente según update de bus y tipo de paso
+  Future<void> adjustZoomForBusUpdate({
+    required Coordenada busPosition,
+    required String stepType,
+    Coordenada? stopPosition,
+    Coordenada? userPosition,
+  }) async {
+    if (mapboxMap == null) return;
+
+    print(
+      "[MapManager] Ajustando zoom para paso: $stepType, bus: ${busPosition.latitud},${busPosition.longitud}",
+    );
+
+    try {
+      switch (stepType) {
+        case 'WAITING_FOR_BUS':
+          // Enfoque: parada + bus
+          if (stopPosition != null) {
+            await _cameraController.fitBoundsToPoints(
+              [stopPosition, busPosition],
+              padding: 80.0,
+              animate: true,
+            );
+            print("[MapManager] ✅ Zoom ajustado: parada + bus");
+          }
+          break;
+
+        case 'RIDING_BUS':
+          // Enfoque: parada destino + ubicación usuario (que es el bus)
+          if (stopPosition != null && userPosition != null) {
+            await _cameraController.fitBoundsToPoints(
+              [stopPosition, userPosition],
+              padding: 80.0,
+              animate: true,
+            );
+            print("[MapManager] ✅ Zoom ajustado: parada destino + usuario");
+          }
+          break;
+
+        default:
+          print("[MapManager] ⚠️ Tipo de paso no requiere ajuste de zoom: $stepType");
+      }
+    } catch (e) {
+      print("[MapManager] ❌ Error ajustando zoom: $e");
+    }
+  }
+
+  /// Actualizar tramo walking con ruta recalculada
+  Future<void> updateWalkingRoute(List<Coordenada> route) async {
+    if (!_isInitialized || route.isEmpty) return;
+
+    print("[MapManager] Actualizando tramo walking (${route.length} puntos)");
+
+    try {
+      // Actualizar la ruta azul en el mapa
+      await _routeRenderer.updateWalkingSegment(route);
+      print("[MapManager] ✅ Tramo walking actualizado");
+    } catch (e) {
+      print("[MapManager] ❌ Error actualizando tramo walking: $e");
+    }
+  }
+
+  /// Dibujar tramo verde desde bus a parada (aproximación del bus)
+  Future<void> drawBusApproachSegment({
+    required Coordenada busPosition,
+    required Coordenada stopPosition,
+  }) async {
+    if (!_isInitialized) return;
+
+    print(
+      "[MapManager] Dibujando tramo verde: bus → parada",
+    );
+
+    try {
+      await _routeRenderer.drawBusApproachLine(busPosition, stopPosition);
+      print("[MapManager] ✅ Tramo verde dibujado");
+    } catch (e) {
+      print("[MapManager] ❌ Error dibujando tramo verde: $e");
+    }
+  }
+
+  /// Limpiar tramo verde de aproximación del bus
+  Future<void> clearBusApproachSegment() async {
+    if (!_isInitialized) return;
+
+    try {
+      await _routeRenderer.clearBusApproachLine();
+      print("[MapManager] ✅ Tramo verde limpiado");
+    } catch (e) {
+      print("[MapManager] ❌ Error limpiando tramo verde: $e");
     }
   }
 }

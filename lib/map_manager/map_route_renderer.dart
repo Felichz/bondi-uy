@@ -499,4 +499,192 @@ class MapRouteRenderer {
     _stopArrowAnimation();
     _animatedArrowLayerIds.clear();
   }
+
+  // ========== MÉTODOS PARA JOURNEY MANAGER ==========
+
+  /// Actualizar segmento de caminata con nueva ruta recalculada
+  Future<void> updateWalkingSegment(List<Coordenada> route) async {
+    if (mapboxMap == null || route.isEmpty) return;
+
+    print("[MapRouteRenderer] Updating walking segment with ${route.length} points");
+
+    // ID estándar para el segmento de caminata activo
+    const sourceId = 'active-walk-segment-source';
+    const shadowLayerId = 'active-walk-segment-shadow';
+    const mainLayerId = 'active-walk-segment-main';
+
+    try {
+      // Verificar si ya existe y actualizar o crear nuevo
+      final sourceExists = await mapboxMap!.style.styleSourceExists(sourceId);
+
+      final geoJsonFeature = {
+        "type": "Feature",
+        "geometry": {
+          "type": "LineString",
+          "coordinates": _coordenadasToGeoJsonPositionList(route),
+        },
+      };
+
+      if (sourceExists) {
+        // Actualizar fuente existente
+        final source = await mapboxMap!.style.getSource(sourceId) as GeoJsonSource;
+        await source.updateGeoJSON(jsonEncode(geoJsonFeature));
+      } else {
+        // Crear nueva fuente
+        await mapboxMap!.style.addSource(
+          GeoJsonSource(id: sourceId, data: jsonEncode(geoJsonFeature)),
+        );
+        mapManager.registerSource(sourceId);
+
+        // Agregar capa de borde
+        await mapboxMap!.style.addLayer(
+          LineLayer(
+            id: shadowLayerId,
+            sourceId: sourceId,
+            lineColor: MapStyleConstants.BORDER_PROPERTIES['line-color'] as int,
+            lineWidth:
+                (MapStyleConstants.BORDER_PROPERTIES['line-width'] as num)
+                    .toDouble(),
+            lineOpacity:
+                (MapStyleConstants.BORDER_PROPERTIES['line-opacity'] as num)
+                    .toDouble(),
+            lineJoin: LineJoin.ROUND,
+            lineCap: LineCap.ROUND,
+          ),
+        );
+        mapManager.registerLayer(shadowLayerId);
+
+        // Agregar capa principal con color azul distintivo
+        await mapboxMap!.style.addLayer(
+          LineLayer(
+            id: mainLayerId,
+            sourceId: sourceId,
+            lineColor: 0xFF2196F3, // Azul distintivo para tramo activo
+            lineWidth: 6.0,
+            lineOpacity: 1.0,
+            lineJoin: LineJoin.ROUND,
+            lineCap: LineCap.ROUND,
+          ),
+        );
+        mapManager.registerLayer(mainLayerId);
+      }
+
+      print("[MapRouteRenderer] Walking segment updated successfully");
+    } catch (e) {
+      print("[MapRouteRenderer] Error updating walking segment: $e");
+    }
+  }
+
+  /// Dibujar línea verde desde bus hasta parada (bus approach)
+  Future<void> drawBusApproachLine(
+    Coordenada busPosition,
+    Coordenada stopPosition,
+  ) async {
+    if (mapboxMap == null) return;
+
+    print("[MapRouteRenderer] Drawing bus approach line");
+
+    const sourceId = 'bus-approach-line-source';
+    const shadowLayerId = 'bus-approach-line-shadow';
+    const mainLayerId = 'bus-approach-line-main';
+
+    try {
+      final geoJsonFeature = {
+        "type": "Feature",
+        "geometry": {
+          "type": "LineString",
+          "coordinates": [
+            [busPosition.longitud, busPosition.latitud],
+            [stopPosition.longitud, stopPosition.latitud],
+          ],
+        },
+      };
+
+      // Verificar si ya existe y actualizar o crear nuevo
+      final sourceExists = await mapboxMap!.style.styleSourceExists(sourceId);
+
+      if (sourceExists) {
+        // Actualizar fuente existente
+        final source = await mapboxMap!.style.getSource(sourceId) as GeoJsonSource;
+        await source.updateGeoJSON(jsonEncode(geoJsonFeature));
+      } else {
+        // Crear nueva fuente
+        await mapboxMap!.style.addSource(
+          GeoJsonSource(id: sourceId, data: jsonEncode(geoJsonFeature)),
+        );
+        mapManager.registerSource(sourceId);
+
+        // Agregar capa de borde
+        await mapboxMap!.style.addLayer(
+          LineLayer(
+            id: shadowLayerId,
+            sourceId: sourceId,
+            lineColor: MapStyleConstants.BORDER_PROPERTIES['line-color'] as int,
+            lineWidth:
+                (MapStyleConstants.BORDER_PROPERTIES['line-width'] as num)
+                    .toDouble(),
+            lineOpacity:
+                (MapStyleConstants.BORDER_PROPERTIES['line-opacity'] as num)
+                    .toDouble(),
+            lineJoin: LineJoin.ROUND,
+            lineCap: LineCap.ROUND,
+          ),
+        );
+        mapManager.registerLayer(shadowLayerId);
+
+        // Agregar capa principal con color verde distintivo
+        await mapboxMap!.style.addLayer(
+          LineLayer(
+            id: mainLayerId,
+            sourceId: sourceId,
+            lineColor: 0xFF4CAF50, // Verde para indicar llegada del bus
+            lineWidth: 5.0,
+            lineOpacity: 0.8,
+            lineJoin: LineJoin.ROUND,
+            lineCap: LineCap.ROUND,
+            lineDasharray: [2.0, 2.0], // Línea punteada
+          ),
+        );
+        mapManager.registerLayer(mainLayerId);
+      }
+
+      print("[MapRouteRenderer] Bus approach line drawn successfully");
+    } catch (e) {
+      print("[MapRouteRenderer] Error drawing bus approach line: $e");
+    }
+  }
+
+  /// Limpiar línea verde de acercamiento del bus
+  Future<void> clearBusApproachLine() async {
+    if (mapboxMap == null) return;
+
+    print("[MapRouteRenderer] Clearing bus approach line");
+
+    const sourceId = 'bus-approach-line-source';
+    const shadowLayerId = 'bus-approach-line-shadow';
+    const mainLayerId = 'bus-approach-line-main';
+
+    try {
+      // Remover capas
+      if (await mapboxMap!.style.styleLayerExists(mainLayerId)) {
+        await mapboxMap!.style.removeStyleLayer(mainLayerId);
+        mapManager.unregisterLayer(mainLayerId);
+      }
+
+      if (await mapboxMap!.style.styleLayerExists(shadowLayerId)) {
+        await mapboxMap!.style.removeStyleLayer(shadowLayerId);
+        mapManager.unregisterLayer(shadowLayerId);
+      }
+
+      // Remover fuente
+      if (await mapboxMap!.style.styleSourceExists(sourceId)) {
+        await mapboxMap!.style.removeStyleSource(sourceId);
+        mapManager.unregisterSource(sourceId);
+      }
+
+      print("[MapRouteRenderer] Bus approach line cleared successfully");
+    } catch (e) {
+      print("[MapRouteRenderer] Error clearing bus approach line: $e");
+    }
+  }
 }

@@ -613,4 +613,22 @@ class MapCameraController {
     _lastAnimationTime = DateTime.fromMillisecondsSinceEpoch(0);
     await action();
   }
+
+  /// Ajustar zoom dinámicamente a múltiples puntos
+  Future<void> fitBoundsToPoints(
+    List<Coordenada> points, {
+    double padding = 80.0,
+    bool animate = true,
+  }) async {
+    if (points.isEmpty) return;
+
+    final edgeInsets = MbxEdgeInsets(
+      top: padding,
+      left: padding,
+      bottom: padding,
+      right: padding,
+    );
+
+    await _zoomToCoordinates(points, edgeInsets);
+  }
 }

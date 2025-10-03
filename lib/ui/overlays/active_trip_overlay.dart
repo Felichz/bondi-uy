@@ -273,11 +273,9 @@ class _ActiveTripOverlayState extends ConsumerState<ActiveTripOverlay> {
     final appLogic = ref.read(appLogicProvider.notifier);
     final activeTripState = appUiState.datosFaseViajeActivo;
 
-    // DIFF: Obtener estado de progreso automático
-    final currentJourneyStep = appUiState.currentJourneyStep;
-    final currentStepProgress = appUiState.currentStepProgress;
-    final isAutomaticNavigationEnabled =
-        appUiState.isAutomaticNavigationEnabled;
+    // GRANDMA FIRST: Navegación automática siempre activa
+    // El estado del journey ahora está en JourneyManager, no en AppUiState
+    // TODO: Obtener progreso desde JourneyManager si necesario
 
     // Reaccionar a cambios en el sondeo de bus en tiempo real
     ref.listen<AppUiState>(appLogicProvider, (previous, next) {
@@ -294,30 +292,9 @@ class _ActiveTripOverlayState extends ConsumerState<ActiveTripOverlay> {
         _handleRealtimeBusUpdate(nextState);
       }
 
-      // DIFF: Listener para transiciones automáticas
-      // Detectar cambios en el paso del journey automático
-      final prevJourneyStep = previous?.currentJourneyStep;
-      final nextJourneyStep = next.currentJourneyStep;
-
-      // Detectar transiciones automáticas del step
-      if (prevJourneyStep?.stepIndex != nextJourneyStep?.stepIndex &&
-          _automaticNavigationEnabled &&
-          nextJourneyStep != null) {
-        print(
-          '[ActiveTripOverlay] Auto step transition detected: ${prevJourneyStep?.stepIndex} → ${nextJourneyStep.stepIndex}',
-        );
-        _onAutomaticStepTransition(nextJourneyStep.stepIndex);
-      }
-
-      // Detectar cambio de modo de navegación automática
-      final prevAutoEnabled = previous?.isAutomaticNavigationEnabled ?? false;
-      final nextAutoEnabled = next.isAutomaticNavigationEnabled;
-      if (prevAutoEnabled != nextAutoEnabled) {
-        print(
-          '[ActiveTripOverlay] Automatic navigation mode changed: $prevAutoEnabled → $nextAutoEnabled',
-        );
-        _automaticNavigationEnabled = nextAutoEnabled;
-      }
+      // TODO: GRANDMA FIRST - Listener para transiciones automáticas
+      // La lógica de transiciones ahora está en JourneyManager
+      // Si necesitamos reaccionar a cambios de paso, debemos exponerlo desde AppLogicNotifier
     });
 
     if (activeTripState == null) {
@@ -382,10 +359,6 @@ class _ActiveTripOverlayState extends ConsumerState<ActiveTripOverlay> {
       currentBusLine: effectiveBusLine,
       isBusEtaRealTime: isRealtimeAvailable,
       currentBusDestination: effectiveBusDestination,
-      // DIFF: Pasar datos de progreso automático
-      currentJourneyStep: currentJourneyStep,
-      currentStepProgress: currentStepProgress,
-      isAutomaticNavigationEnabled: isAutomaticNavigationEnabled,
     );
   }
 
@@ -425,10 +398,8 @@ class _ActiveTripInstructionsPanel extends StatelessWidget {
   final String? currentBusLine;
   final bool isBusEtaRealTime;
   final String? currentBusDestination;
-  // DIFF: Nuevos parámetros para progreso automático
-  final JourneyStepState? currentJourneyStep;
-  final RouteProgress? currentStepProgress;
-  final bool isAutomaticNavigationEnabled;
+  // GRANDMA FIRST: Removidos parámetros de navegación automática
+  // La navegación automática ahora está siempre activa y manejada por JourneyManager
 
   const _ActiveTripInstructionsPanel({
     required this.activeTripState,
@@ -440,10 +411,6 @@ class _ActiveTripInstructionsPanel extends StatelessWidget {
     required this.currentBusLine,
     required this.isBusEtaRealTime,
     required this.currentBusDestination,
-    // DIFF: Nuevos parámetros
-    this.currentJourneyStep,
-    this.currentStepProgress,
-    required this.isAutomaticNavigationEnabled,
   });
 
   @override
@@ -552,28 +519,26 @@ class _ActiveTripInstructionsPanel extends StatelessWidget {
                           fontSize: 20,
                         ),
                       ),
-                      // DIFF: Mostrar indicador de navegación automática
-                      if (isAutomaticNavigationEnabled) ...[
-                        const SizedBox(height: 2),
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.assistant_navigation,
-                              size: 12,
+                      // GRANDMA FIRST: Navegación automática siempre activa
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.assistant_navigation,
+                            size: 12,
+                            color: theme.colorScheme.primary,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Navegación Automática',
+                            style: theme.textTheme.bodySmall?.copyWith(
                               color: theme.colorScheme.primary,
+                              fontWeight: FontWeight.w500,
+                              fontSize: 10,
                             ),
-                            const SizedBox(width: 4),
-                            Text(
-                              'Navegación Automática',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.primary,
-                                fontWeight: FontWeight.w500,
-                                fontSize: 10,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ),
@@ -611,18 +576,16 @@ class _ActiveTripInstructionsPanel extends StatelessWidget {
               ),
             ),
 
-            // DIFF: Mostrar instrucciones automáticas si está habilitado
-            if (isAutomaticNavigationEnabled && currentJourneyStep != null) ...[
-              const SizedBox(height: 6),
-              Text(
-                _getAutomaticInstructions(),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                  fontStyle: FontStyle.italic,
-                  fontSize: 13,
-                ),
+            // GRANDMA FIRST: Mostrar instrucciones automáticas (siempre activo)
+            const SizedBox(height: 6),
+            Text(
+              _getAutomaticInstructions(),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                fontStyle: FontStyle.italic,
+                fontSize: 13,
               ),
-            ],
+            ),
 
             const SizedBox(height: 10),
 
@@ -789,113 +752,8 @@ class _ActiveTripInstructionsPanel extends StatelessWidget {
   }
 
   Widget _buildNavigationPanel(BuildContext context, ThemeData theme) {
-    // DIFF: Hide manual navigation panel when automatic navigation is enabled
-    if (isAutomaticNavigationEnabled) {
-      return const SizedBox.shrink();
-    }
-
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 2),
-      child: Card(
-        elevation: 3,
-        shadowColor: Colors.black.withOpacity(0.08),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            color: theme.colorScheme.surface,
-          ),
-          child: Column(
-            children: [
-              // Barra de progreso más sutil
-              Container(
-                height: 4,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(2),
-                  color: theme.colorScheme.surfaceVariant.withOpacity(0.7),
-                ),
-                child: FractionallySizedBox(
-                  alignment: Alignment.centerLeft,
-                  widthFactor:
-                      (currentLegIndex + 1) /
-                      activeTripState.tramosDelViaje.length,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(2),
-                      color: theme.colorScheme.primary,
-                    ),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 10),
-
-              // Botones de navegación
-              Row(
-                children: [
-                  // Botón anterior compacto
-                  _buildCompactNavButton(
-                    context: context,
-                    icon: Icons.chevron_left,
-                    enabled: currentLegIndex > 0,
-                    onPressed:
-                        currentLegIndex > 0
-                            ? () => onLegSelected(currentLegIndex - 1)
-                            : null,
-                    theme: theme,
-                    isPrimary: false,
-                  ),
-
-                  const SizedBox(width: 12),
-
-                  // Indicador central
-                  Expanded(
-                    child: Column(
-                      children: [
-                        Text(
-                          '${currentLegIndex + 1} de ${activeTripState.tramosDelViaje.length}',
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: theme.colorScheme.onSurface,
-                            fontSize: 16,
-                          ),
-                        ),
-                        Text(
-                          'pasos',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                            fontSize: 10,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(width: 12),
-
-                  // Botón siguiente compacto
-                  _buildCompactNavButton(
-                    context: context,
-                    icon: Icons.chevron_right,
-                    enabled:
-                        currentLegIndex <
-                        activeTripState.tramosDelViaje.length - 1,
-                    onPressed:
-                        currentLegIndex <
-                                activeTripState.tramosDelViaje.length - 1
-                            ? () => onLegSelected(currentLegIndex + 1)
-                            : null,
-                    theme: theme,
-                    isPrimary: true,
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    // GRANDMA FIRST: Panel de navegación manual eliminado - solo navegación automática
+    return const SizedBox.shrink();
   }
 
   Widget _buildCompactNavButton({
@@ -1006,18 +864,8 @@ class _ActiveTripInstructionsPanel extends StatelessWidget {
 
   // DIFF: Nuevo método para instrucciones automáticas
   String _getAutomaticInstructions() {
-    if (currentJourneyStep == null) return '';
-
-    switch (currentJourneyStep!.type) {
-      case JourneyStepType.WALKING_TO_STOP:
-        return 'Te guiaremos automáticamente hasta la parada de bus';
-      case JourneyStepType.WAITING_FOR_BUS:
-        return 'Detectaremos automáticamente cuando subas al bus';
-      case JourneyStepType.RIDING_BUS:
-        return 'Te avisaremos automáticamente cuando llegar tu parada';
-      case JourneyStepType.WALKING_TO_DESTINATION:
-        return 'Te guiaremos automáticamente hasta tu destino final';
-    }
+    // GRANDMA FIRST: Mensaje simplificado ya que siempre hay navegación automática
+    return 'Te guiaremos paso a paso automáticamente durante todo el viaje';
   }
 
   // DIFF: Botón para toggle de animaciones

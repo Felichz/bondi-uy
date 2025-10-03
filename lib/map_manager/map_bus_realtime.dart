@@ -677,9 +677,11 @@ class MapBusRealtime {
     double mainWidth = 5.0;
     double mainOpacity = 0.9;
 
+    // GRANDMA FIRST: JourneyStep ya no está en AppUiState
+    // Usar valores por defecto razonables para WAITING_FOR_BUS/RIDING_BUS
     try {
-      final currentType =
-          mapManager.ref?.read(appLogicProvider).currentJourneyStep?.type;
+      // TODO: Si necesario, exponer paso actual desde JourneyManager
+      final currentType = JourneyStepType.WAITING_FOR_BUS; // Valor por defecto
       if (currentType != null) {
         switch (currentType) {
           case JourneyStepType.WALKING_TO_STOP:

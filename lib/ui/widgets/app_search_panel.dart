@@ -25,20 +25,18 @@ class AppSearchPanel extends ConsumerStatefulWidget {
 }
 
 class _AppSearchPanelState extends ConsumerState<AppSearchPanel> {
-  late FocusNode _origenFocusNode;
+  // GRANDMA FIRST: Solo input de destino, el origen siempre es la ubicación actual
   late FocusNode _destinoFocusNode;
   bool _isPanelExpanded = false; // Estado interno de la UI
 
   @override
   void initState() {
     super.initState();
-    _origenFocusNode = FocusNode();
     _destinoFocusNode = FocusNode();
   }
 
   @override
   void dispose() {
-    _origenFocusNode.dispose();
     _destinoFocusNode.dispose();
     super.dispose();
   }
@@ -69,24 +67,20 @@ class _AppSearchPanelState extends ConsumerState<AppSearchPanel> {
     });
 
     void _handleSearchRoute() {
-      if (appUiState.puntoOrigenParaBusqueda != null &&
-          appUiState.puntoDestinoParaBusqueda != null) {
+      // GRANDMA FIRST: Solo validar destino, el origen es siempre la ubicación actual
+      if (appUiState.puntoDestinoParaBusqueda != null) {
         appLogic.iniciarBusquedaDeRutas();
         // Colapsar el panel después de iniciar la búsqueda
         setState(() {
           _isPanelExpanded = false;
         });
-        // Quitar foco de los campos
-        _origenFocusNode.unfocus();
+        // Quitar foco del campo
         _destinoFocusNode.unfocus();
       } else {
-        // Opcional: Mostrar un mensaje si faltan origen/destino.
-        // La capa de lógica también podría manejar esto y poner un mensaje en AppUiState.mensajeErrorGlobal.
-        print("[AppSearchPanel] Origen o Destino no seleccionados.");
-        // Podríamos mostrar un Snackbar o similar
+        print("[AppSearchPanel] Destino no seleccionado.");
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Por favor, selecciona un origen y un destino.'),
+            content: Text('Por favor, selecciona un destino.'),
             duration: Duration(seconds: 2),
           ),
         );
@@ -128,10 +122,8 @@ class _AppSearchPanelState extends ConsumerState<AppSearchPanel> {
     AppUiState appUiState,
     AppLogicNotifier appLogic,
   ) {
-    final origenText =
-        appUiState.nombreLugarOrigenSeleccionado ??
-        appUiState.textoInputOrigenActual ??
-        ""; // Vacío si no hay nada
+    // GRANDMA FIRST: Origen siempre es "Mi ubicación actual"
+    final origenText = "Mi ubicación actual";
     final destinoText =
         appUiState.nombreLugarDestinoSeleccionado ??
         appUiState.textoInputDestinoActual ??
@@ -175,29 +167,7 @@ class _AppSearchPanelState extends ConsumerState<AppSearchPanel> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                AnimatedScale(
-                  scale: 1.0,
-                  duration: const Duration(milliseconds: 150),
-                  child: IconButton(
-                    icon: const Icon(Icons.swap_horiz, size: 22),
-                    tooltip: "Intercambiar Origen/Destino",
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                    style: IconButton.styleFrom(
-                      backgroundColor: Theme.of(
-                        context,
-                      ).colorScheme.primaryContainer.withOpacity(0.3),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    onPressed: () {
-                      // Trigger scale animation
-                      appLogic.intercambiarOrigenYDestino();
-                    },
-                  ),
-                ),
-                const SizedBox(width: 8),
+                // GRANDMA FIRST: No hay botón de intercambio
                 Icon(
                   Icons.flag_outlined,
                   size: 22,
@@ -242,7 +212,7 @@ class _AppSearchPanelState extends ConsumerState<AppSearchPanel> {
     VoidCallback onSearchRouteCallback,
   ) {
     final bool puedeBuscar =
-        appUiState.puntoOrigenParaBusqueda != null &&
+        // GRANDMA FIRST: Solo validar destino, el origen es siempre la ubicación actual
         appUiState.puntoDestinoParaBusqueda != null;
 
     // Determinar si mostrar el spinner en el botón de búsqueda
@@ -284,7 +254,6 @@ class _AppSearchPanelState extends ConsumerState<AppSearchPanel> {
                       setState(() {
                         _isPanelExpanded = false;
                       });
-                      _origenFocusNode.unfocus();
                       _destinoFocusNode.unfocus();
                     },
                   ),
@@ -292,26 +261,13 @@ class _AppSearchPanelState extends ConsumerState<AppSearchPanel> {
               ),
               const SizedBox(height: 4),
 
-              // Campo de Origen
-              AppComposeWithOrigin(
-                hintText: "Punto de Origen",
-                suggestions: appUiState.sugerenciasOrigen ?? [],
-                suggestionsState: appUiState.estadoSugerenciasOrigen,
-                onTextChanged:
-                    (text) => appLogic.usuarioEscribioEnCampoOrigen(text),
-                onSuggestionSelected: (sug) {
-                  appLogic.seleccionarSugerenciaOrigen(sug);
-                  _destinoFocusNode.requestFocus(); // Mover foco al destino
-                },
-                onClear: () {
-                  appLogic.limpiarOrigenSeleccionado();
-                },
-                onCurrentLocationTap: () {
-                  appLogic.seleccionarUbicacionActualComoOrigen();
-                },
-                focusNode: _origenFocusNode,
-                autoFocus: appUiState.puntoOrigenParaBusqueda == null,
-                initialValue: appUiState.textoInputOrigenActual,
+              // GRANDMA FIRST: Solo campo de destino, el origen es siempre la ubicación actual
+              Text(
+                'Origen: Mi ubicación actual',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.primary,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
               const SizedBox(height: 12),
 
@@ -335,17 +291,9 @@ class _AppSearchPanelState extends ConsumerState<AppSearchPanel> {
               ),
               const SizedBox(height: 16),
 
-              // Fila con botón de Intercambiar y Buscar
+              // GRANDMA FIRST: Solo botón de buscar, no hay intercambio
               Row(
                 children: [
-                  IconButton(
-                    icon: const Icon(Icons.swap_horiz),
-                    tooltip: "Intercambiar Origen y Destino",
-                    onPressed: () {
-                      appLogic.intercambiarOrigenYDestino();
-                      // Considerar si el foco debe cambiar o no. Por ahora, no.
-                    },
-                  ),
                   const Spacer(),
                   AnimatedContainer(
                     duration: const Duration(milliseconds: 200),

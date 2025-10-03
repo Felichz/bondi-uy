@@ -3,9 +3,6 @@
 // Este archivo define el contrato de datos y estados que la capa de lógica (backend)
 // proveerá a la capa de UI. La UI consumirá este estado para renderizarse.
 
-import '../../journey/journey_step_state.dart';
-import '../../journey/route_dynamic_calculator.dart';
-
 // --- Definiciones Base (reutilizables en varios estados) ---
 
 class Coordenada {
@@ -452,18 +449,14 @@ class AppUiState {
   final InfoDetalladaParada? infoParadaConsultada;
   final EstadoSolicitud estadoInfoParadaConsultada;
 
-  // Campos para la búsqueda de origen y destino (relevante en FaseApp.INICIAL_SIN_BUSQUEDA)
-  final String? textoInputOrigenActual;
-  final List<SugerenciaLugar>? sugerenciasOrigen;
-  final EstadoSolicitud estadoSugerenciasOrigen;
-
+  // Campo para la búsqueda de destino (relevante en FaseApp.INICIAL_SIN_BUSQUEDA)
+  // El origen siempre es la ubicación actual del usuario (grandma first)
   final String? textoInputDestinoActual;
   final List<SugerenciaLugar>? sugerenciasDestino;
   final EstadoSolicitud estadoSugerenciasDestino;
 
-  // Nuevos campos para almacenar el origen y destino seleccionados para la búsqueda de ruta
-  final Coordenada? puntoOrigenParaBusqueda;
-  final String? nombreLugarOrigenSeleccionado;
+  // Campo para almacenar el destino seleccionado para la búsqueda de ruta
+  // El origen siempre es ubicacionActualUsuario
   final Coordenada? puntoDestinoParaBusqueda;
   final String? nombreLugarDestinoSeleccionado;
 
@@ -479,15 +472,10 @@ class AppUiState {
   final EstadoSolicitud estadoCalculoRuta;
 
   // Campos para ubicación actual del usuario
+  // IMPORTANTE: Esta es la única fuente de verdad para el origen en búsquedas
   final EstadoSolicitud estadoUbicacionActual;
   final Coordenada? ubicacionActualUsuario;
   final String? mensajeErrorUbicacion;
-
-  // NUEVOS campos para tracking automático y flujo de navegación inteligente
-  final JourneyStepState? currentJourneyStep;
-  final bool isAutomaticNavigationEnabled;
-  final Coordenada? currentUserLocation;
-  final RouteProgress? currentStepProgress;
 
   AppUiState({
     required this.faseActual,
@@ -496,31 +484,19 @@ class AppUiState {
     this.datosFaseViajeActivo,
     this.infoParadaConsultada,
     this.estadoInfoParadaConsultada = EstadoSolicitud.INICIAL,
-    this.textoInputOrigenActual,
-    this.sugerenciasOrigen,
-    this.estadoSugerenciasOrigen = EstadoSolicitud.INICIAL,
     this.textoInputDestinoActual,
     this.sugerenciasDestino,
     this.estadoSugerenciasDestino = EstadoSolicitud.INICIAL,
-    this.puntoOrigenParaBusqueda,
-    this.nombreLugarOrigenSeleccionado,
     this.puntoDestinoParaBusqueda,
     this.nombreLugarDestinoSeleccionado,
     this.idOpcionRutaPrevisualizada,
     this.mostrandoSpinnerGlobal = false,
     this.mensajeErrorGlobal,
     this.mensajeInfoGlobal,
-
     this.estadoCalculoRuta = EstadoSolicitud.INICIAL,
     this.estadoUbicacionActual = EstadoSolicitud.INICIAL,
     this.ubicacionActualUsuario,
     this.mensajeErrorUbicacion,
-
-    // NUEVOS campos para tracking automático
-    this.currentJourneyStep,
-    this.isAutomaticNavigationEnabled = false,
-    this.currentUserLocation,
-    this.currentStepProgress,
   }) {
     // Validaciones de consistencia de estado
     if (faseActual == FaseApp.INICIAL_SIN_BUSQUEDA &&
@@ -547,31 +523,19 @@ class AppUiState {
       datosFaseInicial: EstadoFaseInicial(paradasVisiblesEnMapa: []),
       infoParadaConsultada: null,
       estadoInfoParadaConsultada: EstadoSolicitud.INICIAL,
-      textoInputOrigenActual: "", // Iniciar vacío en lugar de null
-      sugerenciasOrigen: [], // Iniciar vacío
-      estadoSugerenciasOrigen: EstadoSolicitud.INICIAL,
       textoInputDestinoActual: "", // Iniciar vacío
       sugerenciasDestino: [], // Iniciar vacío
       estadoSugerenciasDestino: EstadoSolicitud.INICIAL,
-      puntoOrigenParaBusqueda: null, // Nuevo
-      nombreLugarOrigenSeleccionado: null, // Nuevo
-      puntoDestinoParaBusqueda: null, // Nuevo
-      nombreLugarDestinoSeleccionado: null, // Nuevo
+      puntoDestinoParaBusqueda: null,
+      nombreLugarDestinoSeleccionado: null,
       idOpcionRutaPrevisualizada: null,
       mostrandoSpinnerGlobal: false,
       mensajeErrorGlobal: null,
       mensajeInfoGlobal: null,
-
       estadoCalculoRuta: EstadoSolicitud.INICIAL,
       estadoUbicacionActual: EstadoSolicitud.INICIAL,
       ubicacionActualUsuario: null,
       mensajeErrorUbicacion: null,
-
-      // NUEVOS campos para tracking automático
-      currentJourneyStep: null,
-      isAutomaticNavigationEnabled: false,
-      currentUserLocation: null,
-      currentStepProgress: null,
     );
   }
 
@@ -586,18 +550,10 @@ class AppUiState {
     InfoDetalladaParada? infoParadaConsultada,
     bool clearInfoParadaConsultada = false,
     EstadoSolicitud? estadoInfoParadaConsultada,
-    String? textoInputOrigenActual,
-    List<SugerenciaLugar>? sugerenciasOrigen,
-    bool clearSugerenciasOrigen = false,
-    EstadoSolicitud? estadoSugerenciasOrigen,
     String? textoInputDestinoActual,
     List<SugerenciaLugar>? sugerenciasDestino,
     bool clearSugerenciasDestino = false,
     EstadoSolicitud? estadoSugerenciasDestino,
-    Coordenada? puntoOrigenParaBusqueda,
-    bool clearPuntoOrigenParaBusqueda = false,
-    String? nombreLugarOrigenSeleccionado,
-    bool clearNombreLugarOrigenSeleccionado = false,
     Coordenada? puntoDestinoParaBusqueda,
     bool clearPuntoDestinoParaBusqueda = false,
     String? nombreLugarDestinoSeleccionado,
@@ -615,15 +571,6 @@ class AppUiState {
     bool clearUbicacionActualUsuario = false,
     String? mensajeErrorUbicacion,
     bool clearMensajeErrorUbicacion = false,
-
-    // NUEVOS parámetros para tracking automático
-    JourneyStepState? currentJourneyStep,
-    bool clearCurrentJourneyStep = false,
-    bool? isAutomaticNavigationEnabled,
-    Coordenada? currentUserLocation,
-    bool clearCurrentUserLocation = false,
-    RouteProgress? currentStepProgress,
-    bool clearCurrentStepProgress = false,
   }) {
     return AppUiState(
       faseActual: faseActual ?? this.faseActual,
@@ -645,31 +592,14 @@ class AppUiState {
               : infoParadaConsultada ?? this.infoParadaConsultada,
       estadoInfoParadaConsultada:
           estadoInfoParadaConsultada ?? this.estadoInfoParadaConsultada,
-      textoInputOrigenActual:
-          textoInputOrigenActual ?? this.textoInputOrigenActual,
-      sugerenciasOrigen:
-          clearSugerenciasOrigen
-              ? [] // Cambiado de null a [] para consistencia con inicial()
-              : sugerenciasOrigen ?? this.sugerenciasOrigen,
-      estadoSugerenciasOrigen:
-          estadoSugerenciasOrigen ?? this.estadoSugerenciasOrigen,
       textoInputDestinoActual:
           textoInputDestinoActual ?? this.textoInputDestinoActual,
       sugerenciasDestino:
           clearSugerenciasDestino
-              ? [] // Cambiado de null a []
+              ? []
               : sugerenciasDestino ?? this.sugerenciasDestino,
       estadoSugerenciasDestino:
           estadoSugerenciasDestino ?? this.estadoSugerenciasDestino,
-      puntoOrigenParaBusqueda:
-          clearPuntoOrigenParaBusqueda
-              ? null
-              : puntoOrigenParaBusqueda ?? this.puntoOrigenParaBusqueda,
-      nombreLugarOrigenSeleccionado:
-          clearNombreLugarOrigenSeleccionado
-              ? null
-              : nombreLugarOrigenSeleccionado ??
-                  this.nombreLugarOrigenSeleccionado,
       puntoDestinoParaBusqueda:
           clearPuntoDestinoParaBusqueda
               ? null
@@ -704,22 +634,6 @@ class AppUiState {
           clearMensajeErrorUbicacion
               ? null
               : mensajeErrorUbicacion ?? this.mensajeErrorUbicacion,
-
-      // NUEVOS campos para tracking automático
-      currentJourneyStep:
-          clearCurrentJourneyStep
-              ? null
-              : currentJourneyStep ?? this.currentJourneyStep,
-      isAutomaticNavigationEnabled:
-          isAutomaticNavigationEnabled ?? this.isAutomaticNavigationEnabled,
-      currentUserLocation:
-          clearCurrentUserLocation
-              ? null
-              : currentUserLocation ?? this.currentUserLocation,
-      currentStepProgress:
-          clearCurrentStepProgress
-              ? null
-              : currentStepProgress ?? this.currentStepProgress,
     );
   }
 
@@ -729,9 +643,8 @@ class AppUiState {
       faseActual: $faseActual,
       mostrandoSpinnerGlobal: $mostrandoSpinnerGlobal,
       datosFaseOpcionesRuta: ${datosFaseOpcionesRuta != null ? 'Presente (${datosFaseOpcionesRuta!.opcionesDeRuta.length} opciones)' : 'null'},
-      textoInputOrigen: "$textoInputOrigenActual", Sugerencias Origen: ${sugerenciasOrigen?.length ?? 0},
       textoInputDestino: "$textoInputDestinoActual", Sugerencias Destino: ${sugerenciasDestino?.length ?? 0},
-      origenParaBusqueda: ${puntoOrigenParaBusqueda != null ? nombreLugarOrigenSeleccionado ?? 'Coordenada' : 'null'},
+      ubicacionActualUsuario: ${ubicacionActualUsuario != null ? '(${ubicacionActualUsuario!.latitud}, ${ubicacionActualUsuario!.longitud})' : 'null'},
       destinoParaBusqueda: ${puntoDestinoParaBusqueda != null ? nombreLugarDestinoSeleccionado ?? 'Coordenada' : 'null'},
       idOpcionRutaPrevisualizada: $idOpcionRutaPrevisualizada,
       infoParadaConsultada: ${infoParadaConsultada != null ? 'Parada ID: ${infoParadaConsultada!.idParada}' : 'null'},
@@ -758,19 +671,14 @@ abstract class IAppLogic {
   Future<void> solicitarInformacionDetalladaParada(String idParada);
   Future<void> usuarioDeseleccionoInformacionDeParada();
 
-  // -- Para la búsqueda y sugerencias de origen/destino --
-  Future<void> usuarioEscribioEnCampoOrigen(String textoQuery);
+  // -- Para la búsqueda y sugerencias de destino (Grandma First: solo destino) --
+  // El origen SIEMPRE es la ubicación actual del usuario
   Future<void> usuarioEscribioEnCampoDestino(String textoQuery);
-  void seleccionarSugerenciaOrigen(SugerenciaLugar sugerencia);
   void seleccionarSugerenciaDestino(SugerenciaLugar sugerencia);
-  void limpiarSugerenciasOrigen();
   void limpiarSugerenciasDestino();
-  void limpiarOrigenSeleccionado();
   void limpiarDestinoSeleccionado();
-  void intercambiarOrigenYDestino();
-  Future<void> seleccionarUbicacionActualComoOrigen();
 
-  Future<void> iniciarBusquedaDeRutas();
+  Future<void> iniciarBusquedaDeRutas(); // Busca desde ubicación actual al destino seleccionado
   Future<void> usuarioCanceloBusquedaOSeleccionRuta();
 
   // -- Para FaseApp.MOSTRANDO_OPCIONES_RUTA --
