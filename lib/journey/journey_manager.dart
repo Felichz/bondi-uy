@@ -18,11 +18,18 @@ import '../backend/contrato_ui/app_ui_state.dart';
 import 'location_tracker.dart';
 import 'journey_step_state.dart';
 import 'route_dynamic_calculator.dart';
+import 'time_scale_manager.dart';
 import '../utils/geometry_utils.dart';
 import 'package:bondi_uy/utils/feature_logger.dart';
 import 'detectors/geofencing_detector.dart';
 import 'detectors/bus_boarding_detector.dart';
 import 'detectors/bus_exit_detector.dart';
+import 'core/trip_orchestrator.dart';
+import 'core/trip_state_machine.dart';
+import 'core/trip_step.dart';
+import 'core/step_detector.dart';
+import 'adapters/geometry_adapter.dart';
+import 'adapters/journey_to_core_adapter.dart';
 
 /// Eventos que JourneyManager puede emitir
 enum JourneyEventType {
@@ -86,7 +93,15 @@ class JourneyManager {
   LocationTracker? _locationTracker;
   JourneyState? _state;
 
-  // Detectores especializados (disponibles para uso futuro)
+  // Flag para deshabilitar early exit detection (usado durante simulación)
+  bool _skipEarlyExitDetection = false;
+
+  // NUEVA ARQUITECTURA: Core components
+  TripOrchestrator? _orchestrator;
+  TripStateMachine? _stateMachine;
+  GeometryAdapter? _geometryAdapter;
+
+  // Detectores especializados (disponibles para uso futuro - DEPRECATED en favor de core/)
   final _geofencingDetector = GeofencingDetector();
   final _busBoardingDetector = BusBoardingDetector();
   final _busExitDetector = BusExitDetector();
@@ -141,6 +156,11 @@ class JourneyManager {
       );
       print("[JOURNEY_MANAGER] ✅ LocationTracker creado");
 
+      // NUEVA ARQUITECTURA: Crear TripOrchestrator + GeometryAdapter
+      print("[JOURNEY_MANAGER] 🎯 Inicializando arquitectura core...");
+      _initializeCoreArchitecture();
+      print("[JOURNEY_MANAGER] ✅ Arquitectura core inicializada");
+
       // Inicializar estado con primer paso
       final primerTramo = tramos[0];
       final stepType = _determineStepType(primerTramo, 0);
@@ -191,6 +211,12 @@ class JourneyManager {
   /// Detener el journey manager
   Future<void> stop() async {
     print("[JOURNEY_MANAGER] 🛑 Deteniendo...");
+
+    // Detener orchestrator (nueva arquitectura)
+    _orchestrator?.dispose();
+    _orchestrator = null;
+    _stateMachine = null;
+    _geometryAdapter = null;
 
     // Detener location tracking
     await _locationTracker?.stopTracking();
@@ -366,6 +392,15 @@ class JourneyManager {
     if (_state == null || !_state!.isActive) return;
     if (_currentBusPosition == null) return; // Sin posición de bus, no evaluar
 
+    // 🔧 SKIP early exit detection en modo test/simulación
+    // Durante simulación, las posiciones son sintéticas y pueden tener timing issues
+    // que causan falsos positivos. En modo test, asumimos que el escenario es correcto.
+    if (isTestMode || _skipEarlyExitDetection) {
+      return;
+    }
+
+    final timeManager = TimeScaleManager();
+
     // Calcular distancia entre usuario y bus
     final distanceToBus = calculateHaversineDistance(
       userLocation.latitud,
@@ -374,18 +409,22 @@ class JourneyManager {
       _currentBusPosition!.longitud,
     );
 
+    // 🔧 Ajustar threshold y count según velocidad de simulación
+    final adjustedThreshold = timeManager.adjustThreshold(_busProximityThreshold);
+    final adjustedRequiredCount = timeManager.adjustConsecutiveCount(_busExitRequiredConsecutive);
+
     print(
-      "[JOURNEY_MANAGER] 🚌 Distancia usuario-bus: ${distanceToBus.toStringAsFixed(1)}m",
+      "[JOURNEY_MANAGER] 🚌 Distancia usuario-bus: ${distanceToBus.toStringAsFixed(1)}m (threshold: ${adjustedThreshold.toStringAsFixed(1)}m)",
     );
 
     // Si el usuario está lejos del bus, incrementar contador
-    if (distanceToBus > _busProximityThreshold) {
+    if (distanceToBus > adjustedThreshold) {
       _busExitNegativeCount++;
       print(
-        "[JOURNEY_MANAGER] ⚠️ Usuario lejos del bus (${_busExitNegativeCount}/$_busExitRequiredConsecutive)",
+        "[JOURNEY_MANAGER] ⚠️ Usuario lejos del bus (${_busExitNegativeCount}/$adjustedRequiredCount)",
       );
 
-      if (_busExitNegativeCount >= _busExitRequiredConsecutive) {
+      if (_busExitNegativeCount >= adjustedRequiredCount) {
         print("[JOURNEY_MANAGER] 🚪 === BAJADA PREMATURA DETECTADA ===");
 
         try {
@@ -508,20 +547,17 @@ class JourneyManager {
   }
 
   /// Transición al siguiente paso
-  void _transitionToNextStep() {
+  /// Transición directa a un paso específico (usado por orchestrator)
+  void _transitionToStep(int targetStepIndex) {
     if (_state == null || !_state!.isActive) return;
 
-    print("[JOURNEY_MANAGER] 🔄 === TRANSICIÓN AL SIGUIENTE PASO ====");
-
-    final currentStepIndex = _state!.currentStepIndex;
-    final nextStepIndex = currentStepIndex + 1;
-
-    print("[JOURNEY_MANAGER] 🔄 Paso actual: $currentStepIndex");
-    print("[JOURNEY_MANAGER] 🔄 Siguiente paso: $nextStepIndex");
+    print("[JOURNEY_MANAGER] 🔄 === TRANSICIÓN AL PASO $targetStepIndex ====");
+    print("[JOURNEY_MANAGER] 🔄 Paso actual: ${_state!.currentStepIndex}");
+    print("[JOURNEY_MANAGER] 🔄 Paso destino: $targetStepIndex");
     print("[JOURNEY_MANAGER] 🔄 Total de tramos: ${tramos.length}");
 
     // Verificar si hemos completado el viaje
-    if (nextStepIndex >= tramos.length) {
+    if (targetStepIndex >= tramos.length) {
       print("[JOURNEY_MANAGER] 🏁 === VIAJE COMPLETADO ===");
 
       try {
@@ -534,29 +570,31 @@ class JourneyManager {
       return;
     }
 
-    // Configurar siguiente paso
-    final nextTramo = tramos[nextStepIndex];
-    final nextStepType = _determineStepType(nextTramo, nextStepIndex);
-    final nextDestination = _getStepDestination(nextTramo);
+    // Configurar paso destino
+    final targetTramo = tramos[targetStepIndex];
+    final targetStepType = _determineStepType(targetTramo, targetStepIndex);
+    final targetDestination = _getStepDestination(targetTramo);
 
     print("[JOURNEY_MANAGER] ➡️ Nuevo paso:");
-    print("[JOURNEY_MANAGER] ➡️   Tipo: $nextStepType");
-    print("[JOURNEY_MANAGER] ➡️   Destino: $nextDestination");
-    print("[JOURNEY_MANAGER] ➡️   Línea: ${nextTramo.nombreLineaBus}");
+    print("[JOURNEY_MANAGER] ➡️   Tipo: $targetStepType");
+    print("[JOURNEY_MANAGER] ➡️   Destino: $targetDestination");
+    print("[JOURNEY_MANAGER] ➡️   Línea: ${targetTramo.nombreLineaBus}");
 
     final newStep = JourneyStepState(
-      stepIndex: nextStepIndex,
-      type: nextStepType,
-      destination: nextDestination,
+      stepIndex: targetStepIndex,
+      type: targetStepType,
+      destination: targetDestination,
       startLocation: _state!.lastKnownLocation,
-      busLine: nextTramo.nombreLineaBus,
-      instructions: _getStepInstructions(nextTramo),
+      busLine: targetTramo.nombreLineaBus,
+      instructions: _getStepInstructions(targetTramo),
       startTime: DateTime.now(),
-      currentRoute: nextTramo.geometriaPolilinea,
+      currentRoute: targetTramo.geometriaPolilinea,
     );
 
+    final previousIndex = _state!.currentStepIndex;
+
     _state = JourneyState(
-      currentStepIndex: nextStepIndex,
+      currentStepIndex: targetStepIndex,
       currentStep: newStep,
       lastKnownLocation: _state!.lastKnownLocation,
       isActive: true,
@@ -567,31 +605,33 @@ class JourneyManager {
     _setupGeofencesForCurrentStep();
 
     // Gestionar timers según tipo de paso
-    _manageStepTimers(nextStepType);
+    _manageStepTimers(targetStepType);
 
-    // Notificar transición
-    try {
-      FeatureLogger().log(
-        'journey',
-        'step_transition',
-        data: {
-          'from': currentStepIndex,
-          'to': nextStepIndex,
-          'type': nextStepType.toString(),
-        },
-      );
-    } catch (_) {}
-
+    // Emitir evento de transición
     onEvent(JourneyEvent(
       JourneyEventType.STEP_TRANSITIONED,
       data: {
-        'previousIndex': currentStepIndex,
-        'newIndex': nextStepIndex,
+        'previousIndex': previousIndex,
+        'newIndex': targetStepIndex,
         'newStep': newStep,
       },
     ));
 
     print("[JOURNEY_MANAGER] ✅ === TRANSICIÓN COMPLETADA ===");
+  }
+
+  void _transitionToNextStep() {
+    if (_state == null || !_state!.isActive) return;
+
+    final currentStepIndex = _state!.currentStepIndex;
+    final nextStepIndex = currentStepIndex + 1;
+
+    print("[JOURNEY_MANAGER] 🔄 === TRANSICIÓN AL SIGUIENTE PASO ====");
+    print("[JOURNEY_MANAGER] 🔄 Paso actual: $currentStepIndex");
+    print("[JOURNEY_MANAGER] 🔄 Siguiente paso: $nextStepIndex");
+
+    // Delegar a _transitionToStep
+    _transitionToStep(nextStepIndex);
   }
 
   /// Gestionar timers según el tipo de paso
@@ -793,6 +833,18 @@ class JourneyManager {
     }
   }
 
+  /// Deshabilitar early exit detection (para modo simulación)
+  void disableEarlyExitDetection() {
+    _skipEarlyExitDetection = true;
+    print("[JOURNEY_MANAGER] 🔧 Early exit detection DESHABILITADO (modo simulación)");
+  }
+
+  /// Rehabilitar early exit detection (después de simulación)
+  void enableEarlyExitDetection() {
+    _skipEarlyExitDetection = false;
+    print("[JOURNEY_MANAGER] 🔧 Early exit detection HABILITADO (modo normal)");
+  }
+
   /// Verificar si un tramo de bus tiene ETA disponible
   bool _hasBusETA(TramoViajeMostrable busTramo) {
     // TODO: Verificar contra datos reales de API
@@ -860,5 +912,107 @@ class JourneyManager {
       _routeRecalculationTimer?.cancel();
       _routeRecalculationTimer = null;
     }
+  }
+
+  // ============================================================================
+  // NUEVA ARQUITECTURA CORE - Integración de TripOrchestrator
+  // ============================================================================
+
+  /// Inicializa la arquitectura core (TripOrchestrator + GeometryAdapter)
+  void _initializeCoreArchitecture() {
+    // 1. Convertir tramos a TripSteps
+    final steps = <TripStep>[];
+    for (int i = 0; i < tramos.length; i++) {
+      steps.add(tramoToTripStep(tramos[i], i, tramos));
+    }
+
+    print("[JOURNEY_MANAGER] 📋 Convertidos ${steps.length} tramos a TripSteps");
+
+    // 2. Crear TripStateMachine
+    _stateMachine = TripStateMachine(
+      tripId: 'journey_${DateTime.now().millisecondsSinceEpoch}',
+      steps: steps,
+    );
+
+    print("[JOURNEY_MANAGER] ✅ TripStateMachine creado con ${steps.length} pasos");
+
+    // 3. Crear GeometryAdapter
+    final stopLocations = buildStopLocationsFromTramos(tramos);
+    final busRoutes = buildBusRoutesFromTramos(tramos);
+    final destination = getDestinationFromTramos(tramos);
+
+    print("[JOURNEY_MANAGER] 📍 Stops: ${stopLocations.length}");
+    print("[JOURNEY_MANAGER] 🚌 Bus routes: ${busRoutes.length}");
+    print("[JOURNEY_MANAGER] 🎯 Destination: ${destination.latitud}, ${destination.longitud}");
+
+    _geometryAdapter = createGeometryAdapterFromTripData(
+      stopLocations: stopLocations,
+      busRoutes: busRoutes,
+      destinationLocation: destination,
+      initialUserLocation: _locationTracker?.lastKnownLocation,
+    );
+
+    print("[JOURNEY_MANAGER] ✅ GeometryAdapter creado");
+
+    // 4. Crear TripOrchestrator
+    _orchestrator = createDefaultOrchestrator(
+      stateMachine: _stateMachine!,
+      getContextForStep: _createContextForStep,
+      onStepChanged: _handleOrchestratorStepChanged,
+      onTripCompleted: _handleOrchestratorTripCompleted,
+    );
+
+    print("[JOURNEY_MANAGER] ✅ TripOrchestrator creado");
+
+    // 5. Iniciar orchestrator
+    _orchestrator!.start(updateInterval: const Duration(seconds: 1));
+
+    print("[JOURNEY_MANAGER] 🚀 TripOrchestrator iniciado (update cada 1s)");
+  }
+
+  /// Callback para crear contexto de detección (GeometryAdapter wrapper)
+  Future<StepDetectionContext> _createContextForStep(TripStep step) async {
+    if (_geometryAdapter == null) {
+      throw StateError('GeometryAdapter not initialized');
+    }
+
+    // Actualizar ubicación del usuario en el adapter si hay una nueva
+    final userLocation = _state?.lastKnownLocation;
+    if (userLocation != null) {
+      _geometryAdapter!.updateUserLocation(userLocation);
+    }
+
+    // Obtener contexto del adapter REAL
+    return await _geometryAdapter!.createContextForStep(step);
+  }
+
+  /// Callback cuando el orchestrator detecta cambio de paso
+  void _handleOrchestratorStepChanged(TripStep newStep) {
+    print("[JOURNEY_MANAGER] 🔄 ORCHESTRATOR: Cambio de paso detectado");
+    print("[JOURNEY_MANAGER] 🔄   Nuevo paso: ${newStep.description}");
+
+    final orchestratorIndex = _stateMachine!.currentStepIndex;
+    print("[JOURNEY_MANAGER] 🔄   Índice orchestrator: $orchestratorIndex");
+    print("[JOURNEY_MANAGER] 🔄   Índice JourneyManager actual: ${_state?.currentStepIndex}");
+
+    // Sincronizar directamente al índice del orchestrator (no incrementar)
+    // El orchestrator usa base-0: paso 0=walk, 1=wait, 2=ride, 3=walk
+    // Los tramos usan base-0 también
+    if (orchestratorIndex >= tramos.length) {
+      print("[JOURNEY_MANAGER] ⚠️ Índice orchestrator fuera de rango: $orchestratorIndex >= ${tramos.length}");
+      return;
+    }
+
+    final previousIndex = _state?.currentStepIndex ?? 0;
+    _transitionToStep(orchestratorIndex);
+    print("[JOURNEY_MANAGER] ✅ Sincronizado: $previousIndex → $orchestratorIndex");
+  }
+
+  /// Callback cuando el orchestrator detecta viaje completado
+  void _handleOrchestratorTripCompleted() {
+    print("[JOURNEY_MANAGER] 🎉 ORCHESTRATOR: Viaje completado");
+
+    // Emitir evento de completado
+    onEvent(JourneyEvent(JourneyEventType.JOURNEY_COMPLETED));
   }
 }

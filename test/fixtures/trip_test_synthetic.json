@@ -1,0 +1,109 @@
+{
+  "tripId": "test_synthetic_001",
+  "name": "Test Sintético - Tres Cruces a Pocitos (Línea 121)",
+  "capturedAt": "2025-01-03T15:00:00.000Z",
+  "origin": {
+    "lat": -34.8938,
+    "lng": -56.1680,
+    "name": "Tres Cruces"
+  },
+  "destination": {
+    "lat": -34.9089,
+    "lng": -56.1532,
+    "name": "Pocitos"
+  },
+  "route": {
+    "routeId": "route_test_121",
+    "recommended": true,
+    "totalDuration": 900,
+    "totalWalkDistance": 450,
+    "totalWaitTime": 180,
+    "stops": [
+      {
+        "stopId": "6789",
+        "name": "Bvar. Artigas y Gral. Flores",
+        "lat": -34.8945,
+        "lng": -56.1672,
+        "busLines": ["121"]
+      },
+      {
+        "stopId": "6790",
+        "name": "21 de Setiembre y Rivera",
+        "lat": -34.9075,
+        "lng": -56.1545,
+        "busLines": ["121"]
+      }
+    ],
+    "segments": [
+      {
+        "type": "CAMINAR",
+        "description": "Caminar a parada Bvar. Artigas",
+        "duration": 120,
+        "distance": 250,
+        "from": "origin",
+        "to": "6789",
+        "geometry": [
+          {"lat": -34.8938, "lng": -56.1680},
+          {"lat": -34.8940, "lng": -56.1678},
+          {"lat": -34.8942, "lng": -56.1676},
+          {"lat": -34.8943, "lng": -56.1674},
+          {"lat": -34.8945, "lng": -56.1672}
+        ]
+      },
+      {
+        "type": "ESPERAR_BUS",
+        "description": "Esperar bus línea 121",
+        "duration": 180,
+        "at": "6789",
+        "busLine": "121",
+        "hasEta": true,
+        "etaMinutes": 3
+      },
+      {
+        "type": "VIAJE_EN_BUS",
+        "description": "Bus 121 hasta 21 de Setiembre",
+        "duration": 480,
+        "from": "6789",
+        "to": "6790",
+        "busLine": "121",
+        "shapeId": "shape_121_A",
+        "geometry": [
+          {"lat": -34.8945, "lng": -56.1672},
+          {"lat": -34.8950, "lng": -56.1668},
+          {"lat": -34.8960, "lng": -56.1660},
+          {"lat": -34.8975, "lng": -56.1648},
+          {"lat": -34.8990, "lng": -56.1635},
+          {"lat": -34.9005, "lng": -56.1620},
+          {"lat": -34.9020, "lng": -56.1605},
+          {"lat": -34.9035, "lng": -56.1590},
+          {"lat": -34.9050, "lng": -56.1575},
+          {"lat": -34.9065, "lng": -56.1560},
+          {"lat": -34.9075, "lng": -56.1545}
+        ]
+      },
+      {
+        "type": "CAMINAR",
+        "description": "Caminar a destino final",
+        "duration": 120,
+        "distance": 200,
+        "from": "6790",
+        "to": "destination",
+        "geometry": [
+          {"lat": -34.9075, "lng": -56.1545},
+          {"lat": -34.9078, "lng": -56.1542},
+          {"lat": -34.9082, "lng": -56.1538},
+          {"lat": -34.9086, "lng": -56.1535},
+          {"lat": -34.9089, "lng": -56.1532}
+        ]
+      }
+    ]
+  },
+  "gpsPlayback": [],
+  "checkpoints": [],
+  "expectedBehavior": {
+    "totalDuration": 900,
+    "stepsExpected": 4,
+    "shouldComplete": true,
+    "description": "Viaje de prueba con geometrías sintéticas para validar el sistema"
+  }
+}

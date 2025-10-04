@@ -12,6 +12,7 @@ import 'dart:math' as math;
 import 'package:bondi_uy/ui/overlays/initial_phase_overlay.dart';
 import 'package:bondi_uy/ui/overlays/route_options_overlay.dart';
 import 'package:bondi_uy/ui/overlays/active_trip_overlay.dart';
+import 'package:bondi_uy/devtools/trip_data_capture_service.dart';
 
 // Provider global para el MapManager
 final mapManagerProvider = StateProvider<MapManager?>((ref) => null);
@@ -658,6 +659,72 @@ class _DevFab extends ConsumerWidget {
                   duration: Duration(seconds: 2),
                 ),
               );
+            }
+          },
+        ),
+        const SizedBox(height: 8),
+        FloatingActionButton.small(
+          heroTag: 'dev_copy_trip',
+          backgroundColor: Colors.green,
+          tooltip: 'Copiar trip como JSON (para tests)',
+          child: const Icon(Icons.content_copy),
+          onPressed: () async {
+            final state = ref.read(appLogicProvider);
+
+            // Solo funciona si hay opciones de ruta mostradas
+            if (state.datosFaseOpcionesRuta == null ||
+                state.datosFaseOpcionesRuta!.opcionesDeRuta.isEmpty) {
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('❌ No hay rutas seleccionadas. Busca un trip primero.'),
+                    backgroundColor: Colors.red,
+                    duration: Duration(seconds: 3),
+                  ),
+                );
+              }
+              return;
+            }
+
+            // Tomar la primera opción (o la recomendada)
+            final opciones = state.datosFaseOpcionesRuta!.opcionesDeRuta;
+            final selectedRoute = opciones.firstWhere(
+              (o) => o.esRecomendada,
+              orElse: () => opciones.first,
+            );
+
+            // Capturar datos
+            try {
+              await TripDataCaptureService.captureTripToClipboard(
+                tripId: 'trip_${DateTime.now().millisecondsSinceEpoch}',
+                origin: state.ubicacionActualUsuario ?? Coordenada(latitud: 0, longitud: 0),
+                destination: state.puntoDestinoParaBusqueda ?? Coordenada(latitud: 0, longitud: 0),
+                selectedRoute: selectedRoute,
+                initialBusPosition: state.datosFaseViajeActivo?.posicionActualBusReal,
+              );
+
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      '✅ Trip copiado al portapapeles!\n'
+                      '${selectedRoute.tramosParaPreview.length} segmentos',
+                    ),
+                    backgroundColor: Colors.green,
+                    duration: const Duration(seconds: 3),
+                  ),
+                );
+              }
+            } catch (e) {
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('❌ Error: $e'),
+                    backgroundColor: Colors.red,
+                    duration: const Duration(seconds: 3),
+                  ),
+                );
+              }
             }
           },
         ),

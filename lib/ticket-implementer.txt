@@ -1,9 +1,0 @@
-bien, haz lo que consideres mejor, avanza, todo lo que puedas, creo que ya te di lo necesario para avanzar con autonomia y cumplir todo el trabajo bien, como desarrollador profesional con la informacion que te di creo que ya esta todo bastante claro hasta te hice referencia al codigo viejo ya tienes todo lo que necesitas y todas las herramientas para terminar el proyecto osea todos esos tickets
-
-prosigue, solo adjunto estas cosas porque aveces se pierde el context: @1-context.txt @2-ux_philosophy.md @3-agent-behavior.txt @app_ui_state.dart @index.md 
-
-yo probablemente solo seguire enviando este mismo mensaje solo para mantener el context fresco en lo que tu sigues, porque ademas tengo que ir iniciando las iteraciones con mis mensajes, eso no se hace automatico
-
-@tickets.mdactualiza este documento de tickets cuando lo consideres 
-
-creo que ahora ibas por el 5

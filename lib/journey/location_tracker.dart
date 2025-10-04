@@ -3,6 +3,7 @@ import '../utils/geometry_utils.dart';
 import 'package:bondi_uy/utils/feature_logger.dart';
 import 'dart:async';
 import 'package:geolocator/geolocator.dart';
+import 'time_scale_manager.dart';
 
 // NUEVO: Clase para almacenar lecturas de ubicación con timestamp
 class LocationReading {
@@ -49,7 +50,8 @@ class LocationTracker {
 
   // NUEVO: Método para calcular velocidad basada en historial de ubicaciones
   void _calculateSpeed(Coordenada newLocation) {
-    final now = DateTime.now();
+    final timeManager = TimeScaleManager();
+    final now = timeManager.now; // Usar tiempo ajustado por simulación
     final newReading = LocationReading(newLocation, now);
 
     // Agregar nueva lectura
@@ -86,8 +88,9 @@ class LocationTracker {
         curr.location.longitud,
       );
 
+      // 🔧 Usar TimeScaleManager para calcular tiempo transcurrido ajustado
       final timeDiff =
-          curr.timestamp.difference(prev.timestamp).inMilliseconds /
+          timeManager.timeBetween(prev.timestamp, curr.timestamp).inMilliseconds /
           1000.0; // segundos
 
       if (timeDiff > 0) {
@@ -97,14 +100,18 @@ class LocationTracker {
     }
 
     // Calcular velocidad promedio en m/s
+    // Con time scale, la velocidad se calcula con tiempo "virtual"
+    // Por ejemplo, si 1 segundo real = 10 segundos virtuales,
+    // entonces 100m en 1s real = 100m en 10s virtual = 10 m/s (no 100 m/s)
     if (totalTime > 0) {
       _currentSpeed = totalDistance / totalTime;
     } else {
       _currentSpeed = 0.0;
     }
 
+    final simInfo = timeManager.isSimulating ? " [SIM ${timeManager.timeScale}x]" : "";
     print(
-      "[LOCATION_TRACKER] 🏃‍♂️ Velocidad calculada: ${_currentSpeed.toStringAsFixed(2)} m/s (${(_currentSpeed * 3.6).toStringAsFixed(1)} km/h)",
+      "[LOCATION_TRACKER] 🏃‍♂️ Velocidad calculada: ${_currentSpeed.toStringAsFixed(2)} m/s (${(_currentSpeed * 3.6).toStringAsFixed(1)} km/h)$simInfo",
     );
   }
 

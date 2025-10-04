@@ -49,6 +49,7 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
   Timer? _seguimientoBusTimer;
   Timer? _destinoDebounceTimer;
   Timer? _waitingForBusFallbackTimer; // Para detectar subida sin ETA
+  bool _simulatorModeActive = false; // Bandera para prevenir polling durante simulación
 
   // Journey Manager - Encapsula toda la lógica de navegación automática
   JourneyManager? _journeyManager;
@@ -861,6 +862,14 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
     // 6. Actualiza el estado con la posición del bus y ETA en tiempo real
     // 7. Se detiene automáticamente si el bus ya llegó o si hay errores
 
+    // 🛑 PREVENIR INICIO SI EL SIMULADOR ESTÁ ACTIVO
+    if (_simulatorModeActive) {
+      print(
+        "[AppLogicNotifier] ⚠️ Seguimiento de bus bloqueado: simulador activo",
+      );
+      return;
+    }
+
     if (state.faseActual != FaseApp.VIAJE_ACTIVO_EN_CURSO ||
         state.datosFaseViajeActivo == null ||
         state.datosFaseViajeActivo!.idViajeActivoConfirmado != idViajeActivo) {
@@ -1281,13 +1290,20 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
   void _handleStepTransitioned(JourneyStepState newStep, int newIndex) {
     print("[STEP_TRANSITION] 🔄 Nuevo paso: $newIndex - ${newStep.type}");
 
-    // Notificar al MapManager para actualizar vista
-    final mapManager = _ref.read(mapManagerProvider);
     final activeTripState = state.datosFaseViajeActivo;
+    if (activeTripState != null) {
+      // Actualizar el índice del paso actual en el estado de la UI
+      print("[STEP_TRANSITION] 📱 Actualizando UI state currentStepIndex: $newIndex");
+      state = state.copyWith(
+        datosFaseViajeActivo: activeTripState.copyWith(
+          currentStepIndex: newIndex,
+        ),
+      );
 
-    if (mapManager != null && activeTripState != null) {
+      // Notificar al MapManager para actualizar vista
+      final mapManager = _ref.read(mapManagerProvider);
       print("[STEP_TRANSITION] 🗺️ Actualizando MapManager al paso $newIndex");
-      mapManager.updateCurrentLeg(newIndex, activeTripState.tramosDelViaje);
+      mapManager?.updateCurrentLeg(newIndex, activeTripState.tramosDelViaje);
     }
   }
 
@@ -1343,6 +1359,13 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
     }
   }
 
+  // Dev tool: Activar modo de feed externo (desactiva GPS real)
+  void devActivateExternalLocationFeed() {
+    if (_journeyManager != null) {
+      _journeyManager!.enterExternalFeedMode();
+    }
+  }
+
   // ====== DEV: Simulación basada en la ruta actual (sin dataset) ======
   Future<void> devStartTripSimulation({double speed = 1.0}) async {
     // Capturar última posición real del bus ANTES de limpiar estado
@@ -1381,6 +1404,26 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
   // Helpers para TripSimulator
   EstadoFaseViajeActivo? devGetActiveTripState() {
     return state.datosFaseViajeActivo;
+  }
+
+  void devStopBusRealtimePolling() {
+    print('[DEV_SIM] 🛑 Deteniendo sondeo de bus real (simulador activo)');
+    _simulatorModeActive = true;
+    _seguimientoBusTimer?.cancel();
+    _seguimientoBusTimer = null;
+  }
+
+  void devResumeRealBusPolling() {
+    print('[DEV_SIM] ▶️ Reactivando sondeo de bus real (simulador detenido)');
+    _simulatorModeActive = false;
+  }
+
+  void devDisableEarlyExitDetection() {
+    _journeyManager?.disableEarlyExitDetection();
+  }
+
+  void devEnableEarlyExitDetection() {
+    _journeyManager?.enableEarlyExitDetection();
   }
 
   void devPushRealtimeBusPosition(Coordenada pos, int etaMinutes) {
@@ -1423,6 +1466,13 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
                 etaMinutes >= 0),
       ),
     );
+
+    // 🔧 CRÍTICO: Actualizar JourneyManager con la posición del bus
+    // Esto es necesario para que JourneyManager pueda detectar correctamente
+    // si el usuario está en el bus (boarding) o si se bajó prematuramente (early exit)
+    if (_journeyManager != null) {
+      _journeyManager!.updateBusPosition(pos, etaMinutes);
+    }
   }
 
 
@@ -1550,7 +1600,7 @@ class AppLogicNotifier extends StateNotifier<AppUiState> implements IAppLogic {
     // Limpiar estado de viaje activo
     state = state.copyWith(
       faseActual: FaseApp.INICIAL_SIN_BUSQUEDA,
-      datosFaseViajeActivo: null,
+      clearDatosFaseViajeActivo: true,
     );
 
     print("[AppLogicNotifier] Seguimiento activo detenido y estado limpiado.");

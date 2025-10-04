@@ -277,7 +277,7 @@ class _ActiveTripOverlayState extends ConsumerState<ActiveTripOverlay> {
     // El estado del journey ahora está en JourneyManager, no en AppUiState
     // TODO: Obtener progreso desde JourneyManager si necesario
 
-    // Reaccionar a cambios en el sondeo de bus en tiempo real
+    // Reaccionar a cambios en el sondeo de bus en tiempo real Y transiciones de paso
     ref.listen<AppUiState>(appLogicProvider, (previous, next) {
       final prevState = previous?.datosFaseViajeActivo;
       final nextState = next.datosFaseViajeActivo;
@@ -292,9 +292,12 @@ class _ActiveTripOverlayState extends ConsumerState<ActiveTripOverlay> {
         _handleRealtimeBusUpdate(nextState);
       }
 
-      // TODO: GRANDMA FIRST - Listener para transiciones automáticas
-      // La lógica de transiciones ahora está en JourneyManager
-      // Si necesitamos reaccionar a cambios de paso, debemos exponerlo desde AppLogicNotifier
+      // Listener para transiciones automáticas de paso
+      if (prevState?.currentStepIndex != nextState?.currentStepIndex) {
+        final newStepIndex = nextState?.currentStepIndex ?? 0;
+        print('[ActiveTripOverlay] Step transition detected: ${prevState?.currentStepIndex} → $newStepIndex');
+        _onAutomaticStepTransition(newStepIndex);
+      }
     });
 
     if (activeTripState == null) {

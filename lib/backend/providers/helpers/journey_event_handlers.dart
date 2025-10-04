@@ -27,6 +27,12 @@ class JourneyEventHandlers {
 
     final currentState = getState();
     setState(currentState.copyWith(ubicacionActualUsuario: location));
+
+    // Actualizar ubicación del usuario en el mapa
+    final mapManager = ref.read(mapManagerProvider);
+    if (mapManager != null) {
+      mapManager.updateUserLocation(location);
+    }
   }
 
   /// Handler para transición de paso

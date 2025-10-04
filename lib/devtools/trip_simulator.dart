@@ -5,6 +5,7 @@ import 'package:bondi_uy/utils/feature_logger.dart';
 import '../backend/contrato_ui/app_ui_state.dart';
 import '../backend/providers/app_logic_provider.dart';
 import '../utils/geometry_utils.dart';
+import '../journey/time_scale_manager.dart';
 
 class TripSimulator {
   final AppLogicNotifier notifier;
@@ -28,7 +29,6 @@ class TripSimulator {
   List<Coordenada> _busApproach = [];
   List<Coordenada> _busRide = [];
   List<Coordenada> _userWalkToDest = [];
-  int _lastApproachIdx = 0; // asegurar monotonicidad
 
   TripSimulator(
     this.notifier, {
@@ -49,6 +49,15 @@ class TripSimulator {
     if (active == null) {
       return;
     }
+
+    // 🛑 DETENER sondeo de bus real para evitar competencia con simulador
+    notifier.devStopBusRealtimePolling();
+
+    // 🔧 ACTIVAR time scale manager con velocidad de simulación
+    TimeScaleManager().startSimulation(_speed);
+
+    // 🔧 DESHABILITAR early exit detection durante simulación
+    notifier.devDisableEarlyExitDetection();
 
     // Asegurar geometrías completas en memoria si disponemos de shapeId
     try {
@@ -76,14 +85,26 @@ class TripSimulator {
       );
     } catch (_) {}
 
+    // CRÍTICO: Desactivar GPS real para evitar conflictos
+    notifier.devActivateExternalLocationFeed();
+
     _startTime = DateTime.now();
-    _timer = Timer.periodic(const Duration(milliseconds: 200), (_) => _tick());
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
   }
 
   void stop() {
     _timer?.cancel();
     _timer = null;
     _startTime = null;
+
+    // 🔧 DETENER time scale manager
+    TimeScaleManager().stopSimulation();
+
+    // Reactivar el sondeo de bus real al detener el simulador
+    notifier.devResumeRealBusPolling();
+
+    // 🔧 REHABILITAR early exit detection después de simulación
+    notifier.devEnableEarlyExitDetection();
   }
 
   void _buildTraces(EstadoFaseViajeActivo active) {
@@ -111,14 +132,10 @@ class TripSimulator {
     final busTramo = active.tramosDelViaje[busIndex];
     // Usar posición inicial provista (capturada antes de limpiar estado) o la del estado
     final lastRealBusPos = _initialBusPosition ?? active.posicionActualBusReal;
-    // Preferir geometría completa si hay shapeId
-    List<Coordenada> busGeom = [];
-    final fullByShape = getFullShapeGeometry(busTramo.shapeId);
-    if (fullByShape != null && fullByShape.length >= 2) {
-      busGeom = fullByShape;
-    } else {
-      busGeom = busTramo.geometriaPolilinea ?? [];
-    }
+    // USAR LA GEOMETRÍA DEL TRAMO (ya está recortada al viaje específico)
+    // NO usar fullShape porque contiene toda la línea (20+ km)
+    List<Coordenada> busGeom = busTramo.geometriaPolilinea ?? [];
+    print('[TRIP_SIM] 🚌 Geometría del tramo bus: ${busGeom.length} puntos');
     if (busGeom.length >= 2) {
       // Fallbacks robustos cuando faltan coordenadas de parada
       final stop = busTramo.coordenadasParadaOrigen ?? busGeom.first;
@@ -205,6 +222,8 @@ class TripSimulator {
       if (endIdx > stopIdx) {
         _busRide = busGeom.sublist(stopIdx, endIdx + 1);
       }
+      print('[TRIP_SIM] 📊 _busApproach: ${_busApproach.length} puntos');
+      print('[TRIP_SIM] 📊 _busRide: ${_busRide.length} puntos');
     }
 
     // Walking to destination (si existe luego del bus)
@@ -225,85 +244,154 @@ class TripSimulator {
         now.difference(_startTime!).inMilliseconds / 1000.0; // segundos reales
     final speed = _speed;
 
-    // Timelines relativos al tiempo 0
-    final walkToStopT =
+    // Duraciones de cada fase (secuenciales, sin superposición)
+    final walkToStopDuration =
         _userWalkToStop.isEmpty ? 0.0 : (_userWalkToStopSecs / speed);
-    final busApproachT = (_userWalkToStopSecs + _busApproachExtraSecs) / speed;
-    final rideBusT = _busRide.isEmpty ? 0.0 : (_rideBusSecs / speed);
-    final walkToDestT =
+    final busApproachDuration = _busApproach.isEmpty
+        ? 0.0
+        : (_busApproachExtraSecs / speed);
+    final rideBusDuration = _busRide.isEmpty ? 0.0 : (_rideBusSecs / speed);
+    final walkToDestDuration =
         _userWalkToDest.isEmpty ? 0.0 : (_userWalkToDestSecs / speed);
 
-    // 1) Usuario caminando a parada [0, walkToStopT]
-    if (_userWalkToStop.isNotEmpty) {
-      final p = (elapsed / walkToStopT).clamp(0.0, 1.0);
-      final idx = ((p * (_userWalkToStop.length - 1))).round();
-      final userPos = _userWalkToStop[idx];
+    // Puntos de transición entre fases (acumulativos)
+    final walkToStopEnd = walkToStopDuration;
+    final busApproachEnd = walkToStopEnd + busApproachDuration;
+    final rideBusEnd = busApproachEnd + rideBusDuration;
+    final walkToDestEnd = rideBusEnd + walkToDestDuration;
+
+    // FASE 1: Usuario caminando a parada [0, walkToStopEnd]
+    if (elapsed < walkToStopEnd && _userWalkToStop.isNotEmpty) {
+      print('[TRIP_SIM] 🚶 FASE 1: Usuario caminando a parada (${elapsed.toStringAsFixed(1)}s / ${walkToStopEnd.toStringAsFixed(1)}s)');
+
+      // 🔧 Bus approach empieza en paralelo - ACTUALIZAR BUS PRIMERO
+      if (_busApproach.isNotEmpty) {
+        // Durante walk, el bus ya está en movimiento hacia la parada
+        // Progreso del bus considera toda la duración de approach (walk + extra)
+        final totalBusApproachTime = walkToStopDuration + busApproachDuration;
+        final pBus = (elapsed / totalBusApproachTime).clamp(0.0, 1.0);
+        final busPos = _interpolatePosition(_busApproach, pBus);
+        final remaining = totalBusApproachTime - elapsed;
+        final etaMinutes = math.max(1, (remaining / 60.0).ceil());
+        _pushBusRealtime(busPos, etaMinutes);
+      }
+
+      // Luego actualizar usuario
+      final p = (elapsed / walkToStopDuration).clamp(0.0, 1.0);
+      final userPos = _interpolatePosition(_userWalkToStop, p);
       notifier.devPushMockUserLocation(userPos);
-      if (!_waitPhaseLogged && p >= 1.0) {
+
+      if (!_waitPhaseLogged && p >= 0.99) {
         _waitPhaseLogged = true;
         try {
           FeatureLogger().log('sim', 'wait_phase_start');
         } catch (_) {}
       }
+      return;
     }
 
-    // 2) Bus aproximándose a la parada [0, busApproachT]
-    if (_busApproach.isNotEmpty) {
-      final pBus = (elapsed / busApproachT).clamp(0.0, 1.0);
-      // Monotonía: usar floor y clamp para evitar retrocesos por redondeo
-      var idxBus = (pBus * (_busApproach.length - 1)).floor();
-      if (idxBus < 0) idxBus = 0;
-      if (idxBus > _lastApproachIdx)
-        idxBus = idxBus;
-      else
-        idxBus = _lastApproachIdx;
-      if (idxBus >= _busApproach.length) idxBus = _busApproach.length - 1;
-      _lastApproachIdx = idxBus;
-      final busPos = _busApproach[idxBus];
-      int etaMinutes = 0;
-      if (elapsed < busApproachT) {
-        final remaining = busApproachT - elapsed;
-        etaMinutes = math.max(1, (remaining / 60.0).ceil());
-      }
-      // Reducir frecuencia de pushes: solo en cambios de índice o cada ~400ms
+    // FASE 2: Usuario esperando en parada, bus terminando aproximación
+    // [walkToStopEnd, busApproachEnd]
+    if (elapsed < busApproachEnd && _busApproach.isNotEmpty) {
+      print('[TRIP_SIM] ⏳ FASE 2: Usuario esperando en parada (${elapsed.toStringAsFixed(1)}s / ${busApproachEnd.toStringAsFixed(1)}s)');
+
+      // 🔧 Bus completando aproximación - ACTUALIZAR BUS PRIMERO
+      final totalBusApproachTime = walkToStopDuration + busApproachDuration;
+      final pBus = (elapsed / totalBusApproachTime).clamp(0.0, 1.0);
+      final busPos = _interpolatePosition(_busApproach, pBus);
+      final remaining = totalBusApproachTime - elapsed;
+      final etaMinutes = math.max(0, (remaining / 60.0).ceil());
       _pushBusRealtime(busPos, etaMinutes);
+
+      // Luego usuario quieto en la parada
+      if (_userWalkToStop.isNotEmpty) {
+        notifier.devPushMockUserLocation(_userWalkToStop.last);
+      }
+      return;
     }
 
-    // 3) Usuario y bus en bus (ride) después de busApproach
-    final afterBusApproach = elapsed - busApproachT;
-    if (afterBusApproach >= 0 && _busRide.isNotEmpty) {
-      final pRide = (afterBusApproach / rideBusT).clamp(0.0, 1.0);
-      final idxRide = ((pRide * (_busRide.length - 1))).round();
-      final ridePos = _busRide[idxRide];
-      // usuario “pegado” al bus
+    // FASE 3: Usuario y bus en ride [busApproachEnd, rideBusEnd]
+    if (elapsed < rideBusEnd && _busRide.isNotEmpty) {
+      print('[TRIP_SIM] 🚌 FASE 3: Ride en bus (${elapsed.toStringAsFixed(1)}s / ${rideBusEnd.toStringAsFixed(1)}s)');
+      final rideElapsed = elapsed - busApproachEnd;
+      final pRide = (rideElapsed / rideBusDuration).clamp(0.0, 1.0);
+      final ridePos = _interpolatePosition(_busRide, pRide);
+
+      // 🔧 CRÍTICO: Actualizar BUS PRIMERO, luego usuario
+      // Esto asegura que cuando el usuario se actualice y JourneyManager
+      // calcule distancia usuario-bus, el bus ya esté en la posición correcta
+      _pushBusRealtime(ridePos, 1);
       notifier.devPushMockUserLocation(ridePos);
+
       if (!_ridePhaseLogged) {
         _ridePhaseLogged = true;
         try {
           FeatureLogger().log('sim', 'ride_phase_start');
         } catch (_) {}
       }
-      // ETA durante ride no es relevante; mantener 0 o 1 para que el overlay no lo esconda
-      _pushBusRealtime(ridePos, 1);
+      return;
     }
 
-    // 4) Usuario caminando a destino después de bus (ride)
-    final afterRide = elapsed - (busApproachT + rideBusT);
-    if (afterRide >= 0 && _userWalkToDest.isNotEmpty) {
-      final pWalkDest = (afterRide / walkToDestT).clamp(0.0, 1.0);
-      final idxWalkDest = ((pWalkDest * (_userWalkToDest.length - 1))).round();
-      final userPos2 = _userWalkToDest[idxWalkDest];
-      notifier.devPushMockUserLocation(userPos2);
+    // FASE 4: Usuario caminando a destino [rideBusEnd, walkToDestEnd]
+    if (elapsed < walkToDestEnd && _userWalkToDest.isNotEmpty) {
+      print('[TRIP_SIM] 🚶 FASE 4: Usuario caminando a destino (${elapsed.toStringAsFixed(1)}s / ${walkToDestEnd.toStringAsFixed(1)}s)');
+      final walkDestElapsed = elapsed - rideBusEnd;
+      final pWalkDest = (walkDestElapsed / walkToDestDuration).clamp(0.0, 1.0);
+      final userPos = _interpolatePosition(_userWalkToDest, pWalkDest);
+      notifier.devPushMockUserLocation(userPos);
+
+      // Bus se queda en última posición del ride (o desaparece)
+      if (_busRide.isNotEmpty) {
+        _pushBusRealtime(_busRide.last, 0);
+      }
+      return;
     }
 
-    // Finalizar cuando completamos todas las fases
-    final totalSimTime = busApproachT + rideBusT + walkToDestT;
-    if (elapsed >= totalSimTime + 0.2) {
+    // Simulación completada
+    if (elapsed >= walkToDestEnd) {
       stop();
     }
   }
 
   void _pushBusRealtime(Coordenada pos, int etaMinutes) {
     notifier.devPushRealtimeBusPosition(pos, etaMinutes);
+  }
+
+  /// Interpola suavemente una posición en la ruta basándose en el progreso
+  ///
+  /// En vez de saltar entre puntos discretos, calcula una posición intermedia
+  /// interpolando linealmente entre dos puntos adyacentes.
+  ///
+  /// [route] - Lista de coordenadas de la ruta
+  /// [progress] - Progreso de 0.0 a 1.0
+  ///
+  /// Returns: Coordenada interpolada
+  Coordenada _interpolatePosition(List<Coordenada> route, double progress) {
+    if (route.isEmpty) {
+      return Coordenada(latitud: 0, longitud: 0);
+    }
+    if (route.length == 1 || progress <= 0.0) {
+      return route.first;
+    }
+    if (progress >= 1.0) {
+      return route.last;
+    }
+
+    // Calcular índice exacto con decimales
+    final exactIndex = progress * (route.length - 1);
+    final index = exactIndex.floor();
+    final nextIndex = (index + 1).clamp(0, route.length - 1);
+
+    // Progreso entre los dos puntos (0.0 a 1.0)
+    final t = exactIndex - index;
+
+    // Interpolación lineal entre punto actual y siguiente
+    final p1 = route[index];
+    final p2 = route[nextIndex];
+
+    final lat = p1.latitud + (p2.latitud - p1.latitud) * t;
+    final lng = p1.longitud + (p2.longitud - p1.longitud) * t;
+
+    return Coordenada(latitud: lat, longitud: lng);
   }
 }

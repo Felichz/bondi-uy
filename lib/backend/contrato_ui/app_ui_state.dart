@@ -375,6 +375,7 @@ class EstadoFaseOpcionesRuta {
 class EstadoFaseViajeActivo {
   final String idViajeActivoConfirmado;
   final List<TramoViajeMostrable> tramosDelViaje;
+  final int currentStepIndex; // Índice del paso actual del viaje
   final String? idTramoBusEnSeguimiento;
   final Coordenada? posicionActualBusReal;
   final int? minutosParaLlegadaBusReal;
@@ -386,6 +387,7 @@ class EstadoFaseViajeActivo {
     required this.idViajeActivoConfirmado,
     required this.tramosDelViaje,
     required this.opcionDeRutaSeleccionada,
+    this.currentStepIndex = 0, // Por defecto empieza en paso 0
     this.idTramoBusEnSeguimiento,
     this.posicionActualBusReal,
     this.minutosParaLlegadaBusReal,
@@ -396,6 +398,7 @@ class EstadoFaseViajeActivo {
   EstadoFaseViajeActivo copyWith({
     String? idViajeActivoConfirmado,
     List<TramoViajeMostrable>? tramosDelViaje,
+    int? currentStepIndex,
     OpcionDeRutaMostrable? opcionDeRutaSeleccionada,
     String? idTramoBusEnSeguimiento,
     bool clearIdTramoBusEnSeguimiento = false,
@@ -411,6 +414,7 @@ class EstadoFaseViajeActivo {
       idViajeActivoConfirmado:
           idViajeActivoConfirmado ?? this.idViajeActivoConfirmado,
       tramosDelViaje: tramosDelViaje ?? this.tramosDelViaje,
+      currentStepIndex: currentStepIndex ?? this.currentStepIndex,
       opcionDeRutaSeleccionada:
           opcionDeRutaSeleccionada ?? this.opcionDeRutaSeleccionada,
       idTramoBusEnSeguimiento:

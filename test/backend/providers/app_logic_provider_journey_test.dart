@@ -108,6 +108,9 @@ class MockGeocodingService extends GeocodingServiceAdapter {
 }
 
 void main() {
+  // Inicializar Flutter binding para tests que usan Geolocator
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('AppLogicNotifier - Journey Orchestrator Tests', () {
     late ProviderContainer container;
     late AppLogicNotifier appLogicNotifier;
@@ -120,7 +123,7 @@ void main() {
           geocodingServiceProvider.overrideWithValue(MockGeocodingService()),
         ],
       );
-      
+
       appLogicNotifier = container.read(appLogicProvider.notifier);
     });
 
@@ -225,10 +228,10 @@ void main() {
         expect(state.faseActual, equals(FaseApp.VIAJE_ACTIVO_EN_CURSO));
       });
 
-      test('should handle automatic step transitions', () async {
-        // This test would verify the automatic transition logic
-        // Since the actual transition logic involves private methods,
-        // we test the public interface and state changes
+      test('should handle automatic step transitions and update currentStepIndex', () async {
+        // Este test verifica que cuando JourneyManager detecta una llegada
+        // y transiciona al siguiente paso, el currentStepIndex se actualiza
+        // correctamente en EstadoFaseViajeActivo
 
         appLogicNotifier.state = appLogicNotifier.state.copyWith(
           faseActual: FaseApp.MOSTRANDO_OPCIONES_RUTA,
@@ -244,13 +247,32 @@ void main() {
         );
 
         appLogicNotifier.confirmarOpcionDeRutaEIniciarViaje('test-route-1');
-        
+
         // Wait for initialization
         await Future.delayed(Duration(milliseconds: 100));
 
-        final state = container.read(appLogicProvider);
+        var state = container.read(appLogicProvider);
         expect(state.faseActual, equals(FaseApp.VIAJE_ACTIVO_EN_CURSO));
         expect(state.datosFaseViajeActivo?.tramosDelViaje, isNotEmpty);
+
+        // 🧪 NUEVO: Verificar que currentStepIndex inicia en 0
+        expect(state.datosFaseViajeActivo?.currentStepIndex, equals(0),
+          reason: 'El viaje debe iniciar en paso 0');
+
+        // 🧪 NUEVO: Simular llegada a la primera parada
+        // El primer tramo termina en (-34.907, -56.187) según MockItineraryPlanningService
+        // Inyectamos ubicación en ese punto para disparar ARRIVAL_DETECTED → STEP_TRANSITIONED
+        appLogicNotifier.devPushMockUserLocation(
+          Coordenada(latitud: -34.907, longitud: -56.187),
+        );
+
+        // Esperar a que JourneyManager procese la llegada y emita STEP_TRANSITIONED
+        await Future.delayed(Duration(milliseconds: 200));
+
+        // 🧪 NUEVO: Verificar que currentStepIndex se actualizó a 1
+        state = container.read(appLogicProvider);
+        expect(state.datosFaseViajeActivo?.currentStepIndex, equals(1),
+          reason: 'El currentStepIndex debe actualizarse de 0→1 cuando hay transición de paso');
       });
     });
 
