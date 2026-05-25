@@ -148,7 +148,7 @@ class WaitForBusDetector implements StepDetector {
   WaitForBusDetector({
     this.minimumBusSpeedMps = 2.0, // ~7 km/h
     this.maxDistanceFromStopMeters = 50.0,
-    this.consecutiveConfirmationsRequired = 3,
+    this.consecutiveConfirmationsRequired = 2, // Reducido de 3 a 2 para funcionar con GPS real (~1Hz)
   });
 
   @override
@@ -157,16 +157,22 @@ class WaitForBusDetector implements StepDetector {
     StepDetectionContext context,
   ) {
     // El usuario se subió al bus si:
-    // 1. Está en movimiento en la ruta del bus
-    // 2. Su velocidad indica que está en un vehículo
-    final isOnBus = context.isOnBusRoute &&
-        context.isUserMoving &&
-        context.userSpeed >= minimumBusSpeedMps;
+    // 1. Está en la parada (geofence) O en la ruta del bus
+    // 2. Está en movimiento
+    // 3. Su velocidad indica que está en un vehículo
+    //
+    // Usamos OR entre geofence y busRoute para ser más tolerante:
+    // - Al inicio está en geofence esperando
+    // - Luego se mueve y puede temporalmente salir de ambos
+    // - Pero si está moviéndose rápido, es señal de boarding
+    final isNearStopOrRoute = context.isWithinGeofence || context.isOnBusRoute;
+    final isMovingFast = context.isUserMoving && context.userSpeed >= minimumBusSpeedMps;
+    final isOnBus = isNearStopOrRoute && isMovingFast;
 
     if (isOnBus) {
       _consecutiveConfirmations++;
 
-      print('[WaitBusDetector] 🚌 Confirmación ${_consecutiveConfirmations}/${consecutiveConfirmationsRequired} - Velocidad: ${context.userSpeed.toStringAsFixed(1)}m/s');
+      print('[WaitBusDetector] 🚌 Confirmación ${_consecutiveConfirmations}/${consecutiveConfirmationsRequired} - Velocidad: ${context.userSpeed.toStringAsFixed(1)}m/s, Geofence: ${context.isWithinGeofence}, OnRoute: ${context.isOnBusRoute}');
 
       if (_consecutiveConfirmations >= consecutiveConfirmationsRequired) {
         _consecutiveConfirmations = 0;
@@ -174,7 +180,7 @@ class WaitForBusDetector implements StepDetector {
       }
     } else {
       if (_consecutiveConfirmations > 0) {
-        print('[WaitBusDetector] ⚠️ Reset confirmaciones');
+        print('[WaitBusDetector] ⚠️ Reset confirmaciones (velocidad: ${context.userSpeed.toStringAsFixed(1)}m/s, moving: ${context.isUserMoving}, geofence: ${context.isWithinGeofence}, onRoute: ${context.isOnBusRoute})');
       }
       _consecutiveConfirmations = 0;
     }

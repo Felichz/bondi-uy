@@ -116,12 +116,14 @@ class MapCameraController {
     List<Coordenada> coordinatesForZoom = [];
 
     try {
-      // Agregar coordenadas del tramo actual
-      if (tramo.geometriaPolilinea != null &&
-          tramo.geometriaPolilinea!.isNotEmpty) {
-        coordinatesForZoom.addAll(tramo.geometriaPolilinea!);
-      } else if (tramo.posicionPunto != null) {
-        coordinatesForZoom.add(tramo.posicionPunto!);
+      // Agregar coordenadas del tramo actual (excepto VIAJE_EN_BUS que se maneja especialmente)
+      if (tramo.tipo != TipoTramoViaje.VIAJE_EN_BUS) {
+        if (tramo.geometriaPolilinea != null &&
+            tramo.geometriaPolilinea!.isNotEmpty) {
+          coordinatesForZoom.addAll(tramo.geometriaPolilinea!);
+        } else if (tramo.posicionPunto != null) {
+          coordinatesForZoom.add(tramo.posicionPunto!);
+        }
       }
 
       // Si es ESPERAR_BUS: incluir bus y también la ubicación del usuario si está disponible
@@ -141,11 +143,22 @@ class MapCameraController {
         if (busPos != null) {
           coordinatesForZoom.add(busPos);
           FeatureLogger().camera('zoom_leg:add_bus', data: {'lat': busPos.latitud, 'lon': busPos.longitud});
+        } else {
+          FeatureLogger().camera('zoom_leg:bus_null', data: {'warning': 'Bus position not available during VIAJE_EN_BUS'});
         }
         if (tramo.coordenadasParadaDestino != null) {
           coordinatesForZoom.add(tramo.coordenadasParadaDestino!);
           FeatureLogger().camera('zoom_leg:add_stop_dest', data: {'lat': tramo.coordenadasParadaDestino!.latitud, 'lon': tramo.coordenadasParadaDestino!.longitud});
+        } else {
+          FeatureLogger().camera('zoom_leg:stop_dest_null', data: {'error': 'VIAJE_EN_BUS without coordenadasParadaDestino!'});
         }
+
+        // Log final de coordinatesForZoom para debugging
+        FeatureLogger().camera('zoom_leg:ride_coords_summary', data: {
+          'total': coordinatesForZoom.length,
+          'has_bus': busPos != null,
+          'has_dest': tramo.coordenadasParadaDestino != null,
+        });
       }
 
       // Si es CAMINAR: incluir próxima parada y, si existe, una posición de bus para que el usuario tenga contexto
@@ -266,10 +279,11 @@ class MapCameraController {
     final can = _shouldAnimate(forCoordinates: coordinates, firstAttempt: true);
     if (!can) {
       // Fallback: si no pasó pero aún no hicimos ninguna animación, forzar una sola vez
-      if (!_initialCameraDone) {
+      // PERO solo si auto-follow está habilitado (no forzar si usuario pausó cámara)
+      if (!_initialCameraDone && _autoFollowEnabled) {
         FeatureLogger().camera('fly:force_initial_retry');
       } else {
-        return; // ya tuvimos animaciones previas, no forzar
+        return; // ya tuvimos animaciones previas o auto-follow disabled, no forzar
       }
     }
 

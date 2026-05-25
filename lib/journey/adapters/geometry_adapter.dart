@@ -34,9 +34,15 @@ class GeometryAdapter {
   })  : _stopLocations = stopLocations,
         _busRoutes = busRoutes;
 
+  /// Velocidad actual del usuario (m/s)
+  double? currentUserSpeed;
+
   /// Actualiza la ubicación actual del usuario
-  void updateUserLocation(Coordenada location) {
+  void updateUserLocation(Coordenada location, {double? speed}) {
     currentUserLocation = location;
+    if (speed != null) {
+      currentUserSpeed = speed;
+    }
   }
 
   /// Crea el contexto de detección para un paso dado
@@ -73,9 +79,8 @@ class GeometryAdapter {
     // Verificar si está en la ruta del bus (para wait_for_bus y on_bus)
     final isOnBusRoute = _isOnBusRoute(step, currentUserLocation!);
 
-    // Estimar velocidad del usuario (requeriría historial de ubicaciones)
-    // Por ahora retornamos 0, esto se debería calcular con ubicaciones previas
-    final userSpeed = 0.0;
+    // Obtener velocidad del usuario desde LocationTracker (via JourneyManager)
+    final userSpeed = currentUserSpeed ?? 0.0;
 
     // Detectar si el usuario está en movimiento
     final isUserMoving = userSpeed > 0.5; // > 0.5 m/s

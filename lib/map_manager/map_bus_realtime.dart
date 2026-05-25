@@ -287,8 +287,17 @@ class MapBusRealtime {
 
     // NUEVO: Almacenar información para actualizar la línea de aproximación
     _currentTrackedSegment = tramo;
-    _currentStopPosition =
-        tramo.coordenadasParadaOrigen; // Parada donde el usuario debe subir
+
+    // FIX: Decidir qué parada trackear según el modo
+    // - USER_LOCATION (usuario a bordo): trackear parada de DESTINO (donde bajar)
+    // - API_REALTIME (esperando bus): trackear parada de ORIGEN (donde subir)
+    if (_trackingMode == BusTrackingMode.USER_LOCATION) {
+      _currentStopPosition = tramo.coordenadasParadaDestino; // Parada donde el usuario debe BAJAR
+      print("[MapBusRealtime] USER_LOCATION mode: tracking destination stop (where to get off)");
+    } else {
+      _currentStopPosition = tramo.coordenadasParadaOrigen; // Parada donde el usuario debe SUBIR
+      print("[MapBusRealtime] API_REALTIME mode: tracking origin stop (where to board)");
+    }
 
     // ELIMINADO: Ya no mostramos datos antiguos del tramo automáticamente
     // El sistema de sondeo en tiempo real se encargará de actualizar con datos frescos
@@ -1279,6 +1288,9 @@ class MapBusRealtime {
   /// Obtener posición actual del bus en tiempo real (getter público)
   Coordenada? get currentBusPosition => _currentBusPosition;
 
+  /// Obtener la parada actual que se está trackeando (getter público para testing)
+  Coordenada? get currentStopPosition => _currentStopPosition;
+
   /// Detener animaciones y limpiar recursos del preview
   /// Usado específicamente durante transición a active trip
   void stopPreviewAnimations() {
@@ -1295,6 +1307,15 @@ class MapBusRealtime {
     // Detener sondeo de API
     _busTrackingTimer?.cancel();
     _busTrackingTimer = null;
+
+    // FIX: Al cambiar a USER_LOCATION, actualizar la parada trackeada a DESTINO
+    if (_currentTrackedSegment != null &&
+        _currentTrackedSegment!.tipo == TipoTramoViaje.VIAJE_EN_BUS) {
+      _currentStopPosition = _currentTrackedSegment!.coordenadasParadaDestino;
+      print(
+        '[MapBusRealtime] Updated stop position to DESTINATION (user is now on board)',
+      );
+    }
 
     // El bus ahora será renderizado usando la ubicación del usuario
     // Esto se manejará desde el LocationTracker

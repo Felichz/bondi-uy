@@ -88,10 +88,10 @@ class LocationTracker {
         curr.location.longitud,
       );
 
-      // 🔧 Usar TimeScaleManager para calcular tiempo transcurrido ajustado
+      // ⚠️ NO usar TimeScaleManager para velocidad - queremos velocidad física real
+      // El TimeScaleManager solo debe ajustar thresholds/timers, no métricas físicas
       final timeDiff =
-          timeManager.timeBetween(prev.timestamp, curr.timestamp).inMilliseconds /
-          1000.0; // segundos
+          curr.timestamp.difference(prev.timestamp).inMilliseconds / 1000.0; // segundos REALES
 
       if (timeDiff > 0) {
         totalDistance += distance;
@@ -100,9 +100,8 @@ class LocationTracker {
     }
 
     // Calcular velocidad promedio en m/s
-    // Con time scale, la velocidad se calcula con tiempo "virtual"
-    // Por ejemplo, si 1 segundo real = 10 segundos virtuales,
-    // entonces 100m en 1s real = 100m en 10s virtual = 10 m/s (no 100 m/s)
+    // SIEMPRE usamos tiempo REAL para que la velocidad sea física y realista
+    // Ejemplo: 110m en 1s real = 110 m/s (no 11 m/s)
     if (totalTime > 0) {
       _currentSpeed = totalDistance / totalTime;
     } else {

@@ -976,10 +976,12 @@ class JourneyManager {
       throw StateError('GeometryAdapter not initialized');
     }
 
-    // Actualizar ubicación del usuario en el adapter si hay una nueva
+    // Actualizar ubicación y velocidad del usuario en el adapter
     final userLocation = _state?.lastKnownLocation;
+    final userSpeed = _locationTracker?.currentSpeed; // m/s from LocationTracker
+
     if (userLocation != null) {
-      _geometryAdapter!.updateUserLocation(userLocation);
+      _geometryAdapter!.updateUserLocation(userLocation, speed: userSpeed);
     }
 
     // Obtener contexto del adapter REAL

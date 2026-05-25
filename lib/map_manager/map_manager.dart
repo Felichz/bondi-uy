@@ -29,6 +29,9 @@ class MapManager {
   bool _isInitialized = false;
   String? _currentPhase;
 
+  // Flag para controlar verbosidad de logs (solo para debugging profundo)
+  static const bool _debugVerbose = false;
+
   // Trackear la opción actualmente en preview para optimizar transiciones
   String? _currentPreviewOptionId;
 
@@ -417,41 +420,41 @@ class MapManager {
 
   /// Actualizar ubicación del usuario en el mapa
   Future<void> updateUserLocation(Coordenada userLocation) async {
-    print("[MapManager] === INICIO ACTUALIZACIÓN UBICACIÓN USUARIO ===");
-    print(
+    if (_debugVerbose) print("[MapManager] === INICIO ACTUALIZACIÓN UBICACIÓN USUARIO ===");
+    if (_debugVerbose) print(
       "[MapManager] Ubicación recibida: ${userLocation.latitud}, ${userLocation.longitud}",
     );
-    print("[MapManager] MapboxMap disponible: ${mapboxMap != null}");
-    print("[MapManager] Fase actual: $_currentPhase");
+    if (_debugVerbose) print("[MapManager] MapboxMap disponible: ${mapboxMap != null}");
+    if (_debugVerbose) print("[MapManager] Fase actual: $_currentPhase");
 
     if (mapboxMap == null) {
       print("[MapManager] ❌ Condiciones no válidas para actualizar ubicación");
-      print("[MapManager] MapboxMap nulo: ${mapboxMap == null}");
+      if (_debugVerbose) print("[MapManager] MapboxMap nulo: ${mapboxMap == null}");
       return;
     }
 
     // CORREGIDO: Permitir ubicación del usuario en TODAS las fases
-    print("[MapManager] ✅ Condiciones válidas - procediendo con actualización");
+    if (_debugVerbose) print("[MapManager] ✅ Condiciones válidas - procediendo con actualización");
 
     // DEBUGGING ADICIONAL: Verificar el estado actual del mapa
-    print("[MapManager] 🔍 === ESTADO DEL MAPA ANTES DE ACTUALIZAR ===");
+    if (_debugVerbose) print("[MapManager] 🔍 === ESTADO DEL MAPA ANTES DE ACTUALIZAR ===");
     const String sourceId = 'user-location-source';
     const String layerId = 'user-location-layer';
 
     try {
       final sourceExists = await mapboxMap!.style.styleSourceExists(sourceId);
       final layerExists = await mapboxMap!.style.styleLayerExists(layerId);
-      print("[MapManager] 🔍 Fuente '$sourceId' existe: $sourceExists");
-      print("[MapManager] 🔍 Capa '$layerId' existe: $layerExists");
+      if (_debugVerbose) print("[MapManager] 🔍 Fuente '$sourceId' existe: $sourceExists");
+      if (_debugVerbose) print("[MapManager] 🔍 Capa '$layerId' existe: $layerExists");
 
       if (sourceExists) {
         // Intentar obtener datos actuales de la fuente
         try {
           await mapboxMap!.style.getSource(sourceId) as GeoJsonSource;
-          print("[MapManager] 🔍 Fuente obtenida exitosamente");
+          if (_debugVerbose) print("[MapManager] 🔍 Fuente obtenida exitosamente");
           // TODO: No podemos obtener los datos directamente, pero al menos sabemos que existe
         } catch (e) {
-          print("[MapManager] 🔍 Error obteniendo fuente: $e");
+          if (_debugVerbose) print("[MapManager] 🔍 Error obteniendo fuente: $e");
         }
       }
 
@@ -463,30 +466,30 @@ class MapManager {
             layerId,
             'visibility',
           );
-          print("[MapManager] 🔍 Visibilidad de capa: $visibility");
+          if (_debugVerbose) print("[MapManager] 🔍 Visibilidad de capa: $visibility");
 
           // Obtener opacidad
           final opacity = await mapboxMap!.style.getStyleLayerProperty(
             layerId,
             'circle-opacity',
           );
-          print("[MapManager] 🔍 Opacidad de capa: $opacity");
+          if (_debugVerbose) print("[MapManager] 🔍 Opacidad de capa: $opacity");
 
           // Obtener color
           final color = await mapboxMap!.style.getStyleLayerProperty(
             layerId,
             'circle-color',
           );
-          print("[MapManager] 🔍 Color de capa: $color");
+          if (_debugVerbose) print("[MapManager] 🔍 Color de capa: $color");
 
           // Obtener radio
           final radius = await mapboxMap!.style.getStyleLayerProperty(
             layerId,
             'circle-radius',
           );
-          print("[MapManager] 🔍 Radio de capa: $radius");
+          if (_debugVerbose) print("[MapManager] 🔍 Radio de capa: $radius");
         } catch (e) {
-          print("[MapManager] 🔍 Error obteniendo propiedades de capa: $e");
+          if (_debugVerbose) print("[MapManager] 🔍 Error obteniendo propiedades de capa: $e");
         }
       }
 
@@ -496,7 +499,7 @@ class MapManager {
         final layerIndex = allLayers.indexWhere(
           (layer) => layer?.id == layerId,
         );
-        print(
+        if (_debugVerbose) print(
           "[MapManager] 🔍 Capa '$layerId' está en posición: $layerIndex de ${allLayers.length} capas totales",
         );
 
@@ -504,31 +507,31 @@ class MapManager {
         if (allLayers.length > 5) {
           final lastLayers =
               allLayers.skip(allLayers.length - 5).map((l) => l?.id).toList();
-          print("[MapManager] 🔍 Últimas 5 capas (en orden): $lastLayers");
+          if (_debugVerbose) print("[MapManager] 🔍 Últimas 5 capas (en orden): $lastLayers");
         }
       } catch (e) {
-        print("[MapManager] 🔍 Error obteniendo capas: $e");
+        if (_debugVerbose) print("[MapManager] 🔍 Error obteniendo capas: $e");
       }
     } catch (e) {
-      print("[MapManager] 🔍 Error en verificación de estado: $e");
+      if (_debugVerbose) print("[MapManager] 🔍 Error en verificación de estado: $e");
     }
 
-    print("[MapManager] 🔍 === FIN ESTADO DEL MAPA ===");
+    if (_debugVerbose) print("[MapManager] 🔍 === FIN ESTADO DEL MAPA ===");
 
     try {
       const String sourceId = 'user-location-source';
       const String layerId = 'user-location-layer';
 
-      print("[MapManager] 🗺️ Verificando si fuente '$sourceId' ya existe...");
+      if (_debugVerbose) print("[MapManager] 🗺️ Verificando si fuente '$sourceId' ya existe...");
       final sourceExists = await mapboxMap!.style.styleSourceExists(sourceId);
-      print("[MapManager] 🗺️ Fuente existe: $sourceExists");
+      if (_debugVerbose) print("[MapManager] 🗺️ Fuente existe: $sourceExists");
 
       // Validar coordenadas
       if (userLocation.latitud.isNaN ||
           userLocation.longitud.isNaN ||
           userLocation.latitud.abs() > 90 ||
           userLocation.longitud.abs() > 180) {
-        print(
+        if (_debugVerbose) print(
           "[MapManager] ❌ Coordenadas inválidas: ${userLocation.latitud}, ${userLocation.longitud}",
         );
         return;
@@ -549,45 +552,45 @@ class MapManager {
         "features": [userLocationFeature],
       };
 
-      print(
+      if (_debugVerbose) print(
         "[MapManager] 📄 GeoJSON válido creado para coordenadas: [${userLocation.longitud}, ${userLocation.latitud}]",
       );
 
       if (sourceExists) {
-        print("[MapManager] 🔄 Actualizando fuente existente...");
-        print(
+        if (_debugVerbose) print("[MapManager] 🔄 Actualizando fuente existente...");
+        if (_debugVerbose) print(
           "[MapManager] 🔄 Coordenadas anteriores vs nuevas para detectar cambio visual...",
         );
         try {
           final source =
               await mapboxMap!.style.getSource(sourceId) as GeoJsonSource;
           await source.updateGeoJSON(json.encode(sourceData));
-          print(
+          if (_debugVerbose) print(
             "[MapManager] ✅ Fuente GeoJSON actualizada - DEBERÍAMOS ver movimiento visual",
           );
 
           // DEBUGGING: Verificar que la fuente realmente contiene los nuevos datos
           try {
             await mapboxMap!.style.getSource(sourceId) as GeoJsonSource;
-            print(
+            if (_debugVerbose) print(
               "[MapManager] 🔍 Verificación post-actualización: fuente obtenida correctamente",
             );
-            print(
+            if (_debugVerbose) print(
               "[MapManager] 🔍   - Nuevas coordenadas deberían ser: [${userLocation.longitud}, ${userLocation.latitud}]",
             );
           } catch (verifyError) {
-            print(
+            if (_debugVerbose) print(
               "[MapManager] ⚠️ Error verificando actualización: $verifyError",
             );
           }
         } catch (e) {
           print("[MapManager] ❌ Error actualizando fuente existente: $e");
-          print("[MapManager] 🔄 Intentando recrear fuente...");
+          if (_debugVerbose) print("[MapManager] 🔄 Intentando recrear fuente...");
 
           // Si falla la actualización, intentar eliminar y recrear
           try {
             await mapboxMap!.style.removeStyleSource(sourceId);
-            print("[MapManager] 🗑️ Fuente eliminada");
+            if (_debugVerbose) print("[MapManager] 🗑️ Fuente eliminada");
           } catch (removeError) {
             print("[MapManager] ⚠️ Error eliminando fuente: $removeError");
           }
@@ -600,16 +603,16 @@ class MapManager {
           );
         }
       } else {
-        print("[MapManager] 🆕 Creando nueva fuente y capa...");
+        if (_debugVerbose) print("[MapManager] 🆕 Creando nueva fuente y capa...");
         await _createUserLocationSourceAndLayer(sourceId, layerId, sourceData);
       }
 
-      print(
+      if (_debugVerbose) print(
         "[MapManager] ✅ === UBICACIÓN USUARIO ACTUALIZADA EXITOSAMENTE ===",
       );
 
       // DEBUGGING ADICIONAL: Verificar el estado DESPUÉS de la actualización
-      print("[MapManager] 🔍 === ESTADO DEL MAPA DESPUÉS DE ACTUALIZAR ===");
+      if (_debugVerbose) print("[MapManager] 🔍 === ESTADO DEL MAPA DESPUÉS DE ACTUALIZAR ===");
 
       try {
         final sourceExistsAfter = await mapboxMap!.style.styleSourceExists(
@@ -618,8 +621,8 @@ class MapManager {
         final layerExistsAfter = await mapboxMap!.style.styleLayerExists(
           layerId,
         );
-        print("[MapManager] 🔍 POST-UPDATE: Fuente existe: $sourceExistsAfter");
-        print("[MapManager] 🔍 POST-UPDATE: Capa existe: $layerExistsAfter");
+        if (_debugVerbose) print("[MapManager] 🔍 POST-UPDATE: Fuente existe: $sourceExistsAfter");
+        if (_debugVerbose) print("[MapManager] 🔍 POST-UPDATE: Capa existe: $layerExistsAfter");
 
         if (layerExistsAfter) {
           // Verificar propiedades críticas después de la actualización
@@ -639,10 +642,10 @@ class MapManager {
               'circle-radius',
             );
 
-            print("[MapManager] 🔍 POST-UPDATE: Visibilidad: $visibilityAfter");
-            print("[MapManager] 🔍 POST-UPDATE: Opacidad: $opacityAfter");
-            print("[MapManager] 🔍 POST-UPDATE: Color: $colorAfter");
-            print("[MapManager] 🔍 POST-UPDATE: Radio: $radiusAfter");
+            if (_debugVerbose) print("[MapManager] 🔍 POST-UPDATE: Visibilidad: $visibilityAfter");
+            if (_debugVerbose) print("[MapManager] 🔍 POST-UPDATE: Opacidad: $opacityAfter");
+            if (_debugVerbose) print("[MapManager] 🔍 POST-UPDATE: Color: $colorAfter");
+            if (_debugVerbose) print("[MapManager] 🔍 POST-UPDATE: Radio: $radiusAfter");
 
             // Verificar si la capa está visible
             final isVisible = visibilityAfter != 'none';
@@ -653,30 +656,30 @@ class MapManager {
                 radiusAfter.toString() != 'none' &&
                 radiusAfter.toString() != '0';
 
-            print("[MapManager] 🔍 POST-UPDATE: ¿Visible?: $isVisible");
-            print("[MapManager] 🔍 POST-UPDATE: ¿Con opacidad?: $hasOpacity");
-            print("[MapManager] 🔍 POST-UPDATE: ¿Con radio?: $hasRadius");
+            if (_debugVerbose) print("[MapManager] 🔍 POST-UPDATE: ¿Visible?: $isVisible");
+            if (_debugVerbose) print("[MapManager] 🔍 POST-UPDATE: ¿Con opacidad?: $hasOpacity");
+            if (_debugVerbose) print("[MapManager] 🔍 POST-UPDATE: ¿Con radio?: $hasRadius");
 
             if (!isVisible || !hasOpacity || !hasRadius) {
-              print(
+              if (_debugVerbose) print(
                 "[MapManager] ⚠️ PROBLEMA POTENCIAL: La capa puede no ser visible",
               );
-              print(
+              if (_debugVerbose) print(
                 "[MapManager] ⚠️   - Visibility = '$visibilityAfter' (debería ser 'visible' o no 'none')",
               );
-              print(
+              if (_debugVerbose) print(
                 "[MapManager] ⚠️   - Opacity = '$opacityAfter' (debería ser > 0)",
               );
-              print(
+              if (_debugVerbose) print(
                 "[MapManager] ⚠️   - Radius = '$radiusAfter' (debería ser > 0)",
               );
             } else {
-              print(
+              if (_debugVerbose) print(
                 "[MapManager] ✅ La capa parece estar configurada correctamente para ser visible",
               );
             }
           } catch (propError) {
-            print(
+            if (_debugVerbose) print(
               "[MapManager] 🔍 Error obteniendo propiedades post-actualización: $propError",
             );
           }
@@ -689,21 +692,21 @@ class MapManager {
             (layer) => layer?.id == layerId,
           );
 
-          print(
+          if (_debugVerbose) print(
             "[MapManager] 🔍 POST-UPDATE: Posición de capa usuario: $userLayerIndex de ${allLayersAfter.length}",
           );
 
           // Contar cuántas capas están encima de la capa del usuario
           final layersAbove = allLayersAfter.length - 1 - userLayerIndex;
-          print(
+          if (_debugVerbose) print(
             "[MapManager] 🔍 POST-UPDATE: Capas encima del usuario: $layersAbove",
           );
 
           if (layersAbove > 10) {
-            print(
+            if (_debugVerbose) print(
               "[MapManager] ⚠️ POSIBLE PROBLEMA: Muchas capas ($layersAbove) encima de la ubicación del usuario",
             );
-            print(
+            if (_debugVerbose) print(
               "[MapManager] ⚠️ La capa del usuario podría estar siendo tapada por otras capas",
             );
 
@@ -714,36 +717,36 @@ class MapManager {
                     .take(5)
                     .map((l) => l?.id)
                     .toList();
-            print(
+            if (_debugVerbose) print(
               "[MapManager] ⚠️ Primeras 5 capas que la tapan: $upperLayers",
             );
           }
         } catch (layerOrderError) {
-          print(
+          if (_debugVerbose) print(
             "[MapManager] 🔍 Error verificando orden de capas: $layerOrderError",
           );
         }
 
         // Intento experimental: Forzar re-renderizado moviendo la capa al final
         try {
-          print(
+          if (_debugVerbose) print(
             "[MapManager] 🔬 EXPERIMENTO: Moviendo capa al final para asegurar visibilidad...",
           );
           await mapboxMap!.style.moveStyleLayer(
             layerId,
             null,
           ); // null = mover al final
-          print("[MapManager] 🔬 Capa movida al final exitosamente");
+          if (_debugVerbose) print("[MapManager] 🔬 Capa movida al final exitosamente");
         } catch (moveError) {
-          print("[MapManager] 🔬 Error moviendo capa al final: $moveError");
+          if (_debugVerbose) print("[MapManager] 🔬 Error moviendo capa al final: $moveError");
         }
       } catch (postUpdateError) {
-        print(
+        if (_debugVerbose) print(
           "[MapManager] 🔍 Error en verificación post-actualización: $postUpdateError",
         );
       }
 
-      print("[MapManager] 🔍 === FIN ESTADO POST-ACTUALIZACIÓN ===");
+      if (_debugVerbose) print("[MapManager] 🔍 === FIN ESTADO POST-ACTUALIZACIÓN ===");
     } catch (e) {
       print("[MapManager] ❌ === ERROR ACTUALIZANDO UBICACIÓN USUARIO ===");
       print("[MapManager] ❌ Error: $e");
@@ -830,8 +833,8 @@ class MapManager {
         final sourceExistsAfterLayer = await mapboxMap!.style.styleSourceExists(
           sourceId,
         );
-        print("[MapManager] 🔍 Verificación INMEDIATA después de crear capa:");
-        print("[MapManager] 🔍   - Capa '$layerId' existe: $layerExists");
+        if (_debugVerbose) print("[MapManager] 🔍 Verificación INMEDIATA después de crear capa:");
+        if (_debugVerbose) print("[MapManager] 🔍   - Capa '$layerId' existe: $layerExists");
         print(
           "[MapManager] 🔍   - Fuente '$sourceId' existe: $sourceExistsAfterLayer",
         );
@@ -863,10 +866,10 @@ class MapManager {
           print(
             "[MapManager] 🔍 Propiedades INMEDIATAS de la capa recién creada:",
           );
-          print("[MapManager] 🔍   - Visibilidad: $immediateVisibility");
-          print("[MapManager] 🔍   - Opacidad: $immediateOpacity");
-          print("[MapManager] 🔍   - Color: $immediateColor");
-          print("[MapManager] 🔍   - Radio: $immediateRadius");
+          if (_debugVerbose) print("[MapManager] 🔍   - Visibilidad: $immediateVisibility");
+          if (_debugVerbose) print("[MapManager] 🔍   - Opacidad: $immediateOpacity");
+          if (_debugVerbose) print("[MapManager] 🔍   - Color: $immediateColor");
+          if (_debugVerbose) print("[MapManager] 🔍   - Radio: $immediateRadius");
 
           // Verificar si las propiedades son las esperadas
           final expectedColor = 0xFFFF0000; // ROJO
@@ -890,7 +893,7 @@ class MapManager {
 
         // EXPERIMENTO ADICIONAL: Forzar que la capa esté al final inmediatamente
         try {
-          print("[MapManager] 🔬 Moviendo capa recién creada al final...");
+          if (_debugVerbose) print("[MapManager] 🔬 Moviendo capa recién creada al final...");
           await mapboxMap!.style.moveStyleLayer(layerId, null);
           print(
             "[MapManager] 🔬 Capa movida al final inmediatamente después de crear",
@@ -961,18 +964,18 @@ class MapManager {
 
   /// VERSIÓN LIMPIA: Actualizar ubicación del usuario (simplificada)
   Future<void> updateUserLocationClean(Coordenada userLocation) async {
-    print(
+    if (_debugVerbose) print(
       "[MapManager] [CLEAN] Updating user location: ${userLocation.latitud}, ${userLocation.longitud}",
     );
-    print("[MapManager] [CLEAN] Current phase: $_currentPhase");
+    if (_debugVerbose) print("[MapManager] [CLEAN] Current phase: $_currentPhase");
 
     if (mapboxMap == null) {
-      print("[MapManager] [CLEAN] Cannot update - mapboxMap is null");
+      if (_debugVerbose) print("[MapManager] [CLEAN] Cannot update - mapboxMap is null");
       return;
     }
 
     // CORREGIDO: Permitir ubicación en TODAS las fases, no solo active_trip
-    print(
+    if (_debugVerbose) print(
       "[MapManager] [CLEAN] Phase validation passed - proceeding with location update",
     );
 
@@ -988,7 +991,7 @@ class MapManager {
           userLocation.longitud.isNaN ||
           userLocation.latitud.abs() > 90 ||
           userLocation.longitud.abs() > 180) {
-        print("[MapManager] [CLEAN] Invalid coordinates");
+        if (_debugVerbose) print("[MapManager] [CLEAN] Invalid coordinates");
         return;
       }
 
@@ -1010,20 +1013,20 @@ class MapManager {
       // Actualizar o crear fuente
       final sourceExists = await mapboxMap!.style.styleSourceExists(sourceId);
       if (sourceExists) {
-        print("[MapManager] [CLEAN] 🔄 About to call updateGeoJSON...");
+        if (_debugVerbose) print("[MapManager] [CLEAN] 🔄 About to call updateGeoJSON...");
         final source =
             await mapboxMap!.style.getSource(sourceId) as GeoJsonSource;
         await source.updateGeoJSON(json.encode(sourceData));
-        print(
+        if (_debugVerbose) print(
           "[MapManager] [CLEAN] ✅ updateGeoJSON completed - MAP SHOULD UPDATE NOW",
         );
-        print(
+        if (_debugVerbose) print(
           "[MapManager] [CLEAN] 📍 New coordinates pushed to map: [${userLocation.longitud}, ${userLocation.latitud}]",
         );
-        print(
+        if (_debugVerbose) print(
           "[MapManager] [CLEAN] 🔵 CÍRCULO AZUL DEBERÍA MOVERSE VISUALMENTE AHORA - ${DateTime.now()}",
         );
-        print("[MapManager] [CLEAN] User location source updated");
+        if (_debugVerbose) print("[MapManager] [CLEAN] User location source updated");
       } else {
         await _createUserLocationClean(sourceId, layerId, sourceData);
       }
@@ -1097,11 +1100,18 @@ class MapManager {
       if (_currentPhase != 'active_trip' || ref == null) return;
       final appState = ref!.read(appLogicProvider);
       final active = appState.datosFaseViajeActivo;
-      // GRANDMA FIRST: currentJourneyStep ya no está en AppUiState
-      // TODO: Exponer índice de paso actual desde JourneyManager
-      // Por ahora, usar el primer tramo como fallback
       if (active == null || active.tramosDelViaje.isEmpty) return;
-      final tramo = active.tramosDelViaje.first;
+
+      // FIX: Usar currentStepIndex en lugar de .first
+      final currentIndex = active.currentStepIndex;
+      if (currentIndex < 0 || currentIndex >= active.tramosDelViaje.length) {
+        FeatureLogger().camera(
+          'auto_follow:invalid_step_index',
+          data: {'index': currentIndex, 'total': active.tramosDelViaje.length},
+        );
+        return;
+      }
+      final tramo = active.tramosDelViaje[currentIndex];
       final busPos = getCurrentBusPosition();
       final userPos = getCurrentUserLocation();
       final List<Coordenada> coords = [];
@@ -1130,13 +1140,37 @@ class MapManager {
             ); // contexto si cercano (filtro interno ya aplicado antes)
           break;
         case TipoTramoViaje.VIAJE_EN_BUS:
-          if (tramo.geometriaPolilinea != null &&
-              tramo.geometriaPolilinea!.isNotEmpty) {
-            coords.addAll(tramo.geometriaPolilinea!.take(40));
+          // BUG FIX: Durante VIAJE_EN_BUS, NO incluir geometría completa
+          // Solo mostrar: bus actual + parada destino (+ usuario si está a bordo)
+          // La geometría incluye la parada de ORIGEN al inicio, lo cual causa zoom incorrecto
+
+          FeatureLogger().camera(
+            'auto_follow:viaje_en_bus_coords',
+            data: {
+              'hasBus': busPos != null,
+              'hasDest': tramo.coordenadasParadaDestino != null,
+              'hasUser': userPos != null,
+              'geomPoints': tramo.geometriaPolilinea?.length ?? 0,
+            },
+          );
+
+          if (busPos != null) {
+            coords.add(busPos);
+            FeatureLogger().camera(
+              'auto_follow:added_bus',
+              data: {'lat': busPos.latitud, 'lon': busPos.longitud},
+            );
           }
-          if (busPos != null) coords.add(busPos);
-          if (tramo.coordenadasParadaDestino != null)
+          if (tramo.coordenadasParadaDestino != null) {
             coords.add(tramo.coordenadasParadaDestino!);
+            FeatureLogger().camera(
+              'auto_follow:added_dest',
+              data: {
+                'lat': tramo.coordenadasParadaDestino!.latitud,
+                'lon': tramo.coordenadasParadaDestino!.longitud,
+              },
+            );
+          }
           if (userPos != null) coords.add(userPos);
           break;
         default:
@@ -1177,7 +1211,7 @@ class MapManager {
         );
       } else {
         await _cameraController.zoomToCurrentLeg(
-          0, // Usar primer tramo como fallback
+          currentIndex, // FIX: Usar índice actual en lugar de 0
           active.tramosDelViaje,
         );
       }

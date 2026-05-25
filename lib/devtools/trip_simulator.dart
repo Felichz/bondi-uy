@@ -14,11 +14,15 @@ class TripSimulator {
   Timer? _timer;
   double _speed;
 
-  // Timeline (segundos, base sin speed). Se ajustan por _speed al vuelo
-  static const double _userWalkToStopSecs = 15.0;
-  static const double _busApproachExtraSecs = 15.0; // después del usuario
-  static const double _rideBusSecs = 15.0;
-  static const double _userWalkToDestSecs = 10.0;
+  // Velocidades realistas (m/s)
+  static const double _walkingSpeedMps = 1.4; // 5 km/h - velocidad caminata
+  static const double _busSpeedMps = 11.0; // 40 km/h - velocidad bus urbano
+
+  // Duraciones calculadas dinámicamente basadas en distancias reales
+  double _userWalkToStopSecs = 15.0;
+  double _busApproachSecs = 15.0;
+  double _rideBusSecs = 15.0;
+  double _userWalkToDestSecs = 10.0;
 
   DateTime? _startTime;
   bool _ridePhaseLogged = false;
@@ -34,13 +38,13 @@ class TripSimulator {
     this.notifier, {
     double speed = 1.0,
     Coordenada? initialBusPosition,
-  }) : _speed = speed.clamp(0.25, 3.0),
+  }) : _speed = speed.clamp(0.25, 100.0),  // Allow up to 100x for testing
        _initialBusPosition = initialBusPosition;
 
   bool get isRunning => _timer != null;
 
   void setSpeed(double speed) {
-    _speed = speed.clamp(0.25, 3.0);
+    _speed = speed.clamp(0.25, 100.0);  // Allow up to 100x for testing
   }
 
   Future<void> start() async {
@@ -89,7 +93,8 @@ class TripSimulator {
     notifier.devActivateExternalLocationFeed();
 
     _startTime = DateTime.now();
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
+    // Update cada 1 segundo (1Hz) como GPS real
+    _timer = Timer.periodic(const Duration(milliseconds: 1000), (_) => _tick());
   }
 
   void stop() {
@@ -235,6 +240,31 @@ class TripSimulator {
         break;
       }
     }
+
+    // 🎯 Calcular duraciones realistas basadas en distancia y velocidad física
+    if (_userWalkToStop.isNotEmpty) {
+      final distance = _calculateRouteDistance(_userWalkToStop);
+      _userWalkToStopSecs = distance / _walkingSpeedMps;
+      print('[TRIP_SIM] 🚶 Walk to stop: ${distance.toStringAsFixed(0)}m @ ${_walkingSpeedMps}m/s = ${_userWalkToStopSecs.toStringAsFixed(1)}s');
+    }
+
+    if (_busApproach.isNotEmpty) {
+      final distance = _calculateRouteDistance(_busApproach);
+      _busApproachSecs = distance / _busSpeedMps;
+      print('[TRIP_SIM] 🚌 Bus approach: ${distance.toStringAsFixed(0)}m @ ${_busSpeedMps}m/s = ${_busApproachSecs.toStringAsFixed(1)}s');
+    }
+
+    if (_busRide.isNotEmpty) {
+      final distance = _calculateRouteDistance(_busRide);
+      _rideBusSecs = distance / _busSpeedMps;
+      print('[TRIP_SIM] 🚌 Bus ride: ${distance.toStringAsFixed(0)}m @ ${_busSpeedMps}m/s = ${_rideBusSecs.toStringAsFixed(1)}s');
+    }
+
+    if (_userWalkToDest.isNotEmpty) {
+      final distance = _calculateRouteDistance(_userWalkToDest);
+      _userWalkToDestSecs = distance / _walkingSpeedMps;
+      print('[TRIP_SIM] 🚶 Walk to dest: ${distance.toStringAsFixed(0)}m @ ${_walkingSpeedMps}m/s = ${_userWalkToDestSecs.toStringAsFixed(1)}s');
+    }
   }
 
   void _tick() {
@@ -245,11 +275,12 @@ class TripSimulator {
     final speed = _speed;
 
     // Duraciones de cada fase (secuenciales, sin superposición)
+    // Duraciones ya calculadas con velocidades físicas realistas
     final walkToStopDuration =
         _userWalkToStop.isEmpty ? 0.0 : (_userWalkToStopSecs / speed);
     final busApproachDuration = _busApproach.isEmpty
         ? 0.0
-        : (_busApproachExtraSecs / speed);
+        : (_busApproachSecs / speed);
     final rideBusDuration = _busRide.isEmpty ? 0.0 : (_rideBusSecs / speed);
     final walkToDestDuration =
         _userWalkToDest.isEmpty ? 0.0 : (_userWalkToDestSecs / speed);
@@ -355,6 +386,22 @@ class TripSimulator {
 
   void _pushBusRealtime(Coordenada pos, int etaMinutes) {
     notifier.devPushRealtimeBusPosition(pos, etaMinutes);
+  }
+
+  /// Calcula la distancia total de una ruta en metros
+  double _calculateRouteDistance(List<Coordenada> route) {
+    if (route.length < 2) return 0.0;
+
+    double totalDistance = 0.0;
+    for (int i = 0; i < route.length - 1; i++) {
+      totalDistance += calculateHaversineDistance(
+        route[i].latitud,
+        route[i].longitud,
+        route[i + 1].latitud,
+        route[i + 1].longitud,
+      );
+    }
+    return totalDistance;
   }
 
   /// Interpola suavemente una posición en la ruta basándose en el progreso

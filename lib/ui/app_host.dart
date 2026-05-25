@@ -19,7 +19,7 @@ final mapManagerProvider = StateProvider<MapManager?>((ref) => null);
 // Dev: estado de grabación (para feedback visual)
 // Eliminado: grabación manual
 // Dev: velocidad de reproducción
-final devReplaySpeedProvider = StateProvider<double>((ref) => 1.0);
+final devReplaySpeedProvider = StateProvider<double>((ref) => 50.0);
 
 class AppHost extends ConsumerStatefulWidget {
   const AppHost({super.key});
@@ -589,7 +589,7 @@ class _DevFab extends ConsumerWidget {
               child: const Icon(Icons.remove),
               onPressed: () {
                 final current = ref.read(devReplaySpeedProvider);
-                final next = (current - 0.5).clamp(0.25, 3.0);
+                final next = (current - 0.5).clamp(0.25, 20.0);
                 ref.read(devReplaySpeedProvider.notifier).state = next;
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -629,7 +629,7 @@ class _DevFab extends ConsumerWidget {
               child: const Icon(Icons.add),
               onPressed: () {
                 final current = ref.read(devReplaySpeedProvider);
-                final next = (current + 0.5).clamp(0.25, 3.0);
+                final next = (current + 0.5).clamp(0.25, 20.0);
                 ref.read(devReplaySpeedProvider.notifier).state = next;
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(

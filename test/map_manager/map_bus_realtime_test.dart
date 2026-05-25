@@ -278,4 +278,133 @@ void main() {
       expect(BusTrackingMode.USER_LOCATION.toString(), contains('USER_LOCATION'));
     });
   });
+
+  group('Bus Approach Line Stop Position', () {
+    late MapBusRealtime mapBusRealtime;
+    late MockMapManager mockMapManager;
+
+    setUp(() {
+      mockMapManager = MockMapManager();
+      mapBusRealtime = MapBusRealtime(null, mockMapManager);
+    });
+
+    tearDown(() {
+      mapBusRealtime.dispose();
+    });
+
+    test('BUG: Durante ESPERAR_BUS, debe trackear parada DESTINO del próximo bus', () async {
+      // Setup: Crear tramos del viaje (típico escenario con esperar + viaje)
+      final paradaOrigen = Coordenada(latitud: -34.904436, longitud: -56.129387);
+      final paradaDestino = Coordenada(latitud: -34.906003, longitud: -56.200689);
+
+      final tramoEspera = TramoViajeMostrable(
+        idTramo: 'espera_1',
+        tipo: TipoTramoViaje.ESPERAR_BUS,
+        descripcion: 'Esperar bus',
+        duracionEstimadaSegundos: 300,
+        distanciaMetros: 0,
+        posicionPunto: paradaOrigen,
+        nombreLineaBus: '121',
+      );
+
+      final tramoViaje = TramoViajeMostrable(
+        idTramo: 'viaje_1',
+        tipo: TipoTramoViaje.VIAJE_EN_BUS,
+        descripcion: 'Viaje en bus 121',
+        duracionEstimadaSegundos: 600,
+        distanciaMetros: 5000,
+        nombreLineaBus: '121',
+        coordenadasParadaOrigen: paradaOrigen,  // Parada donde el usuario SUBIRÁ
+        coordenadasParadaDestino: paradaDestino, // Parada donde el usuario debe BAJAR
+        idParadaOrigenTramoBus: 'stop_origin',
+        idParadaDestinoTramoBus: 'stop_dest',
+        shapeId: 'shape_121',
+        geometriaPolilinea: [paradaOrigen, paradaDestino],
+      );
+
+      final tramos = [tramoEspera, tramoViaje];
+
+      // Act: Simular que estamos ESPERANDO el bus (índice 0)
+      // En este caso, se busca el siguiente tramo VIAJE_EN_BUS y se muestra
+      // la línea verde del bus hacia la parada donde estamos esperando
+      await mapBusRealtime.updateBusTrackingForLeg(0, tramos);
+
+      // Assert: Verificar que currentStopPosition sea la parada de ORIGEN
+      // (donde el usuario está esperando para SUBIR)
+      final currentStop = mapBusRealtime.currentStopPosition;
+
+      // BUG ACTUAL (línea 290-291 de map_bus_realtime.dart):
+      // Durante ESPERAR_BUS, se asigna _currentStopPosition = tramo.coordenadasParadaOrigen
+      // Esto es CORRECTO para la fase ESPERAR_BUS (mostrar línea hacia donde subirá)
+
+      // Pero cuando cambiamos a VIAJE_EN_BUS, la misma lógica se mantiene incorrectamente
+      expect(currentStop, isNotNull, reason: 'Debe haber una parada siendo trackeada');
+      expect(currentStop!.latitud, equals(paradaOrigen.latitud),
+        reason: 'Durante ESPERAR_BUS, debe mostrar línea hacia parada de ORIGEN (donde subir)');
+    });
+
+    test('FIX: switchToUserLocationMode debe actualizar parada a DESTINO', () async {
+      // Setup: Simular flujo completo ESPERAR_BUS → subir al bus → USER_LOCATION
+      final paradaOrigen = Coordenada(latitud: -34.904436, longitud: -56.129387);
+      final paradaDestino = Coordenada(latitud: -34.906003, longitud: -56.200689);
+
+      final tramoEspera = TramoViajeMostrable(
+        idTramo: 'espera_1',
+        tipo: TipoTramoViaje.ESPERAR_BUS,
+        descripcion: 'Esperar bus',
+        duracionEstimadaSegundos: 300,
+        distanciaMetros: 0,
+        posicionPunto: paradaOrigen,
+        nombreLineaBus: '121',
+      );
+
+      final tramoViaje = TramoViajeMostrable(
+        idTramo: 'viaje_1',
+        tipo: TipoTramoViaje.VIAJE_EN_BUS,
+        descripcion: 'Viaje en bus 121',
+        duracionEstimadaSegundos: 600,
+        distanciaMetros: 5000,
+        nombreLineaBus: '121',
+        coordenadasParadaOrigen: paradaOrigen,  // Parada donde el usuario SUBE
+        coordenadasParadaDestino: paradaDestino, // Parada donde el usuario debe BAJAR
+        idParadaOrigenTramoBus: 'stop_origin',
+        idParadaDestinoTramoBus: 'stop_dest',
+        shapeId: 'shape_121',
+        geometriaPolilinea: [paradaOrigen, paradaDestino],
+      );
+
+      final tramos = [tramoEspera, tramoViaje];
+
+      // Step 1: Usuario esperando el bus (fase ESPERAR_BUS)
+      await mapBusRealtime.updateBusTrackingForLeg(0, tramos);
+
+      // Verificar que se está trackeando la parada de ORIGEN (donde subir)
+      var currentStop = mapBusRealtime.currentStopPosition;
+      expect(currentStop, isNotNull);
+      expect(currentStop!.latitud, equals(paradaOrigen.latitud),
+        reason: 'Durante ESPERAR_BUS, debe trackear parada ORIGEN');
+
+      // Step 2: Usuario sube al bus → cambiar a USER_LOCATION mode
+      await mapBusRealtime.switchToUserLocationMode();
+
+      // Verificar que ahora se está trackeando la parada de DESTINO (donde bajar)
+      currentStop = mapBusRealtime.currentStopPosition;
+      expect(currentStop, isNotNull,
+        reason: 'Debe seguir trackeando una parada después de switchToUserLocationMode');
+      expect(currentStop!.latitud, equals(paradaDestino.latitud),
+        reason: 'Después de switchToUserLocationMode, debe trackear parada DESTINO (donde bajar)');
+      expect(currentStop.longitud, equals(paradaDestino.longitud),
+        reason: 'Después de switchToUserLocationMode, debe trackear parada DESTINO (donde bajar)');
+
+      // Step 3: Simular actualización de ubicación del usuario
+      final userLocation = Coordenada(latitud: -34.9094, longitud: -56.142317);
+      await mapBusRealtime.updateBusToUserLocation(userLocation);
+
+      // La parada trackeada debe seguir siendo DESTINO
+      currentStop = mapBusRealtime.currentStopPosition;
+      expect(currentStop, isNotNull);
+      expect(currentStop!.latitud, equals(paradaDestino.latitud),
+        reason: 'Debe mantener parada DESTINO durante todo el viaje en bus');
+    });
+  });
 }
