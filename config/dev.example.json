@@ -1,0 +1,7 @@
+{
+  "BONDI_MODO": "real",
+  "OTP_URL": "http://10.0.2.2:8080/otp/routers/default/index/graphql",
+  "MVD_CLIENT_ID": "<client id de la API de Montevideo>",
+  "MVD_CLIENT_SECRET": "<client secret de la API de Montevideo>",
+  "MAPBOX_TOKEN": ""
+}

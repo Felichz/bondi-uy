@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.asd"
+    namespace = "com.felichz.bondiuy"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = "27.0.12077973"
 
@@ -21,7 +21,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.asd"
+        applicationId = "com.felichz.bondiuy"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -43,6 +43,3 @@ flutter {
     source = "../.."
 }
 
-dependencies {
-    implementation("com.mapbox.maps:android:11.11.0")
-}

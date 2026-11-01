@@ -1,38 +1,63 @@
 <!DOCTYPE html>
-<html>
+<html lang="es">
 <head>
-  <!--
-    If you are serving your web app in a path other than the root, change the
-    href value below to reflect the base path you are serving from.
-
-    The path provided below has to start and end with a slash "/" in order for
-    it to work correctly.
-
-    For more details:
-    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
-
-    This is a placeholder for base href that will be replaced by the value of
-    the `--base-href` argument provided to `flutter build`.
-  -->
+  <!-- Reemplazado por `flutter build web --base-href /ruta/` -->
   <base href="$FLUTTER_BASE_HREF">
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>BondiUY · tu viaje en bondi por Montevideo</title>
+  <meta name="description" content="Demo de BondiUY: un asistente que te guía paso a paso en el bus por Montevideo, con viajes reales grabados. Bus trip assistant for Montevideo, Uruguay.">
+  <meta name="theme-color" content="#F4F3EF" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#181B21" media="(prefers-color-scheme: dark)">
 
-  <!-- iOS meta tags & icons -->
+  <meta property="og:title" content="BondiUY">
+  <meta property="og:description" content="Tu viaje en bondi por Montevideo, paso a paso. Demo con viajes reales grabados.">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="icons/Icon-512.png">
+
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="asd">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="BondiUY">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
-
-  <!-- Favicon -->
-  <link rel="icon" type="image/png" href="favicon.png"/>
-
-  <title>asd</title>
+  <link rel="icon" type="image/png" href="favicon.png">
   <link rel="manifest" href="manifest.json">
+
+  <style>
+    /* Pantalla de carga: el motor de Flutter tarda unos segundos en bajar. */
+    html, body { margin: 0; height: 100%; background: #F4F3EF; }
+    @media (prefers-color-scheme: dark) { html, body { background: #181B21; } }
+    #cargando {
+      position: fixed; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 22px;
+      font: 600 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: #5C616C; transition: opacity .3s ease;
+    }
+    @media (prefers-color-scheme: dark) { #cargando { color: #A7AEBA; } }
+    #cargando img {
+      width: 76px; height: 76px; border-radius: 18px;
+      box-shadow: 0 14px 36px -12px rgba(26, 36, 51, .45);
+      animation: latido 1.6s ease-in-out infinite;
+    }
+    @keyframes latido { 50% { transform: scale(.94); } }
+    @media (prefers-reduced-motion: reduce) { #cargando img { animation: none; } }
+  </style>
 </head>
 <body>
+  <div id="cargando" aria-live="polite">
+    <img src="icons/Icon-192.png" alt="">
+    <span>BondiUY</span>
+  </div>
+  <script>
+    // Se va apenas Flutter dibuja el primer cuadro.
+    window.addEventListener('flutter-first-frame', function () {
+      var el = document.getElementById('cargando');
+      if (!el) return;
+      el.style.opacity = '0';
+      setTimeout(function () { el.remove(); }, 350);
+    });
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

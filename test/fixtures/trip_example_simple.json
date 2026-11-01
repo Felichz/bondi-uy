@@ -96,7 +96,7 @@
           }
         ],
         "from": "origin",
-        "to": "next_stop"
+        "to": "5296"
       },
       {
         "type": "ESPERAR_BUS",
@@ -763,8 +763,8 @@
             "lng": -56.19947
           }
         ],
-        "from": "origin",
-        "to": "next_stop"
+        "from": "5124",
+        "to": "destination"
       }
     ]
   },
@@ -3510,7 +3510,7 @@
   ],
   "checkpoints": [
     {
-      "timestamp": 2,
+      "timestamp": 0,
       "name": "Inicio: Caminar hacia RBLA ARMENIA - BENIGNO PAIVA",
       "assertions": {
         "currentStepIndex": 0,
@@ -3518,7 +3518,7 @@
       }
     },
     {
-      "timestamp": 722,
+      "timestamp": 118,
       "name": "Mitad: Caminar hacia RBLA ARMENIA - BENIGNO PAIVA",
       "assertions": {
         "currentStepIndex": 0,
@@ -3527,51 +3527,21 @@
       }
     },
     {
-      "timestamp": 1441,
-      "name": "Llegando a: Esperar en RBLA ARMENIA - BENIGNO PAIVA",
-      "assertions": {
-        "currentStepIndex": 0,
-        "progressMin": 0.8
-      }
-    },
-    {
-      "timestamp": 1445,
-      "name": "Inicio: Esperar en RBLA ARMENIA - BENIGNO PAIVA",
-      "assertions": {
-        "currentStepIndex": 1,
-        "currentStepType": "waitForBus"
-      }
-    },
-    {
-      "timestamp": 1441,
-      "name": "Llegando a: Bus DE1 hacia CIUDAD VIEJA",
-      "assertions": {
-        "currentStepIndex": 1,
-        "progressMin": 0.8
-      }
-    },
-    {
-      "timestamp": 1445,
-      "name": "Inicio: Bus DE1 hacia CIUDAD VIEJA",
+      "timestamp": 781,
+      "name": "Mitad: Bus DE1 hacia CIUDAD VIEJA",
       "assertions": {
         "currentStepIndex": 2,
-        "currentStepType": "onBus"
+        "progressMin": 0.3,
+        "progressMax": 0.7
       }
     },
     {
-      "timestamp": 1441,
-      "name": "Llegando a: Caminar hacia Destination",
-      "assertions": {
-        "currentStepIndex": 2,
-        "progressMin": 0.8
-      }
-    },
-    {
-      "timestamp": 1445,
-      "name": "Inicio: Caminar hacia Destination",
+      "timestamp": 1354,
+      "name": "Mitad: Caminar hacia Destination",
       "assertions": {
         "currentStepIndex": 3,
-        "currentStepType": "walkToDestination"
+        "progressMin": 0.3,
+        "progressMax": 0.7
       }
     },
     {

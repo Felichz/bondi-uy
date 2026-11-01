@@ -1,15 +1,15 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!-- Include this permission to grab user's general location -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <!-- Include only if your app benefits from precise location access. -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 
     <application
-        android:label="asd"
+        android:label="BondiUY"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">ß
-        <meta-data android:name="MAPBOX_ACCESS_TOKEN" android:value="pk.eyJ1IjoiZmVsaWNoeiIsImEiOiJjbWFieDgxOW0yaGJ0Mmxwd3RmMGdndTc2In0.NC4vimNVJuH-tOgZQDs0kw"/>
+        android:icon="@mipmap/ic_launcher">
         <activity
             android:name=".MainActivity"
             android:exported="true"

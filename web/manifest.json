@@ -1,11 +1,11 @@
 {
-    "name": "asd",
-    "short_name": "asd",
+    "name": "BondiUY",
+    "short_name": "BondiUY",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#F4F3EF",
+    "theme_color": "#E0412F",
+    "description": "Tu viaje en bondi por Montevideo, paso a paso.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
