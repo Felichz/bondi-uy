@@ -491,17 +491,24 @@ class _Cifra extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = ColoresBondi.of(context);
-    final numero = Text(
-      grande,
+    // En una línea siempre: si no entra (inglés en un teléfono angosto) se
+    // achica. Partida en dos, maxLines: 1 se comería el número.
+    final numero = FittedBox(
       key: ValueKey(grande),
-      maxLines: 1,
-      style: TextStyle(
-        fontSize: 34,
-        fontWeight: FontWeight.w700,
-        letterSpacing: -1,
-        height: 1.15,
-        color: color ?? c.texto,
-        fontFeatures: const [FontFeature.tabularFigures()],
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.centerLeft,
+      child: Text(
+        grande,
+        maxLines: 1,
+        softWrap: false,
+        style: TextStyle(
+          fontSize: 34,
+          fontWeight: FontWeight.w700,
+          letterSpacing: -1,
+          height: 1.15,
+          color: color ?? c.texto,
+          fontFeatures: const [FontFeature.tabularFigures()],
+        ),
       ),
     );
     return Row(

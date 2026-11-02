@@ -6,6 +6,7 @@ import 'package:bondi_uy/contract/app_state.dart';
 import 'package:bondi_uy/logic/simulacion/demo.dart';
 import 'package:bondi_uy/ui/textos/textos.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'arnes.dart';
@@ -104,6 +105,52 @@ void main() {
     await a.esperar(const Duration(seconds: 2));
     expect(find.textContaining('Ride the'), findsOneWidget);
     expect(find.textContaining('to go'), findsOneWidget);
+    await a.capturar('en_bus');
+    await a.cerrar();
+  });
+  // En inglés las cifras son más largas ("Arrives in 1 min" contra "Llega en
+  // 1 min"): en una pantalla angosta la cifra no puede partirse en dos líneas,
+  // porque con maxLines: 1 la segunda (el número) se pierde.
+  testWidgets('en inglés y en pantalla angosta: la cifra se ve entera', (
+    tester,
+  ) async {
+    final a = await Arnes.montar(
+      tester,
+      prefijo: 'demo_en_angosta',
+      demo: true,
+      velocidad: velocidadDemoInicial,
+      idioma: Idioma.en,
+      tam: const Size(360, 780),
+    );
+    await a.esperar(const Duration(seconds: 2));
+    await a.tocar('demo-destino-plaza-independencia');
+    await a.hasta(
+      () =>
+          a.fase is FaseOpciones &&
+          (a.fase as FaseOpciones).estado == EstadoOpciones.listo,
+    );
+    await a.esperar(const Duration(seconds: 1));
+    await a.tocar('empezar-viaje');
+    await a.hastaPaso(1);
+    await a.esperar(const Duration(seconds: 1));
+
+    void entera(Finder texto) {
+      expect(texto, findsWidgets);
+      for (final e in texto.evaluate()) {
+        final parrafo = e.renderObject! as RenderParagraph;
+        expect(
+          parrafo.didExceedMaxLines,
+          isFalse,
+          reason: '"${parrafo.text.toPlainText()}" no entra en una línea',
+        );
+      }
+    }
+
+    entera(find.textContaining('Arrives in'));
+    await a.capturar('esperando');
+    await a.hastaPaso(2);
+    await a.esperar(const Duration(seconds: 2));
+    entera(find.textContaining('to go'));
     await a.capturar('en_bus');
     await a.cerrar();
   });
