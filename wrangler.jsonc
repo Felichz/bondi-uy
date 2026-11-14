@@ -1,0 +1,22 @@
+// BondiUY web demo on Cloudflare Workers (static assets). Production: bondiuy.medanolabs.com
+// Build and deploy from this machine: `npm run deploy` (or `npm run deploy:staging`). The demo needs no
+// server: trips are recorded and the bus and the user are simulated (see README, "Demo pública").
+{
+  "$schema": "https://unpkg.com/wrangler/config-schema.json",
+  "name": "bondiuy",
+  "compatibility_date": "2026-11-01",
+  "workers_dev": false,
+  "preview_urls": false,
+  "assets": {
+    "directory": "./build/web"
+  },
+  "routes": [{ "pattern": "bondiuy.medanolabs.com", "custom_domain": true }],
+  "env": {
+    "staging": {
+      "name": "bondiuy-staging",
+      "workers_dev": false,
+      "preview_urls": false,
+      "routes": [{ "pattern": "bondiuy-stg.medanolabs.com", "custom_domain": true }]
+    }
+  }
+}

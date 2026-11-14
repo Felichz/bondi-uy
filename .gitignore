@@ -58,3 +58,6 @@ logs.txt
 # Credenciales locales para --dart-define-from-file
 config/dev.json
 /dist/
+
+# Wrangler local state
+.wrangler/

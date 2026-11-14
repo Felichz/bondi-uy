@@ -64,7 +64,8 @@ se simulan. Inglés y español (según el dispositivo, `?lang=en|es` en la web, 
 el botón ES/EN).
 
 ```bash
-scripts/bondi.ps1 web                     # build/web, para Vercel: npx vercel deploy build/web --prod
+scripts/bondi.ps1 web                     # build/web, la demo pública en bondiuy.medanolabs.com
+npm run deploy                            # compila build/web y lo publica (Cloudflare Worker, wrangler.jsonc)
 scripts/bondi.ps1 web -Base /apps/bondiuy/  # para embeber en el portfolio
 scripts/bondi.ps1 apk                     # dist/BondiUY-demo.apk
 ```

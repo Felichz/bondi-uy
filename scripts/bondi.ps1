@@ -2,7 +2,7 @@
 #
 #   bondi                 abre la app en modo simulado (prende OTP y emulador si hace falta)
 #   bondi demo            abre la demo (viajes grabados, sin servidores) en el emulador
-#   bondi web             compila la demo web en build\web (lista para Vercel o el portfolio)
+#   bondi web             compila la demo web en build\web (para bondiuy.medanolabs.com o el portfolio)
 #   bondi apk             compila el APK de la demo en dist\BondiUY-demo.apk
 #   bondi real            usa GPS y buses reales (necesita config/dev.json para buses en vivo)
 #   bondi grabado         sin OTP: viaje grabado Saldanha da Gama -> Plaza Independencia
@@ -128,7 +128,7 @@ function Compilar-Web {
       --dart-define=BONDI_MODO=demo "--dart-define=SOURCE_URL=$UrlCodigo" "--dart-define=APK_URL=$UrlApk"
   } finally { Pop-Location }
   Ok "listo en $(Join-Path $Raiz 'build\web')"
-  Ok 'publicar en Vercel: npx vercel deploy build\web --prod (la primera vez: npx vercel login)'
+  Ok 'publicar: npx wrangler deploy (Cloudflare Worker en bondiuy.medanolabs.com; la primera vez: npx wrangler login)'
 }
 
 function Compilar-Apk {
