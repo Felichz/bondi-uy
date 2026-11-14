@@ -8,6 +8,16 @@ avanza solo con el GPS (caminar → esperar el bus en vivo → viajar → camina
 Producto y visión: [PRODUCT.md](PRODUCT.md) · Lenguaje visual: [DESIGN.md](DESIGN.md) ·
 Flujos: [docs/flujos/flujo-principal](docs/flujos/flujo-principal/1-flujo-de-usuario.txt)
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/readme/01-wait-dark.webp">
+  <img src="docs/readme/01-wait-light.webp" width="100%" alt="BondiUY, screenshot on a phone. The bus trip, one step at a time. BondiUY plans a trip across Montevideo, follows the bus you are waiting for and tells you when to board and when to get off.">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/readme/02-trip-dark.webp">
+  <img src="docs/readme/02-trip-light.webp" width="100%" alt="BondiUY, three phone screenshots. From the map to your stop. The demo replays trips recorded from the real network, so it needs no GPS and no server. 1, Pick where you’re going. 2, Choose a trip. 3, Ride, and get off at the right stop.">
+</picture>
+
 ## Arquitectura
 
 ```
