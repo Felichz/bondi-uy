@@ -116,9 +116,10 @@ function Abrir-App($modo) {
   try { & $Flutter @argumentos } finally { Pop-Location }
 }
 
-# Enlaces de la presentación web (se ven en pantallas anchas).
-$UrlCodigo = 'https://github.com/Felichz/bondi-uy'
-$UrlApk = 'https://github.com/Felichz/bondi-uy/releases/latest/download/BondiUY-demo.apk'
+# Enlaces de la presentación web (se ven en pantallas anchas). El repo es privado: sin botón de código
+# (vacío lo oculta), y el APK lo sirve la misma demo (Compilar-Web copia dist/BondiUY-demo.apk al build).
+$UrlCodigo = ''
+$UrlApk = 'https://bondiuy.medanolabs.com/BondiUY-demo.apk'
 
 function Compilar-Web {
   Paso "Compilando la demo web (base $Base)"
@@ -127,8 +128,11 @@ function Compilar-Web {
     & $Flutter build web --release --no-pub --pwa-strategy=none --base-href $Base `
       --dart-define=BONDI_MODO=demo "--dart-define=SOURCE_URL=$UrlCodigo" "--dart-define=APK_URL=$UrlApk"
   } finally { Pop-Location }
-  Ok "listo en $(Join-Path $Raiz 'build\web')"
-  Ok 'publicar: npx wrangler deploy (Cloudflare Worker en bondiuy.medanolabs.com; la primera vez: npx wrangler login)'
+  $apk = Join-Path $Raiz 'dist\BondiUY-demo.apk'
+  if (-not (Test-Path $apk)) { Falla 'falta dist\BondiUY-demo.apk: compilalo antes con .\scripts\bondi.ps1 apk' }
+  Copy-Item $apk (Join-Path $Raiz 'build\web\BondiUY-demo.apk') -Force
+  Ok "listo en $(Join-Path $Raiz 'build\web'), con el APK"
+  Ok 'publicar: npm run deploy (o npm run deploy:staging)'
 }
 
 function Compilar-Apk {
