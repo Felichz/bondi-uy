@@ -116,9 +116,9 @@ function Abrir-App($modo) {
   try { & $Flutter @argumentos } finally { Pop-Location }
 }
 
-# Enlaces de la presentación web (se ven en pantallas anchas). El repo es privado: sin botón de código
-# (vacío lo oculta), y el APK lo sirve la misma demo (Compilar-Web copia dist/BondiUY-demo.apk al build).
-$UrlCodigo = ''
+# Enlaces de la presentación web (se ven en pantallas anchas; un enlace vacío oculta su botón). El APK lo
+# sirve la misma demo: Compilar-Web copia dist/BondiUY-demo.apk al build.
+$UrlCodigo = 'https://github.com/Felichz/bondi-uy'
 $UrlApk = 'https://bondiuy.medanolabs.com/BondiUY-demo.apk'
 
 function Compilar-Web {
