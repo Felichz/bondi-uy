@@ -1,10 +1,13 @@
 // En una pantalla ancha (la demo web abierta en una computadora), la app se
 // muestra dentro de un teléfono, con una presentación al costado. En un
-// teléfono, o embebida con `?marco=0`, ocupa toda la pantalla como siempre.
+// teléfono, o embebida con `?marco=0`, ocupa toda la pantalla como siempre; en
+// un teléfono Android, con un aviso arriba para bajar la app (la presentación,
+// con su botón, no entra), hasta que se cierra.
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../plataforma/almacen.dart';
 import '../plataforma/enlaces.dart';
 import '../tema/tema.dart';
 import '../textos/textos.dart';
@@ -29,11 +32,12 @@ class MarcoWeb extends StatelessWidget {
   Widget build(BuildContext context) {
     final mq = MediaQuery.of(context);
     final tam = mq.size;
-    if (!(kIsWeb || forzar) ||
-        _desactivado ||
-        tam.width < 700 ||
-        tam.height < 560) {
-      return child;
+    if (!(kIsWeb || forzar) || _desactivado) return child;
+    if (tam.width < 700 || tam.height < 560) {
+      final android = defaultTargetPlatform == TargetPlatform.android;
+      return kIsWeb && android && _urlApk.isNotEmpty
+          ? _ConAviso(child: child)
+          : child;
     }
     final c = ColoresBondi.of(context);
     // El teléfono entra entero en la ventana, con aire arriba y abajo.
@@ -191,6 +195,129 @@ class _Presentacion extends StatelessWidget {
             style: t.bodySmall?.copyWith(color: c.textoTenue),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// La app a pantalla completa, con el aviso de la app de Android arriba
+/// mientras no se haya cerrado (se recuerda en el navegador).
+class _ConAviso extends StatefulWidget {
+  final Widget child;
+  const _ConAviso({required this.child});
+
+  @override
+  State<_ConAviso> createState() => _ConAvisoState();
+}
+
+class _ConAvisoState extends State<_ConAviso> {
+  static const _clave = 'avisoApp';
+
+  /// Oculto hasta saber si ya se cerró, para que no aparezca y se vaya.
+  bool _visible = false;
+
+  @override
+  void initState() {
+    super.initState();
+    leerPreferencia(_clave).then((v) {
+      if (mounted && v != 'cerrado') setState(() => _visible = true);
+    });
+  }
+
+  void _cerrar() {
+    setState(() => _visible = false);
+    guardarPreferencia(_clave, 'cerrado');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_visible) return widget.child;
+    // El aviso ocupa su franja arriba y la app sigue debajo, entera: no tapa
+    // la búsqueda.
+    return Column(
+      children: [
+        _Aviso(onCerrar: _cerrar),
+        Expanded(
+          child: MediaQuery.removePadding(
+            context: context,
+            removeTop: true,
+            child: widget.child,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _Aviso extends StatelessWidget {
+  final VoidCallback onCerrar;
+  const _Aviso({required this.onCerrar});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = ColoresBondi.of(context);
+    final t = Theme.of(context).textTheme;
+    final arriba = MediaQuery.of(context).padding.top;
+    return Material(
+      color: c.laminaSolida,
+      child: Container(
+        padding: EdgeInsets.fromLTRB(16, arriba + 10, 4, 10),
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: c.separador)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: c.bus,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(
+                Icons.directions_bus_rounded,
+                color: Colors.white,
+                size: 22,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    tx.avisoApp,
+                    style: t.titleSmall?.copyWith(color: c.texto),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    tx.avisoAppDetalle,
+                    style: t.bodySmall?.copyWith(color: c.textoSuave),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            FilledButton.icon(
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(0, 40),
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+              ),
+              onPressed: () => abrirEnlace(_urlApk),
+              icon: const Icon(Icons.android_rounded, size: 18),
+              label: Text(tx.avisoAppDescargar),
+            ),
+            IconButton(
+              tooltip: tx.avisoAppCerrar,
+              onPressed: onCerrar,
+              icon: Icon(Icons.close_rounded, color: c.textoSuave),
+            ),
+          ],
+        ),
       ),
     );
   }

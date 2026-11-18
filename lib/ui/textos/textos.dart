@@ -172,6 +172,10 @@ abstract class Textos {
   String get webDemo;
   String get webDescargar;
   String get webCodigo;
+  String get avisoApp;
+  String get avisoAppDetalle;
+  String get avisoAppDescargar;
+  String get avisoAppCerrar;
 
   // --- demo -----------------------------------------------------------------
   String get probaUnViaje;
@@ -484,6 +488,14 @@ class TextosEs extends Textos {
   String get webDescargar => 'Descargar para Android';
   @override
   String get webCodigo => 'Código fuente';
+  @override
+  String get avisoApp => 'BondiUY para Android';
+  @override
+  String get avisoAppDetalle => 'La misma demo, instalada en tu teléfono.';
+  @override
+  String get avisoAppDescargar => 'Descargar';
+  @override
+  String get avisoAppCerrar => 'Cerrar';
 
   @override
   String get probaUnViaje => 'Probá un viaje';
@@ -801,6 +813,14 @@ class TextosEn extends Textos {
   String get webDescargar => 'Download for Android';
   @override
   String get webCodigo => 'Source code';
+  @override
+  String get avisoApp => 'BondiUY for Android';
+  @override
+  String get avisoAppDetalle => 'The same demo, installed on your phone.';
+  @override
+  String get avisoAppDescargar => 'Download';
+  @override
+  String get avisoAppCerrar => 'Close';
 
   @override
   String get probaUnViaje => 'Try a trip';
