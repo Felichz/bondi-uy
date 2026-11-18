@@ -1,8 +1,8 @@
 # BondiUY
 
-Your bus trip across Montevideo, step by step. A Flutter app built "grandma first": one recommended option, a map
-that narrates the trip (light or dark), and an assistant that moves on by itself with the GPS (walk → wait for the
-live bus → ride → walk → You've arrived!).
+A Flutter app (Android and web) for bus trips across Montevideo, designed "grandma first": it recommends one option,
+shows the trip on a map (light or dark), and advances through the steps on its own using the GPS: walk, wait for the
+live bus, ride, walk, arrive.
 
 **[Try the demo](https://bondiuy.medanolabs.com)** · **[Download for Android](https://github.com/Felichz/bondi-uy/releases/latest)** · **[Case study](https://felix.medanolabs.com/work/bondiuy/)** · **Author: [Felix Andersson](https://felix.medanolabs.com)**
 
@@ -27,7 +27,7 @@ lib/
     app_state.dart      state (explore / options / trip phases), raw data
     app_actions.dart    the user's intents
     proveedores.dart    appStateProvider + appActionsProvider (the root wires them)
-  logic/      the data "chef": knows no widgets, maps, colors or copy
+  logic/      data and rules: knows no widgets, maps, colors or copy
     app_controller.dart      implements AppActions
     viaje/navegador.dart     finds the current step from the GPS (pure, deterministic)
     viaje/seguidor_bus.dart  live bus, and its approach along the GTFS shape
@@ -41,8 +41,11 @@ lib/
   main.dart   composition root
 ```
 
-Rules: the UI only reads `AppState` and calls `AppActions` (it never imports `lib/logic`); the logic sends numbers,
-enums and proper names, never presentation text; Mapbox, the map and the camera belong to the UI.
+Rules:
+
+- The UI only reads `AppState` and calls `AppActions`; it never imports `lib/logic`.
+- The logic sends numbers, enums and proper names, never presentation text.
+- Mapbox, the map and the camera belong to the UI.
 
 ## Run the app
 
