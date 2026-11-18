@@ -9,7 +9,6 @@
 # packages, and plugins designed to encourage good coding practices.
 analyzer:
   exclude:
-    - old/**
     - build/**
     - node_modules/**
   errors:

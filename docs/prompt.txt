@@ -1,5 +1,0 @@
-asi queremos que funcione la app: @docs/flujos/flujo-principal/1-flujo-de-usuario.txt                                           │
-│   @docs/flujos/flujo-principal/1b-flujo-de-usuario.mmd , flujo de informacion:                                                    │
-│   @docs/flujos/flujo-principal/3-flujo-informacion.md este fue el plan de refactor:@docs/flujos/flujo-principal/4-migration.md    │
-│   luego hasta hiciste tests se supone, pero bueno ahora estuve pidiendote arreglar bugs porque no funcionaba como lo esperado,    │
-│   ahora mismo no esta funcionando el geolocation al escribie en los input, quiero que investigues [Pasted text #1 +112 lines] 

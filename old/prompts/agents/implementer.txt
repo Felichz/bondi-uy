@@ -1,5 +1,0 @@
-procede a implementar, utiliza las tool que tienes para editar codigo
-
-recuerda que si estas editando un archivo que es muy grande conviene hacer la edicion por partes osea por chunks
-
-no tienes permitido tomar decisiones importantes por tu cuenta, si te encuentras en un punto de decision debes detenerte y preguntarme, amenos que solo sea un detalle de implementacion que no afecta mucho el resultado final solicitado, en ese caso pudes avanzar por tu cuenta, pero por ejemplo no puedes hacer cosas como cambiar colores de la ui y esas cosas si no se aclaro explicitamente que puedes hacerlo

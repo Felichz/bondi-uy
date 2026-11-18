@@ -1,12 +1,13 @@
 # BondiUY
 
-Tu viaje en bondi por Montevideo, paso a paso. Una app "abuelita first": una
-opción recomendada, un mapa que narra el viaje (claro u oscuro), y un asistente que
-avanza solo con el GPS (caminar → esperar el bus en vivo → viajar → caminar →
-¡Llegaste!).
+Your bus trip across Montevideo, step by step. A Flutter app built "grandma first": one recommended option, a map
+that narrates the trip (light or dark), and an assistant that moves on by itself with the GPS (walk → wait for the
+live bus → ride → walk → You've arrived!).
 
-Producto y visión: [PRODUCT.md](PRODUCT.md) · Lenguaje visual: [DESIGN.md](DESIGN.md) ·
-Flujos: [docs/flujos/flujo-principal](docs/flujos/flujo-principal/1-flujo-de-usuario.txt)
+**[Try the demo](https://bondiuy.medanolabs.com)** · **[Download for Android](https://github.com/Felichz/bondi-uy/releases/latest)** · **[Case study](https://felix.medanolabs.com/work/bondiuy/)** · **Author: [Felix Andersson](https://felix.medanolabs.com)**
+
+Product and vision: [PRODUCT.md](PRODUCT.md) · Visual language: [DESIGN.md](DESIGN.md) ·
+Flows: [docs/flujos/flujo-principal](docs/flujos/flujo-principal/1-flujo-de-usuario.txt) (in Spanish)
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/readme/01-wait-dark.webp">
@@ -18,74 +19,69 @@ Flujos: [docs/flujos/flujo-principal](docs/flujos/flujo-principal/1-flujo-de-usu
   <img src="docs/readme/02-trip-light.webp" width="100%" alt="BondiUY, three phone screenshots. From the map to your stop. The demo replays trips recorded from the real network, so it needs no GPS and no server. 1, Pick where you’re going. 2, Choose a trip. 3, Ride, and get off at the right stop.">
 </picture>
 
-## Arquitectura
+## Architecture
 
 ```
 lib/
-  contract/   ÚNICO punto de contacto UI <-> lógica
-    app_state.dart      estado (fases explorar / opciones / viaje), datos crudos
-    app_actions.dart    intenciones del usuario
-    proveedores.dart    appStateProvider + appActionsProvider (la raíz los conecta)
-  logic/      "chef" de datos: no conoce widgets, mapas, colores ni textos
-    app_controller.dart   implementa AppActions
-    viaje/navegador.dart  detecta el paso actual por GPS (puro, determinista)
-    viaje/seguidor_bus.dart  bus en vivo + aproximación por el shape GTFS
-    viaje/recomendador.dart  deduplica y elige la recomendada
-    servicios/   OTP, API de Montevideo, geocoding (Photon/Mapbox), GPS, GTFS
-    simulacion/  mundo simulado (GPS y buses sintéticos) y fuentes grabadas
-  ui/         presentación: formatea, anima, dibuja el mapa, decide la cámara
-    mapa/        renderer de mapa propio (teselas vectoriales OSM, claro/oscuro)
-    tema/        colores, material (láminas), insignias, preferencia de tema
-    explorar/ busqueda/ opciones/ viaje/   paneles por fase
-  main.dart   raíz de composición
+  contract/   the ONLY point of contact between the UI and the logic
+    app_state.dart      state (explore / options / trip phases), raw data
+    app_actions.dart    the user's intents
+    proveedores.dart    appStateProvider + appActionsProvider (the root wires them)
+  logic/      the data "chef": knows no widgets, maps, colors or copy
+    app_controller.dart      implements AppActions
+    viaje/navegador.dart     finds the current step from the GPS (pure, deterministic)
+    viaje/seguidor_bus.dart  live bus, and its approach along the GTFS shape
+    viaje/recomendador.dart  deduplicates the options and picks the recommended one
+    servicios/   OTP, Montevideo's bus API, geocoding (Photon/Mapbox), GPS, GTFS
+    simulacion/  a simulated world (synthetic GPS and buses) and recorded sources
+  ui/         presentation: formats, animates, draws the map, decides the camera
+    mapa/        the app's own map renderer (OSM vector tiles, light and dark)
+    tema/        colors, material (sheets), badges, theme preference
+    explorar/ busqueda/ opciones/ viaje/   panels per phase
+  main.dart   composition root
 ```
 
-Reglas: la UI solo lee `AppState` e invoca `AppActions` (nunca importa
-`lib/logic`); la lógica manda números/enums y nombres propios, nunca texto de
-presentación; Mapbox/mapa/cámara son de la UI. El código anterior quedó en
-`old/v2/` como referencia (fuera de compilación).
+Rules: the UI only reads `AppState` and calls `AppActions` (it never imports `lib/logic`); the logic sends numbers,
+enums and proper names, never presentation text; Mapbox, the map and the camera belong to the UI.
 
-## Correr la app
+## Run the app
 
-Requisitos: Flutter 3.29 (en `../bondi-uy-flutter/flutter`), Android SDK, JDK 21.
+Requirements: Flutter 3.29, the Android SDK and JDK 21.
 
 ```bash
 flutter run -d emulator-5554 --dart-define=BONDI_MODO=simulado
 ```
 
-| `BONDI_MODO` | Planificación | GPS y buses | Red |
+| `BONDI_MODO` | Planning | GPS and buses | Network |
 |---|---|---|---|
-| `real` (defecto en el teléfono) | OTP | teléfono + API de Montevideo | sí |
-| `demo` (defecto en la web) | 5 viajes reales grabados desde Malvín (`assets/demo/`) | simulados, velocidad 1×–30× | solo teselas |
-| `simulado` | OTP real | se mueven solos (6×) por calles y shapes reales | sí |
-| `grabado` | plan OTP grabado (Saldanha da Gama → Plaza Independencia) | simulados | solo teselas |
+| `real` (default on a phone) | OTP | the phone + Montevideo's bus API | yes |
+| `demo` (default on the web) | 5 real trips recorded from Malvín (`assets/demo/`) | simulated, 1× to 30× | map tiles only |
+| `simulado` | real OTP | move on their own (6×) along real streets and shapes | yes |
+| `grabado` | a recorded OTP plan (Saldanha da Gama → Plaza Independencia) | simulated | map tiles only |
 
-Credenciales (no van en git): copiá `config/dev.example.json` a
-`config/dev.json`, completalo y corré con
-`--dart-define-from-file=config/dev.json`. Sin credenciales de la IM la app
-funciona, pero sin buses en vivo. El geocoding usa Photon (OSM, sin clave)
-salvo que definas `MAPBOX_TOKEN`.
+Credentials stay out of git: copy `config/dev.example.json` to `config/dev.json`, fill it in and run with
+`--dart-define-from-file=config/dev.json`. Without the city's credentials the app works, but with no live buses.
+Geocoding uses Photon (OSM, no key) unless `MAPBOX_TOKEN` is set.
 
-### Demo pública (web y APK)
+### The public demo (web and APK)
 
-La demo no necesita ningún servidor propio: los viajes se planificaron con el
-OTP local y se grabaron (`tool/capture_trip.dart`), y el usuario y los buses
-se simulan. Inglés y español (según el dispositivo, `?lang=en|es` en la web, o
-el botón ES/EN).
+The demo needs no server of its own: the trips were planned with a local OTP and recorded
+(`tool/capture_trip.dart`), and the user and the buses are simulated. English and Spanish (from the device,
+`?lang=en|es` on the web, or the ES/EN button).
 
 ```bash
-scripts/bondi.ps1 web                     # build/web, la demo pública en bondiuy.medanolabs.com
-npm run deploy                            # compila build/web y lo publica (Cloudflare Worker, wrangler.jsonc)
-scripts/bondi.ps1 web -Base /apps/bondiuy/  # para embeber en el portfolio
-scripts/bondi.ps1 apk                     # dist/BondiUY-demo.apk
+scripts/bondi.ps1 web                       # build/web, the public demo at bondiuy.medanolabs.com
+npm run deploy                              # builds build/web and publishes it (Cloudflare Worker, wrangler.jsonc)
+scripts/bondi.ps1 web -Base /apps/bondiuy/  # to embed it in the portfolio
+scripts/bondi.ps1 apk                       # dist/BondiUY-demo.apk, attached to each GitHub release
 ```
 
-En una pantalla ancha la web muestra la app dentro de un teléfono, con una
-presentación al lado; `?marco=0` la muestra a pantalla completa (iframes).
+On a wide screen the web shows the app inside a phone, with a presentation beside it; `?marco=0` shows it full
+screen (for iframes).
 
-### Servidor OTP local
+### Local OTP server
 
-En `C:\Users\felix\otp` (OTP 2.7 + GTFS de Montevideo + OSM de Uruguay):
+OTP 2.7 with Montevideo's GTFS and the OSM extract of Uruguay, in a folder of its own:
 
 ```bash
 java -Xmx6G -jar otp-shaded-2.7.0.jar --build --save .
@@ -95,24 +91,25 @@ java -Xmx6G -jar otp-shaded-2.7.0.jar --build --save .
 java -Xmx3G -jar otp-shaded-2.7.0.jar --load --serve .
 ```
 
-El emulador lo ve en `http://10.0.2.2:8080` (por defecto). En un teléfono
-físico, usá `--dart-define=OTP_URL=http://<ip-de-tu-pc>:8080/otp/routers/default/index/graphql`.
+The emulator reaches it at `http://10.0.2.2:8080` (the default). On a physical phone, use
+`--dart-define=OTP_URL=http://<your-pc-ip>:8080/otp/routers/default/index/graphql`.
 
-## Pruebas
+## Tests
 
 ```bash
 flutter test
 ```
 
-Ver [docs/testing/README.md](docs/testing/README.md): lógica contra datos
-grabados reales, y la app entera headless (mapa incluido, en claro y oscuro) con capturas en
-`build/capturas/`.
+See [docs/testing/README.md](docs/testing/README.md) (in Spanish): the logic against real recorded data, and the
+whole app headless (map included, light and dark) with screenshots in `build/capturas/`.
 
-## Herramientas
+## Tools
 
-- `tool/capture_trip.dart`: captura un viaje de OTP + sondeos reales de la IM como fixture.
-- `tool/generate_shapes_geojson.dart`: shapes GTFS → `assets/data/shapes.geojson`.
-- `tool/generar_paradas_geojson.py`: paradas + líneas del GTFS → `assets/data/stops.geojson`.
-- `tool/generar_iconos.py`: íconos de Android y web.
+- `tool/capture_trip.dart`: records an OTP trip and real bus polls from the city as a fixture.
+- `tool/generate_shapes_geojson.dart`: GTFS shapes → `assets/data/shapes.geojson`.
+- `tool/generar_paradas_geojson.py`: GTFS stops and lines → `assets/data/stops.geojson`.
+- `tool/generar_iconos.py`: Android and web icons.
 
-Datos del mapa: © OpenStreetMap (vía OpenFreeMap).
+## License
+
+[MIT](LICENSE). Map data © OpenStreetMap contributors (via OpenFreeMap); bus data from the Intendencia de Montevideo.

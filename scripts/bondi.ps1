@@ -116,10 +116,10 @@ function Abrir-App($modo) {
   try { & $Flutter @argumentos } finally { Pop-Location }
 }
 
-# Enlaces de la presentación web (se ven en pantallas anchas; un enlace vacío oculta su botón). El APK lo
-# sirve la misma demo: Compilar-Web copia dist/BondiUY-demo.apk al build.
+# Enlaces de la presentación web (se ven en pantallas anchas; un enlace vacío oculta su botón). El APK se
+# descarga del último release de GitHub (scripts/bondi.ps1 apk lo compila para adjuntarlo).
 $UrlCodigo = 'https://github.com/Felichz/bondi-uy'
-$UrlApk = 'https://bondiuy.medanolabs.com/BondiUY-demo.apk'
+$UrlApk = 'https://github.com/Felichz/bondi-uy/releases/latest'
 
 function Compilar-Web {
   Paso "Compilando la demo web (base $Base)"
@@ -128,10 +128,7 @@ function Compilar-Web {
     & $Flutter build web --release --no-pub --pwa-strategy=none --base-href $Base `
       --dart-define=BONDI_MODO=demo "--dart-define=SOURCE_URL=$UrlCodigo" "--dart-define=APK_URL=$UrlApk"
   } finally { Pop-Location }
-  $apk = Join-Path $Raiz 'dist\BondiUY-demo.apk'
-  if (-not (Test-Path $apk)) { Falla 'falta dist\BondiUY-demo.apk: compilalo antes con .\scripts\bondi.ps1 apk' }
-  Copy-Item $apk (Join-Path $Raiz 'build\web\BondiUY-demo.apk') -Force
-  Ok "listo en $(Join-Path $Raiz 'build\web'), con el APK"
+  Ok "listo en $(Join-Path $Raiz 'build\web')"
   Ok 'publicar: npm run deploy (o npm run deploy:staging)'
 }
 
