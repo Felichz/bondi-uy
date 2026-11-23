@@ -413,7 +413,6 @@ EscenaMapa construirEscena(AppState s, EstadoUiMapa ui) {
         marcas,
         pasoActual: f.pasoActual,
         progreso: f.progreso,
-        usuario: pos,
         nombreDestino: nombreDestino,
       );
       final actual = f.tramoActual;
@@ -546,7 +545,6 @@ void _dibujarOpcion(
   List<MarcaMapa> marcas, {
   required int? pasoActual,
   ProgresoPaso? progreso,
-  Coordenada? usuario,
   String? nombreDestino,
 }) {
   final enViaje = pasoActual != null;
@@ -570,24 +568,17 @@ void _dibujarOpcion(
           ),
         );
       case TramoBus():
-        if (pasoActual == i && usuario != null) {
-          // Arriba del bus: lo recorrido queda gris, lo que falta en rojo.
-          final corte = _masCercano(t.geometria, usuario);
-          if (corte > 0) {
-            tenuesPrimero.add(
-              TrazoMapa(
-                EstiloTrazo.busHecho,
-                t.geometria.sublist(0, corte + 1),
-              ),
-            );
-          }
-          if (corte < t.geometria.length - 1) {
-            activos.add(
-              TrazoMapa(EstiloTrazo.bus, [
-                usuario,
-                ...t.geometria.sublist(corte + 1),
-              ]),
-            );
+        if (pasoActual == i) {
+          // Arriba del bus: el recorrido entero, gris, debajo; lo que falta
+          // (desde donde va el bus, lo mide la lógica) en rojo encima, que lo
+          // tapa. Lo gris que se ve es lo hecho.
+          tenuesPrimero.add(TrazoMapa(EstiloTrazo.busHecho, t.geometria));
+          final resto = progreso?.recorridoRestante;
+          if (resto != null && resto.length >= 2) {
+            activos.add(TrazoMapa(EstiloTrazo.bus, resto));
+          } else if (progreso?.metrosRestantes == null) {
+            // Recién subió y todavía no se midió: todo por delante.
+            activos.add(TrazoMapa(EstiloTrazo.bus, t.geometria));
           }
           continue;
         }
@@ -756,22 +747,6 @@ Coordenada _fin(OpcionViaje o) => switch (o.tramos.last) {
   TramoBus(:final bajada) => bajada.coordenada,
   TramoEsperar(:final parada) => parada.coordenada,
 };
-
-/// Índice del vértice de [g] más cercano a [c] (aproximación plana, de
-/// sobra para cortar un recorrido en la posición del usuario).
-int _masCercano(List<Coordenada> g, Coordenada c) {
-  var mejor = 0;
-  var mejorD = double.infinity;
-  for (var i = 0; i < g.length; i++) {
-    final dy = g[i].lat - c.lat, dx = (g[i].lng - c.lng) * 0.82;
-    final d = dx * dx + dy * dy;
-    if (d < mejorD) {
-      mejorD = d;
-      mejor = i;
-    }
-  }
-  return mejor;
-}
 
 /// Punto a mitad de camino de una polilínea (por cantidad de vértices,
 /// suficiente para ubicar un rótulo).
