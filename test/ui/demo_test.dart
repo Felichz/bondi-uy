@@ -104,7 +104,9 @@ void main() {
     await a.hastaPaso(2);
     await a.esperar(const Duration(seconds: 2));
     expect(find.textContaining('Ride the'), findsOneWidget);
-    expect(find.textContaining('to go'), findsOneWidget);
+    // La cifra cambia con un fundido: por un instante están la vieja y la
+    // nueva.
+    expect(find.textContaining('to go'), findsWidgets);
     await a.capturar('en_bus');
     await a.cerrar();
   });

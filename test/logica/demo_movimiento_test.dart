@@ -86,6 +86,19 @@ List<String> _problemas(List<Instante> todos) {
     final llego =
         busPrevio != null &&
         (busPrevio.minutos == 0 || (busPrevio.metrosHastaParada ?? 999) <= 30);
+    // Esperando en la parada, el bus que llega se lo lleva: no llega y se va
+    // sin él (dejándolo esperando al siguiente).
+    if (f is FaseViaje &&
+        f.tramoActual is TramoEsperar &&
+        (f.progreso.metrosRestantes ?? 99) <= 15 &&
+        bus != null &&
+        llego &&
+        espera == esperaPrevia &&
+        (bus.minutos > busPrevio!.minutos ||
+            (bus.metrosHastaParada ?? 0) >
+                (busPrevio.metrosHastaParada ?? 0) + 30)) {
+      mal(i, 'el bus llegó y se fue sin el usuario (el próximo, en ${bus.minutos} min)');
+    }
     if (bus != null && busPrevio != null && espera == esperaPrevia && !llego) {
       final m0 = busPrevio.metrosHastaParada, m1 = bus.metrosHastaParada;
       if (m0 != null && m1 != null && m1 > m0 + 5) {
