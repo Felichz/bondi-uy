@@ -25,6 +25,18 @@ const _urlCodigo = String.fromEnvironment('SOURCE_URL');
 /// Tamaño de pantalla de un teléfono típico (px lógicos).
 const _pantalla = Size(412, 892);
 
+/// El teléfono de la vista "por dentro" en una ventana de [alto].
+Size tamTelefonoPorDentro(double alto) {
+  final escala = ((alto - 96) / (_pantalla.height + 24)).clamp(0.5, 0.92);
+  return Size(
+    (_pantalla.width + 24) * escala,
+    (_pantalla.height + 24) * escala,
+  );
+}
+
+/// Alto mínimo de ventana para la vista "por dentro".
+const altoMinimoPorDentro = 680.0;
+
 class MarcoWeb extends ConsumerStatefulWidget {
   final Widget child;
 
@@ -90,11 +102,13 @@ class _MarcoWebState extends ConsumerState<MarcoWeb> {
       height: (_pantalla.height + 24) * escala,
       child: FittedBox(child: aparato),
     );
-    // Por dentro: solo si la lógica informa sus llamadas (la demo) y entra.
+    // Por dentro: solo si la lógica informa sus llamadas (la demo) y entra
+    // entera (el relato, el teléfono y la placa, sin achicar textos).
+    final tamCore = tamTelefonoPorDentro(tam.height);
     final porDentroPosible =
         ref.watch(trazasProvider) != null &&
-        tam.width >= 1280 &&
-        tam.height >= 680;
+        tam.height >= altoMinimoPorDentro &&
+        tam.width >= anchoMinimoPorDentro(tamCore.width);
     final selector =
         porDentroPosible
             ? _Selector(
@@ -104,24 +118,17 @@ class _MarcoWebState extends ConsumerState<MarcoWeb> {
             )
             : null;
     if (porDentroPosible && _porDentro) {
-      final escalaCore = ((tam.height - 96) / (_pantalla.height + 24)).clamp(
-        0.5,
-        0.92,
-      );
       return ColoredBox(
         color: const Color(0xFF06080B),
         child: PorDentro(
-          tamTelefono: Size(
-            (_pantalla.width + 24) * escalaCore,
-            (_pantalla.height + 24) * escalaCore,
-          ),
+          tamTelefono: tamCore,
           telefono: FittedBox(child: aparato),
-          encabezado: Row(
-            children: [
-              const _Marca(oscuro: true),
-              const SizedBox(width: 24),
-              selector!,
-            ],
+          // Si no entran en un renglón, el selector baja al siguiente.
+          encabezado: Wrap(
+            spacing: 24,
+            runSpacing: 14,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [const _Marca(oscuro: true), selector!],
           ),
         ),
       );

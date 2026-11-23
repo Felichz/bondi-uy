@@ -135,23 +135,80 @@ class _Plano {
     this.estado,
   );
 
+  // Medidas de la placa: los chips nunca se achican (sus textos tampoco);
+  // lo que sobra de ancho se reparte entre los huecos.
+  static const _anchoContrato = 150.0;
+  static const _anchoControl = 214.0;
+  static const _anchoNucleo = 196.0;
+  static const _altoNucleo = 120.0;
+  static const _anchoPuerto = 204.0;
+  static const _huecoConector = 40.0;
+  static const _huecoContrato = 48.0;
+
+  /// Lugar para que las pistas a los puertos doblen a la derecha del núcleo.
+  static const _huecoPuertos = 100.0;
+  static const _margen = 24.0;
+
+  /// Ancho que necesita la placa a la derecha del teléfono.
+  static const anchoMinimo =
+      _huecoConector +
+      _anchoContrato +
+      _huecoContrato +
+      _anchoControl +
+      _huecoPuertos +
+      _anchoPuerto +
+      _margen;
+
   factory _Plano(Size tam, Rect telefono) {
     final cy = telefono.center.dy;
     final x0 = telefono.right;
-    final ancho = tam.width - x0 - 40;
     final alto = tam.height;
+    final sobra = math.max(0.0, tam.width - x0 - anchoMinimo);
     final conector = Rect.fromLTWH(telefono.right - 6, cy - 64, 22, 128);
 
     Rect centrado(double x, double y, double w, double h) =>
         Rect.fromCenter(center: Offset(x, y), width: w, height: h);
 
-    final contrato = centrado(x0 + ancho * 0.13, cy, 150, 132);
-    final control = centrado(x0 + ancho * 0.45, cy, 214, 168);
+    final contrato = Rect.fromLTWH(
+      x0 + _huecoConector + sobra * 0.25,
+      cy - 75,
+      _anchoContrato,
+      150,
+    );
+    final control = Rect.fromLTWH(
+      contrato.right + _huecoContrato + sobra * 0.30,
+      cy - 84,
+      _anchoControl,
+      168,
+    );
+    // Arriba, el navegador y el recomendador lado a lado, sin pasar del borde
+    // derecho del controlador (las pistas a los puertos doblan después);
+    // abajo, el seguidor.
+    const margenV = 28.0;
     final dy = math.min(alto * 0.31, 300.0);
+    final yArriba = (cy - dy).clamp(
+      margenV + _altoNucleo / 2,
+      control.top - 36 - _altoNucleo / 2,
+    );
+    final yAbajo = (cy + dy).clamp(
+      control.bottom + 36 + _altoNucleo / 2,
+      alto - margenV - _altoNucleo / 2,
+    );
+    final recomendador = Rect.fromLTWH(
+      control.right - _anchoNucleo,
+      yArriba - _altoNucleo / 2,
+      _anchoNucleo,
+      _altoNucleo,
+    );
     final nucleo = <Pieza, Rect>{
-      Pieza.navegador: centrado(x0 + ancho * 0.30, cy - dy, 196, 104),
-      Pieza.recomendador: centrado(x0 + ancho * 0.52, cy - dy, 196, 104),
-      Pieza.seguidor: centrado(x0 + ancho * 0.45, cy + dy, 196, 104),
+      Pieza.recomendador: recomendador,
+      Pieza.navegador: recomendador.shift(const Offset(-_anchoNucleo - 24, 0)),
+      Pieza.seguidor: centrado(
+        control.center.dx,
+        yAbajo,
+        _anchoNucleo,
+        _altoNucleo,
+      ),
     };
     const puertos = [
       Pieza.ubicacion,
@@ -160,8 +217,12 @@ class _Plano {
       Pieza.catalogo,
       Pieza.lugares,
     ];
-    final paso = math.min((alto - 220) / (puertos.length - 1), 150.0);
-    final xPuerto = tam.width - 40 - 104;
+    final paso = math.min(
+      (alto - 2 * margenV - 84) / (puertos.length - 1),
+      150.0,
+    );
+    final xPuerto =
+        control.right + _huecoPuertos + sobra * 0.45 + _anchoPuerto / 2;
     final chips = <Pieza, _Chip>{
       Pieza.controlador: _Chip(
         Pieza.controlador,
@@ -193,7 +254,7 @@ class _Plano {
           centrado(
             xPuerto,
             cy + (i - (puertos.length - 1) / 2) * paso,
-            208,
+            _anchoPuerto,
             84,
           ),
           switch (puertos[i]) {
@@ -449,6 +510,61 @@ class _Vivo extends ChangeNotifier {
 
 // --- Widget ----------------------------------------------------------------------
 
+const _margenIzquierdo = 56.0;
+const _columnaMinima = 340.0;
+const _huecoMinimo = 32.0;
+
+/// Dónde va el teléfono de [tel] en una ventana [tam]: después del relato,
+/// centrado en alto. La columna del relato y el hueco hasta el teléfono crecen
+/// con la ventana, pero ceden primero para que la placa entre entera.
+Rect telefonoPorDentro(Size tam, Size tel) => _ubicar(tam, tel).telefono;
+
+({Rect telefono, double columna}) _ubicar(Size tam, Size tel) {
+  var columna = (tam.width * 0.22).clamp(_columnaMinima, 420.0);
+  var hueco = (tam.width * 0.03).clamp(_huecoMinimo, 64.0);
+  final exceso =
+      _margenIzquierdo +
+      columna +
+      hueco +
+      tel.width +
+      _Plano.anchoMinimo -
+      tam.width;
+  if (exceso > 0) {
+    final deHueco = math.min(exceso, hueco - _huecoMinimo);
+    hueco -= deHueco;
+    columna = math.max(_columnaMinima, columna - (exceso - deHueco));
+  }
+  return (
+    telefono: Rect.fromLTWH(
+      _margenIzquierdo + columna + hueco,
+      (tam.height - tel.height) / 2,
+      tel.width,
+      tel.height,
+    ),
+    columna: columna,
+  );
+}
+
+/// Las cajas de la placa (los chips y el contrato) para una ventana [tam] con
+/// el teléfono en [telefono]. Para comprobar que no se pisan.
+@visibleForTesting
+Map<String, Rect> cajasDeLaPlaca(Size tam, Rect telefono) {
+  final p = _Plano(tam, telefono);
+  return {
+    for (final e in p.chips.entries) e.key.name: e.value.rect,
+    'contrato': p.contrato,
+  };
+}
+
+/// Ancho de ventana que necesita la vista "por dentro" con un teléfono de
+/// [anchoTelefono]: el relato, el teléfono y la placa enteros.
+double anchoMinimoPorDentro(double anchoTelefono) =>
+    _margenIzquierdo +
+    _columnaMinima +
+    _huecoMinimo +
+    anchoTelefono +
+    _Plano.anchoMinimo;
+
 class PorDentro extends ConsumerStatefulWidget {
   /// El teléfono con la app, ya escalado.
   final Widget telefono;
@@ -553,12 +669,7 @@ class _PorDentroState extends ConsumerState<PorDentro>
     return LayoutBuilder(
       builder: (context, box) {
         final tam = box.biggest;
-        final tel = widget.tamTelefono;
-        final telefono = Rect.fromCenter(
-          center: Offset(tam.width * 0.385, tam.height / 2),
-          width: tel.width,
-          height: tel.height,
-        );
+        final (:telefono, :columna) = _ubicar(tam, widget.tamTelefono);
         if (_plano?.tam != tam || _plano?.telefono != telefono) {
           _plano = _Plano(tam, telefono);
         }
@@ -569,7 +680,6 @@ class _PorDentroState extends ConsumerState<PorDentro>
           _fijo = _grabarFijo(plano, densidad);
           _claveFijo = (tam, densidad);
         }
-        final izquierda = telefono.left - 64 - 56;
         return Material(
           type: MaterialType.transparency,
           child: Stack(
@@ -581,24 +691,31 @@ class _PorDentroState extends ConsumerState<PorDentro>
                   ),
                 ),
               ),
+              // El relato fluye de arriba abajo; la consola ocupa lo que
+              // queda (y no aparece si no entra): nada se pisa.
               Positioned(
-                left: 56,
-                top: 40,
-                width: izquierda,
-                child: widget.encabezado,
-              ),
-              Positioned(
-                left: 56,
-                top: 132,
-                width: izquierda,
-                child: const _Relato(),
-              ),
-              Positioned(
-                left: 56,
-                bottom: 40,
-                width: izquierda,
-                height: math.min(330, tam.height * 0.36),
-                child: _Consola(_vivo.consola),
+                left: _margenIzquierdo,
+                top: 36,
+                bottom: 36,
+                width: columna,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    widget.encabezado,
+                    const SizedBox(height: 28),
+                    const _Relato(),
+                    const SizedBox(height: 20),
+                    Expanded(
+                      child: LayoutBuilder(
+                        builder:
+                            (context, b) =>
+                                b.maxHeight < 120
+                                    ? const SizedBox.shrink()
+                                    : _Consola(_vivo.consola),
+                      ),
+                    ),
+                  ],
+                ),
               ),
               Positioned.fromRect(rect: telefono, child: widget.telefono),
             ],
@@ -1014,13 +1131,14 @@ class _PintorPlaca extends CustomPainter {
   static final Map<String, TextPainter> _textos = {};
 
   /// Texto cacheado por contenido y estilo.
-  TextPainter _t(String s, TextStyle e, {double? ancho}) {
-    final k = '$s|${e.fontSize}|${e.color?.toARGB32()}|${e.fontWeight}|$ancho';
+  TextPainter _t(String s, TextStyle e, {double? ancho, int lineas = 1}) {
+    final k =
+        '$s|${e.fontSize}|${e.color?.toARGB32()}|${e.fontWeight}|$ancho|$lineas';
     if (_textos.length > 400) _textos.clear();
     return _textos[k] ??= (TextPainter(
       text: TextSpan(text: s, style: e),
       textDirection: TextDirection.ltr,
-      maxLines: 1,
+      maxLines: lineas,
       ellipsis: '…',
     )..layout(maxWidth: ancho ?? double.infinity));
   }
@@ -1172,10 +1290,12 @@ class _PintorPlaca extends CustomPainter {
     );
     tNombre.paint(c, Offset(x, y));
     y += tNombre.height + 3;
+    // El papel, en dos renglones si hace falta (no se corta).
     final tPapel = _t(
       papel,
       _estilo(11.5, _textoTenue),
       ancho: r.right - x - 14,
+      lineas: puerto ? 1 : 2,
     );
     tPapel.paint(c, Offset(x, y));
     y += tPapel.height + 8;
