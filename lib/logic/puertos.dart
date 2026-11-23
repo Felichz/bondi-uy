@@ -100,12 +100,8 @@ class ErrorServicio implements Exception {
 /// Reloj inyectable (tests y modo demo aceleran el tiempo).
 typedef Reloj = DateTime Function();
 
-/// Control del mundo simulado del modo demo.
+/// El mundo simulado del modo demo.
 abstract interface class ControlDemo {
-  double get velocidad;
-  set velocidad(double v);
-  List<double> get velocidades;
-
   /// Destinos con viaje grabado.
   List<Lugar> get destinos;
 }

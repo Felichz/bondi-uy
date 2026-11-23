@@ -2,10 +2,13 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../contract/app_state.dart';
+import '../contract/proveedores.dart';
 import 'estado_ui.dart';
+import 'mapa/encuadre.dart';
 import 'tema/tema.dart';
 import 'tema/lamina.dart';
 import 'textos/textos.dart';
@@ -33,6 +36,86 @@ class BotonRecentrar extends ConsumerWidget {
               onTap: ctl.recentrar,
             ),
           ),
+    );
+  }
+}
+
+/// En viaje, con un bus viniendo: cambia la cámara entre seguirte a vos y
+/// seguir al bus. Dice lo que hace al tocarlo ("Ver el bus" / "Verme a mí").
+class BotonCamaraViaje extends ConsumerWidget {
+  const BotonCamaraViaje({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final puede = ref.watch(
+      appStateProvider.select((s) => switch (s.fase) {
+        final FaseViaje f => puedeVerBus(f),
+        _ => false,
+      }),
+    );
+    final verBus = ref.watch(verBusProvider);
+    final c = ColoresBondi.of(context);
+    final icono =
+        verBus ? Icons.person_pin_circle_rounded : Icons.directions_bus_rounded;
+    final texto = verBus ? tx.verme : tx.verElBus;
+    return AnimatedScale(
+      key: const ValueKey('boton-camara-escala'),
+      scale: puede ? 1 : 0,
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOutBack,
+      child: IgnorePointer(
+        ignoring: !puede,
+        child: Semantics(
+          button: true,
+          label: texto,
+          excludeSemantics: true,
+          child: Presionable(
+            child: Lamina(
+              padding: EdgeInsets.zero,
+              radio: BorderRadius.circular(26),
+              elevado: false,
+              child: Material(
+                type: MaterialType.transparency,
+                child: InkWell(
+                  key: const ValueKey('boton-camara'),
+                  customBorder: const StadiumBorder(),
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    // El encuadre cambia de clave: el mapa va a lo elegido
+                    // aunque se lo haya movido a mano.
+                    ref.read(verBusProvider.notifier).state = !verBus;
+                  },
+                  child: SizedBox(
+                    height: 52,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            icono,
+                            size: 22,
+                            color: verBus ? c.caminar : c.bus,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            texto,
+                            style: TextStyle(
+                              color: c.texto,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

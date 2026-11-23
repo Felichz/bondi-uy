@@ -79,21 +79,10 @@ class AppState {
 /// viajes reales grabados, a una velocidad que se puede cambiar.
 @immutable
 class Demo {
-  /// Multiplicador del tiempo (1 = tiempo real).
-  final double velocidad;
-  final List<double> velocidades;
-
   /// Destinos con viaje grabado: los que se pueden probar.
   final List<Lugar> destinos;
 
-  const Demo({
-    required this.velocidad,
-    required this.velocidades,
-    required this.destinos,
-  });
-
-  Demo conVelocidad(double v) =>
-      Demo(velocidad: v, velocidades: velocidades, destinos: destinos);
+  const Demo({required this.destinos});
 }
 
 // ---------------------------------------------------------------------------

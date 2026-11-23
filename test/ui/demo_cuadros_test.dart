@@ -34,7 +34,7 @@ double _faltan(List<Coordenada> camino, Coordenada c, double? antes) {
           .recorrido;
 }
 
-List<String> _problemas(List<Instante> estados, double velocidad) {
+List<String> _problemas(List<Instante> estados, EscalasDemo escalas) {
   final res = <String>[];
   void mal(double t, String que) {
     if (res.length < 40) res.add('t=${t.toStringAsFixed(2)}s: $que');
@@ -44,7 +44,8 @@ List<String> _problemas(List<Instante> estados, double velocidad) {
   // El más rápido de la escena (el bus), en metros por segundo real, con
   // margen para alcanzar una predicción atrasada (hasta tres veces su
   // velocidad un momento; más ya se ve como un tirón).
-  final rapido = 8.3 * velocidad * 3.2;
+  final rapido =
+      8.3 * (escalas.bus > escalas.caminar ? escalas.bus : escalas.caminar) * 3.2;
   var i = 0;
   late AppState estado;
   late EscenaMapa escena;
@@ -188,22 +189,22 @@ List<String> _problemas(List<Instante> estados, double velocidad) {
 
 void main() {
   for (final destino in destinosDemo) {
-    for (final (velocidad, enOpciones) in [
-      (15.0, Duration.zero),
-      (15.0, const Duration(seconds: 40)),
-      (30.0, const Duration(seconds: 20)),
-      (5.0, const Duration(seconds: 3)),
+    for (final (escalas, enOpciones) in [
+      (const EscalasDemo(), Duration.zero),
+      (const EscalasDemo(), const Duration(seconds: 40)),
+      (const EscalasDemo(caminar: 15, bus: 15), Duration.zero),
+      (const EscalasDemo(caminar: 5, bus: 5), const Duration(seconds: 3)),
     ]) {
       test(
-        '${destino.id} a ${velocidad.round()}x, '
-        '${enOpciones.inSeconds} s en opciones',
+        '${destino.id} a ${escalas.caminar.round()}x caminando y '
+        '${escalas.bus.round()}x en bus, ${enOpciones.inSeconds} s en opciones',
         () {
           final estados = recorrerDemo(
             destino: destino,
-            velocidad: velocidad,
+            escalas: escalas,
             enOpciones: enOpciones,
           );
-          final p = _problemas(estados, velocidad);
+          final p = _problemas(estados, escalas);
           expect(
             p,
             isEmpty,

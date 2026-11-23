@@ -19,7 +19,6 @@ void main() {
       tester,
       prefijo: 'demo',
       demo: true,
-      velocidad: velocidadDemoInicial,
     );
     await a.esperar(const Duration(seconds: 2));
     expect(find.byKey(const ValueKey('demo-tarjeta')), findsOneWidget);
@@ -60,10 +59,6 @@ void main() {
       expect(a.fase, isA<FaseExplorar>());
     }
 
-    // Más rápido: la velocidad se cambia sin que el reloj salte.
-    await a.tocar('demo-velocidad');
-    expect(a.controlador.state.demo!.velocidad, 30);
-
     await viaje('tres-cruces');
     // De vuelta en casa, de donde sale el próximo viaje.
     await a.esperar(const Duration(seconds: 2));
@@ -79,7 +74,6 @@ void main() {
       tester,
       prefijo: 'demo_en',
       demo: true,
-      velocidad: velocidadDemoInicial,
       idioma: Idioma.en,
     );
     await a.esperar(const Duration(seconds: 2));
@@ -159,7 +153,6 @@ void main() {
       tester,
       prefijo: 'demo_en_angosta',
       demo: true,
-      velocidad: velocidadDemoInicial,
       idioma: Idioma.en,
       tam: const Size(360, 780),
     );

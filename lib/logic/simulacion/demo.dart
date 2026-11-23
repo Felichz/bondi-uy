@@ -12,7 +12,7 @@ import 'dart:convert';
 
 import 'package:flutter/services.dart' show AssetBundle, rootBundle;
 
-import '../../contract/modelo.dart';
+import '../../contract/app_state.dart';
 import '../app_controller.dart';
 import '../geo/geo.dart';
 import '../puertos.dart';
@@ -22,8 +22,26 @@ import 'mundo_simulado.dart';
 /// Donde vive el usuario de la demo (todos los viajes salen de acá).
 const casaDemo = Coordenada(-34.902448, -56.12828);
 
-const velocidadDemoInicial = 15.0;
-const velocidadesDemo = [1.0, 5.0, 15.0, 30.0];
+/// Cuántas veces más rápido que el real corre el mundo de la demo en cada
+/// parte del viaje. Mirando las opciones, al llegar y explorando corre a
+/// tiempo real: el bus de la vista previa es el que se alcanza al empezar (a
+/// 15x, unos segundos leyendo serían minutos y ese bus ya habría pasado).
+class EscalasDemo {
+  /// Caminando.
+  final double caminar;
+
+  /// Esperando el bus y arriba de él.
+  final double bus;
+
+  const EscalasDemo({this.caminar = 30, this.bus = 60});
+
+  /// La escala para el estado [s].
+  double para(AppState s) {
+    final f = s.fase;
+    if (f is! FaseViaje || f.estado != EstadoViaje.enCurso) return 1;
+    return f.tramoActual is TramoCaminar ? caminar : bus;
+  }
+}
 
 /// Destinos con viaje grabado. El id es el nombre del asset.
 const destinosDemo = [
@@ -98,21 +116,15 @@ AppController crearControladorDemo({
   required MundoSimulado mundo,
   required CatalogoRed catalogo,
   AssetBundle? bundle,
-  // En tiempo real, sin importar la velocidad elegida: el bus se consulta
-  // seguido y la predicción del mapa suaviza entre lecturas.
+  EscalasDemo escalas = const EscalasDemo(),
+  // En tiempo real, sin importar la escala: el bus se consulta seguido y la
+  // predicción del mapa suaviza entre lecturas.
   ConfigLogica config = const ConfigLogica(
     sondeoBus: Duration(milliseconds: 1500),
   ),
 }) {
-  // Mientras se miran las opciones el reloj corre a tiempo real: el bus de la
-  // vista previa es el que se alcanza al empezar (a 15x, unos segundos
-  // leyendo serían minutos, y ese bus ya habría pasado). El viaje corre a la
-  // velocidad elegida.
-  final plan = PlanificadorSimulado(
-    _ATiempoRealEnOpciones(PlanificadorDemo(bundle: bundle), mundo),
-    mundo,
-  );
-  return AppController(
+  final plan = PlanificadorSimulado(PlanificadorDemo(bundle: bundle), mundo);
+  final c = AppController(
     planificador: plan,
     llegadas: LlegadasSimuladas(mundo),
     lugares: const LugaresFijos(destinosDemo),
@@ -120,10 +132,7 @@ AppController crearControladorDemo({
     ubicacion: UbicacionSimulada(mundo),
     reloj: mundo.ahora,
     config: config,
-    alIniciarViaje: (o) {
-      mundo.aTiempoReal = false;
-      mundo.recorrer(o, plan.shapesDe(o.id));
-    },
+    alIniciarViaje: (o) => mundo.recorrer(o, plan.shapesDe(o.id)),
     // Llegó: se queda en el destino mientras se ve "¡Llegaste!".
     alLlegar: mundo.detener,
     // Terminó (cerró la llegada o abandonó): vuelve a casa, de donde sale
@@ -132,39 +141,19 @@ AppController crearControladorDemo({
       mundo.detener();
       mundo.posicionInicial = casaDemo;
     },
-    demo: ControlDemoMundo(mundo),
+    demo: const _ControlDemo(),
   );
+  // El reloj del mundo sigue al paso del viaje (sin saltar al cambiar). Al
+  // arrancar no hace falta: explorando nada se mueve.
+  c.addListener((s) {
+    final v = escalas.para(s);
+    if (v != mundo.velocidad) mundo.velocidad = v;
+  }, fireImmediately: false);
+  return c;
 }
 
-/// Al planificar (se van a mostrar opciones), el mundo pasa a tiempo real.
-class _ATiempoRealEnOpciones implements PlanificadorViajes {
-  final PlanificadorViajes real;
-  final MundoSimulado mundo;
-  _ATiempoRealEnOpciones(this.real, this.mundo);
-
-  @override
-  Future<List<ViajePlanificado>> planificar({
-    required Coordenada origen,
-    required Coordenada destino,
-    required DateTime salida,
-  }) {
-    mundo.aTiempoReal = true;
-    return real.planificar(origen: origen, destino: destino, salida: salida);
-  }
-}
-
-class ControlDemoMundo implements ControlDemo {
-  final MundoSimulado mundo;
-  ControlDemoMundo(this.mundo);
-
-  @override
-  double get velocidad => mundo.velocidad;
-
-  @override
-  set velocidad(double v) => mundo.velocidad = v;
-
-  @override
-  List<double> get velocidades => velocidadesDemo;
+class _ControlDemo implements ControlDemo {
+  const _ControlDemo();
 
   @override
   List<Lugar> get destinos => destinosDemo;

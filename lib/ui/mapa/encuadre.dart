@@ -12,6 +12,9 @@
 // - En el bus: vos + las próximas paradas; cerca del final, la bajada. (No
 //   el recorrido entero: sería alejarse 20 km.)
 // - Caminar al destino: vos + lo que falta caminar + el destino.
+// - Si se eligió ver el bus (caminando a la parada o esperando): el bus que
+//   viene + la parada a la que viene, siguiendo al bus. Vos podés quedar
+//   fuera de la vista.
 //
 // En viaje el encuadre se recalcula cuadro a cuadro con las posiciones
 // predichas del usuario y del bus, así acompaña sin saltos. Si el grupo no
@@ -153,6 +156,20 @@ Encuadre? encuadreDe(AppState s, EstadoUiMapa ui) {
       }
       final t = f.tramoActual;
       final clave = 'paso-${f.pasoActual}';
+      if (siguiendoAlBus(f, ui)) {
+        final bus = f.busEsperado!;
+        return Encuadre(
+          clave: '$clave-bus',
+          puntos: [if (_paradaQueViene(f) case final p?) p],
+          moviles: const {Moviles.bus},
+          ancla: Moviles.bus,
+          seguimiento: Seguimiento.continuo,
+          // Lejos, se lo ve a él (la parada se señala en el borde).
+          zoomMin: bus.minutos > 6 ? 13.5 : 14.5,
+          zoomMax: 17,
+          reanudarTras: _reanudarViaje,
+        );
+      }
       final conUsuario = pos != null;
       Encuadre viaje(
         List<Coordenada> puntos, {
@@ -224,6 +241,29 @@ Encuadre? encuadreDe(AppState s, EstadoUiMapa ui) {
           );
       }
   }
+}
+
+/// Se puede seguir al bus: va caminando hacia la parada o esperándolo, y hay
+/// un bus con posición que viene.
+bool puedeVerBus(FaseViaje f) =>
+    f.estado == EstadoViaje.enCurso &&
+    f.tramoActual is! TramoBus &&
+    f.busEsperado?.posicion != null &&
+    _paradaQueViene(f) != null;
+
+/// La cámara sigue al bus: se eligió y se puede.
+bool siguiendoAlBus(FaseViaje f, EstadoUiMapa ui) =>
+    ui.verBus && puedeVerBus(f);
+
+/// La parada donde se toma el bus que viene (la del paso actual o la del
+/// siguiente, caminando hacia ella).
+Coordenada? _paradaQueViene(FaseViaje f) {
+  for (final i in [f.pasoActual, f.pasoActual + 1]) {
+    if (i >= f.totalPasos) break;
+    final t = f.opcion.tramos[i];
+    if (t is TramoEsperar) return t.parada.coordenada;
+  }
+  return null;
 }
 
 List<Coordenada> _puntosOpcion(OpcionViaje o) => [

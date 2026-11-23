@@ -63,8 +63,7 @@ class AppController extends StateNotifier<AppState> implements AppActions {
     this.alLlegar,
     ControlDemo? demo,
     AppState? estadoInicial,
-  }) : _demo = demo,
-       _planificador = planificador,
+  }) : _planificador = planificador,
        _llegadas = llegadas,
        _lugares = lugares,
        _catalogo = catalogo,
@@ -72,26 +71,10 @@ class AppController extends StateNotifier<AppState> implements AppActions {
        _ahora = reloj ?? DateTime.now,
        super(
          (estadoInicial ?? AppState.inicial()).copyWith(
-           demo:
-               demo == null
-                   ? null
-                   : Demo(
-                     velocidad: demo.velocidad,
-                     velocidades: demo.velocidades,
-                     destinos: demo.destinos,
-                   ),
+           demo: demo == null ? null : Demo(destinos: demo.destinos),
          ),
        );
 
-  final ControlDemo? _demo;
-
-  @override
-  void cambiarVelocidadDemo(double velocidad) {
-    final d = _demo, actual = state.demo;
-    if (d == null || actual == null) return;
-    d.velocidad = velocidad;
-    state = state.copyWith(demo: actual.conVelocidad(velocidad));
-  }
 
   // --- estado interno (no visible para la UI) ---
   bool _arrancado = false;

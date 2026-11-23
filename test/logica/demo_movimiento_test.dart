@@ -9,7 +9,7 @@
 // - un recorrido no nace en el usuario, va para atrás o corta una esquina;
 // - no se dibuja lo que falta del paso.
 //
-// Se recorren los cinco destinos a varias velocidades, saliendo enseguida o
+// Se recorren los cinco destinos a la escala de la demo y a otras, saliendo enseguida o
 // después de mirar las opciones un rato (el bus de la vista previa ya venía).
 
 import 'dart:math' as math;
@@ -94,7 +94,7 @@ List<String> _problemas(List<Instante> todos) {
         bus != null &&
         llego &&
         espera == esperaPrevia &&
-        (bus.minutos > busPrevio!.minutos ||
+        (bus.minutos > busPrevio.minutos ||
             (bus.metrosHastaParada ?? 0) >
                 (busPrevio.metrosHastaParada ?? 0) + 30)) {
       mal(i, 'el bus llegó y se fue sin el usuario (el próximo, en ${bus.minutos} min)');
@@ -219,7 +219,6 @@ void main() {
   test('al cerrar la llegada, el usuario ya está en casa (no en el destino)', () {
     recorrerDemo(
       destino: destinosDemo.first,
-      velocidad: 30,
       enOpciones: Duration.zero,
       alLlegar: (c, async) {
         c.cerrarLlegada();
@@ -234,23 +233,24 @@ void main() {
   });
 
   for (final destino in destinosDemo) {
-    for (final (velocidad, enOpciones) in [
-      (15.0, Duration.zero),
-      (15.0, const Duration(seconds: 6)),
+    for (final (escalas, enOpciones) in [
+      // Como en la demo publicada.
+      (const EscalasDemo(), Duration.zero),
+      (const EscalasDemo(), const Duration(seconds: 6)),
       // El bus de la vista previa pasa antes de que el visitante arranque.
-      (15.0, const Duration(seconds: 40)),
-      (30.0, const Duration(seconds: 20)),
-      (5.0, const Duration(seconds: 3)),
-      // En tiempo real cada sondeo cubre poco tiempo del mundo.
-      (1.0, const Duration(seconds: 30)),
+      (const EscalasDemo(), const Duration(seconds: 40)),
+      // Más despacio: cada lectura cubre menos tiempo del mundo.
+      (const EscalasDemo(caminar: 15, bus: 15), Duration.zero),
+      (const EscalasDemo(caminar: 5, bus: 5), const Duration(seconds: 3)),
+      (const EscalasDemo(caminar: 1, bus: 1), const Duration(seconds: 30)),
     ]) {
       test(
-        '${destino.id} a ${velocidad.round()}x, '
-        '${enOpciones.inSeconds} s en opciones',
+        '${destino.id} a ${escalas.caminar.round()}x caminando y '
+        '${escalas.bus.round()}x en bus, ${enOpciones.inSeconds} s en opciones',
         () {
           final estados = recorrerDemo(
             destino: destino,
-            velocidad: velocidad,
+            escalas: escalas,
             enOpciones: enOpciones,
           );
           final p = _problemas(estados);

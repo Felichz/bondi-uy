@@ -10,7 +10,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../contract/app_state.dart';
 import '../../contract/proveedores.dart';
 import '../comunes.dart';
-import '../demo/demo.dart';
 import '../estado_ui.dart';
 import '../formatos.dart';
 import '../tema/insignias.dart';
@@ -128,10 +127,11 @@ class _PanelViajeState extends ConsumerState<PanelViaje> {
               bottom: 136,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  BotonRecentrar(),
+                  BotonCamaraViaje(),
                   SizedBox(height: 12),
-                  BotonVelocidadDemo(),
+                  BotonRecentrar(),
                 ],
               ),
             ),

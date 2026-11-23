@@ -36,7 +36,7 @@ class Instante {
 /// [destino], mira las opciones [enOpciones] y empieza la recomendada.
 List<Instante> recorrerDemo({
   required Lugar destino,
-  required double velocidad,
+  EscalasDemo escalas = const EscalasDemo(),
   required Duration enOpciones,
   void Function(AppController c, FakeAsync async)? alLlegar,
 }) {
@@ -48,7 +48,7 @@ List<Instante> recorrerDemo({
     final mundo = MundoSimulado(
       catalogo: catalogo,
       posicionInicial: casaDemo,
-      p: ParametrosSimulacion(velocidad: velocidad),
+      p: const ParametrosSimulacion(velocidad: 1),
       ahoraSimulado: DateTime(2026, 9, 28, 18),
       transcurrido: () => async.elapsed,
     );
@@ -56,6 +56,7 @@ List<Instante> recorrerDemo({
       mundo: mundo,
       catalogo: catalogo,
       bundle: _BundleDisco(),
+      escalas: escalas,
     );
     c.addListener(
       (s) => estados.add(Instante(async.elapsed, mundo.ahora(), s)),

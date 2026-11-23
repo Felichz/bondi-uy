@@ -72,7 +72,8 @@ final appControllerProvider = StateNotifierProvider<AppController, AppState>((
         mundo: MundoSimulado(
           catalogo: catalogo,
           posicionInicial: casaDemo,
-          p: const ParametrosSimulacion(velocidad: velocidadDemoInicial),
+          // La demo fija la escala según el paso del viaje (EscalasDemo).
+          p: const ParametrosSimulacion(velocidad: 1),
         ),
         catalogo: catalogo,
       );

@@ -36,6 +36,8 @@ abstract class Textos {
 
   // --- comunes --------------------------------------------------------------
   String get recentrarMapa;
+  String get verElBus;
+  String get verme;
   String get elegiUnLugar;
   String get miUbicacion;
   String get tuDestino;
@@ -180,8 +182,6 @@ abstract class Textos {
   // --- demo -----------------------------------------------------------------
   String get probaUnViaje;
   String get demoExplicacion;
-  String get demoTiempoReal;
-  String demoAcelerada(String v);
 }
 
 class TextosEs extends Textos {
@@ -219,6 +219,10 @@ class TextosEs extends Textos {
 
   @override
   String get recentrarMapa => 'Volver a centrar el mapa';
+  @override
+  String get verElBus => 'Ver el bus';
+  @override
+  String get verme => 'Verme a mí';
   @override
   String get elegiUnLugar => 'Elegí un lugar';
   @override
@@ -483,7 +487,7 @@ class TextosEs extends Textos {
   String get webDemo =>
       'Esto es una demo: los viajes son reales, planificados con los horarios y '
       'recorridos de la Intendencia, y grabados. Vos y los buses se mueven '
-      'solos; el tiempo se puede acelerar.';
+      'solos, con el tiempo acelerado.';
   @override
   String get webDescargar => 'Descargar para Android';
   @override
@@ -502,11 +506,6 @@ class TextosEs extends Textos {
   @override
   String get demoExplicacion =>
       'Viajes reales en bus por Montevideo, grabados. Vos y los buses se mueven solos.';
-  @override
-  String get demoTiempoReal => 'Demo en tiempo real. Tocá para acelerar';
-  @override
-  String demoAcelerada(String v) =>
-      'Demo acelerada $v. Tocá para cambiar la velocidad';
 }
 
 class TextosEn extends Textos {
@@ -544,6 +543,10 @@ class TextosEn extends Textos {
 
   @override
   String get recentrarMapa => 'Recenter the map';
+  @override
+  String get verElBus => 'Show the bus';
+  @override
+  String get verme => 'Show me';
   @override
   String get elegiUnLugar => 'Choose a place';
   @override
@@ -808,7 +811,7 @@ class TextosEn extends Textos {
   String get webDemo =>
       'This is a demo: the trips are real, planned with the city’s bus '
       'schedules and routes, and recorded. You and the buses move on their '
-      'own, and time can be sped up.';
+      'own, with time sped up.';
   @override
   String get webDescargar => 'Download for Android';
   @override
@@ -827,8 +830,4 @@ class TextosEn extends Textos {
   @override
   String get demoExplicacion =>
       'Real bus trips across Montevideo, recorded. You and the buses move on their own.';
-  @override
-  String get demoTiempoReal => 'Demo in real time. Tap to speed up';
-  @override
-  String demoAcelerada(String v) => 'Demo at $v speed. Tap to change it';
 }

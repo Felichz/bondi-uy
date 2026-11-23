@@ -338,7 +338,10 @@ class EscenaMapa {
 class EstadoUiMapa {
   /// Opción enfocada en el carrusel.
   final String? opcionEnfocada;
-  const EstadoUiMapa({this.opcionEnfocada});
+
+  /// En viaje, la cámara sigue al bus que viene en vez de al usuario.
+  final bool verBus;
+  const EstadoUiMapa({this.opcionEnfocada, this.verBus = false});
 }
 
 // ---------------------------------------------------------------------------

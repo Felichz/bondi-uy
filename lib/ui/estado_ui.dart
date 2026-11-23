@@ -9,6 +9,9 @@ import 'mapa/teselas/fuente_teselas.dart';
 /// Opción del carrusel que el usuario está mirando.
 final opcionEnfocadaProvider = StateProvider<String?>((_) => null);
 
+/// En viaje, la cámara sigue al bus que viene (true) o al usuario.
+final verBusProvider = StateProvider<bool>((_) => false);
+
 /// Buscador abierto y campo con foco (null = cerrado).
 final busquedaAbiertaProvider = StateProvider<CampoBusqueda?>((_) => null);
 

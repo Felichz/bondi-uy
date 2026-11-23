@@ -68,7 +68,17 @@ class _PantallaPrincipalState extends ConsumerState<PantallaPrincipal> {
     final buscando = ref.watch(busquedaAbiertaProvider);
     final uiMapa = EstadoUiMapa(
       opcionEnfocada: ref.watch(opcionEnfocadaProvider),
+      verBus: ref.watch(verBusProvider),
     );
+    // Cada viaje empieza siguiéndote a vos.
+    ref.listen<bool>(appStateProvider.select((s) => s.fase is FaseViaje), (
+      antes,
+      enViaje,
+    ) {
+      if (enViaje && antes == false) {
+        ref.read(verBusProvider.notifier).state = false;
+      }
+    });
     final c = ColoresBondi.of(context);
     final alto = MediaQuery.sizeOf(context).height;
     final seguro = MediaQuery.paddingOf(context);

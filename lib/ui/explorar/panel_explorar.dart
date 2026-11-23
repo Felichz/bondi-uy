@@ -70,8 +70,6 @@ class PanelExplorar extends ConsumerWidget {
               children: [
                 BotonRecentrar(),
                 SizedBox(height: 12),
-                BotonVelocidadDemo(),
-                SizedBox(height: 12),
                 _BotonIdioma(),
                 SizedBox(height: 12),
                 _BotonTema(),

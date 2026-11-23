@@ -65,9 +65,4 @@ abstract interface class AppActions {
 
   // --- Avisos ---
   void descartarAviso(int idAviso);
-
-  // --- demo -----------------------------------------------------------------
-
-  /// Cambia la velocidad del mundo simulado (solo en modo demo).
-  void cambiarVelocidadDemo(double velocidad);
 }
