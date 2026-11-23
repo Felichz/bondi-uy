@@ -104,7 +104,14 @@ AppController crearControladorDemo({
     sondeoBus: Duration(milliseconds: 1500),
   ),
 }) {
-  final plan = PlanificadorSimulado(PlanificadorDemo(bundle: bundle), mundo);
+  // Mientras se miran las opciones el reloj corre a tiempo real: el bus de la
+  // vista previa es el que se alcanza al empezar (a 15x, unos segundos
+  // leyendo serían minutos, y ese bus ya habría pasado). El viaje corre a la
+  // velocidad elegida.
+  final plan = PlanificadorSimulado(
+    _ATiempoRealEnOpciones(PlanificadorDemo(bundle: bundle), mundo),
+    mundo,
+  );
   return AppController(
     planificador: plan,
     llegadas: LlegadasSimuladas(mundo),
@@ -113,7 +120,10 @@ AppController crearControladorDemo({
     ubicacion: UbicacionSimulada(mundo),
     reloj: mundo.ahora,
     config: config,
-    alIniciarViaje: (o) => mundo.recorrer(o, plan.shapesDe(o.id)),
+    alIniciarViaje: (o) {
+      mundo.aTiempoReal = false;
+      mundo.recorrer(o, plan.shapesDe(o.id));
+    },
     // Llegó: se queda en el destino mientras se ve "¡Llegaste!".
     alLlegar: mundo.detener,
     // Terminó (cerró la llegada o abandonó): vuelve a casa, de donde sale
@@ -124,6 +134,23 @@ AppController crearControladorDemo({
     },
     demo: ControlDemoMundo(mundo),
   );
+}
+
+/// Al planificar (se van a mostrar opciones), el mundo pasa a tiempo real.
+class _ATiempoRealEnOpciones implements PlanificadorViajes {
+  final PlanificadorViajes real;
+  final MundoSimulado mundo;
+  _ATiempoRealEnOpciones(this.real, this.mundo);
+
+  @override
+  Future<List<ViajePlanificado>> planificar({
+    required Coordenada origen,
+    required Coordenada destino,
+    required DateTime salida,
+  }) {
+    mundo.aTiempoReal = true;
+    return real.planificar(origen: origen, destino: destino, salida: salida);
+  }
 }
 
 class ControlDemoMundo implements ControlDemo {

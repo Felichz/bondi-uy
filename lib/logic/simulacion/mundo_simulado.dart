@@ -84,25 +84,36 @@ class MundoSimulado {
        _transcurrido = transcurrido ?? (Stopwatch()..start()).elapsedFn;
 
   late double _velocidad = p.velocidad;
+  bool _aTiempoReal = false;
   Duration _anclaReal = Duration.zero;
   DateTime? _anclaSim;
 
-  /// Multiplicador del tiempo; se puede cambiar en marcha (modo demo).
+  /// Multiplicador del tiempo elegido; se puede cambiar en marcha (modo
+  /// demo).
   double get velocidad => _velocidad;
 
   /// Cambia la velocidad sin que el reloj salte: desde ahora corre a [v].
-  set velocidad(double v) {
+  set velocidad(double v) => _anclar(() => _velocidad = v);
+
+  /// Mientras es true el reloj corre a tiempo real, sin perder la velocidad
+  /// elegida (la demo lo usa mientras se miran las opciones).
+  bool get aTiempoReal => _aTiempoReal;
+  set aTiempoReal(bool v) => _anclar(() => _aTiempoReal = v);
+
+  void _anclar(void Function() cambio) {
     final t = ahora();
     _anclaReal = _transcurrido();
     _anclaSim = t;
-    _velocidad = v;
+    cambio();
   }
 
   /// Reloj simulado (inyectar como `Reloj` en el controlador).
   DateTime ahora() => (_anclaSim ?? _inicioSim).add(
     Duration(
       microseconds:
-          ((_transcurrido() - _anclaReal).inMicroseconds * _velocidad).round(),
+          ((_transcurrido() - _anclaReal).inMicroseconds *
+                  (_aTiempoReal ? 1 : _velocidad))
+              .round(),
     ),
   );
 
