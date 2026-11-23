@@ -13,7 +13,9 @@ import 'dart:convert';
 import 'package:flutter/services.dart' show AssetBundle, rootBundle;
 
 import '../../contract/app_state.dart';
+import '../../contract/trazas.dart';
 import '../app_controller.dart';
+import '../trazado.dart';
 import '../geo/geo.dart';
 import '../puertos.dart';
 import 'grabado.dart';
@@ -118,6 +120,8 @@ AppController crearControladorDemo({
   required CatalogoRed catalogo,
   AssetBundle? bundle,
   EscalasDemo escalas = const EscalasDemo(),
+  // Si se indica, cada llamada entre piezas se informa ahí.
+  Trazas? trazas,
   // En tiempo real, sin importar la escala: el bus se consulta seguido y la
   // predicción del mapa suaviza entre lecturas.
   ConfigLogica config = const ConfigLogica(
@@ -125,14 +129,27 @@ AppController crearControladorDemo({
   ),
 }) {
   final plan = PlanificadorSimulado(PlanificadorDemo(bundle: bundle), mundo);
+  // El mundo simulado usa el catálogo sin trazar: sus consultas no son de la
+  // app, son del decorado.
+  final t = trazas;
   final c = AppController(
-    planificador: plan,
-    llegadas: LlegadasSimuladas(mundo),
-    lugares: const LugaresFijos(destinosDemo),
-    catalogo: catalogo,
-    ubicacion: UbicacionSimulada(mundo),
+    planificador: t == null ? plan : PlanificadorTrazado(plan, t),
+    llegadas:
+        t == null
+            ? LlegadasSimuladas(mundo)
+            : LlegadasTrazadas(LlegadasSimuladas(mundo), t),
+    lugares:
+        t == null
+            ? const LugaresFijos(destinosDemo)
+            : LugaresTrazados(const LugaresFijos(destinosDemo), t),
+    catalogo: t == null ? catalogo : CatalogoTrazado(catalogo, t),
+    ubicacion:
+        t == null
+            ? UbicacionSimulada(mundo)
+            : UbicacionTrazada(UbicacionSimulada(mundo), t),
     reloj: mundo.ahora,
     config: config,
+    trazas: t,
     alIniciarViaje: (o) => mundo.recorrer(o, plan.shapesDe(o.id)),
     // Llegó: se queda en el destino mientras se ve "¡Llegaste!".
     alLlegar: mundo.detener,

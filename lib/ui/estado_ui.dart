@@ -9,6 +9,10 @@ import 'mapa/teselas/fuente_teselas.dart';
 /// Opción del carrusel que el usuario está mirando.
 final opcionEnfocadaProvider = StateProvider<String?>((_) => null);
 
+/// Mostrar la presentación web también fuera de la web (tests): null = no;
+/// si no, true empieza en la vista "por dentro".
+final marcoForzadoProvider = Provider<bool?>((_) => null);
+
 /// En viaje, la cámara sigue al bus que viene (true) o al usuario.
 final verBusProvider = StateProvider<bool>((_) => false);
 

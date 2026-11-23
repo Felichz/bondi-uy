@@ -6,8 +6,9 @@
 // Modo de ejecución (`--dart-define=BONDI_MODO=...`):
 //   real      OTP + API de Montevideo + GPS del teléfono (por defecto)
 //   demo      sin servidores: viajes reales grabados desde Malvín a varios
-//             destinos, el usuario y los buses se mueven solos, a la
-//             velocidad que se elija (por defecto en web)
+//             destinos, el usuario y los buses se mueven solos, con el
+//             tiempo acelerado (por defecto en web). Informa sus llamadas
+//             (trazas) para que la presentación web muestre la app por dentro
 //   simulado  OTP real, pero el usuario y los buses se mueven solos
 //   grabado   sin red: un solo plan OTP grabado + mundo simulado (tests)
 
@@ -19,8 +20,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../contract/app_state.dart';
 import '../contract/proveedores.dart';
+import '../contract/trazas.dart';
 import 'app_controller.dart';
 import 'puertos.dart';
+import 'trazado.dart';
 import 'servicios/catalogo_assets.dart';
 import 'servicios/lugares.dart';
 import 'servicios/montevideo.dart';
@@ -50,6 +53,14 @@ const fixtureGrabado = 'test/fixtures/trip_saldanha_plaza_otp_v2.json';
 
 final modoAppProvider = Provider<ModoApp>((_) => modoDesdeEntorno());
 
+/// Las llamadas entre piezas, solo en la demo (sin escucharlas no cuestan).
+final trazasLogicaProvider = Provider<Trazas?>((ref) {
+  if (ref.watch(modoAppProvider) != ModoApp.demo) return null;
+  final t = Trazas();
+  ref.onDispose(t.cerrar);
+  return t;
+});
+
 final appControllerProvider = StateNotifierProvider<AppController, AppState>((
   ref,
 ) {
@@ -76,6 +87,7 @@ final appControllerProvider = StateNotifierProvider<AppController, AppState>((
           p: const ParametrosSimulacion(velocidad: 1),
         ),
         catalogo: catalogo,
+        trazas: ref.watch(trazasLogicaProvider),
       );
     case ModoApp.simulado:
     case ModoApp.grabado:
@@ -114,9 +126,12 @@ final appControllerProvider = StateNotifierProvider<AppController, AppState>((
 /// composición: `ProviderScope(overrides: overridesLogica)`).
 final overridesLogica = <Override>[
   appStateProvider.overrideWith((ref) => ref.watch(appControllerProvider)),
-  appActionsProvider.overrideWith(
-    (ref) => ref.watch(appControllerProvider.notifier),
-  ),
+  appActionsProvider.overrideWith((ref) {
+    final acciones = ref.watch(appControllerProvider.notifier);
+    final trazas = ref.watch(trazasLogicaProvider);
+    return trazas == null ? acciones : AccionesTrazadas(acciones, trazas);
+  }),
+  trazasProvider.overrideWith((ref) => ref.watch(trazasLogicaProvider)),
 ];
 
 class _SinLlegadas implements FuenteLlegadas {

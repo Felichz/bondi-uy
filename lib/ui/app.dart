@@ -41,7 +41,14 @@ class BondiApp extends ConsumerWidget {
       // lógica y su estado viven fuera, en los providers: no se pierde nada).
       home: PantallaPrincipal(key: ValueKey(idioma)),
       // En la web, en pantallas anchas, dentro de un teléfono.
-      builder: (context, child) => MarcoWeb(child: child!),
+      builder: (context, child) {
+        final forzado = ref.watch(marcoForzadoProvider);
+        return MarcoWeb(
+          forzar: forzado != null,
+          porDentro: forzado,
+          child: child!,
+        );
+      },
     );
   }
 }

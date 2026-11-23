@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../contract/app_actions.dart';
 import '../contract/app_state.dart';
+import '../contract/trazas.dart';
 import 'geo/geo.dart';
 import 'puertos.dart';
 import 'viaje/navegador.dart';
@@ -50,6 +51,9 @@ class AppController extends StateNotifier<AppState> implements AppActions {
   /// Al llegar al destino (si no se indica, se usa [alTerminarViaje]).
   final void Function()? alLlegar;
 
+  /// Informa las llamadas a las piezas del núcleo (la demo web las muestra).
+  final Trazas? trazas;
+
   AppController({
     required PlanificadorViajes planificador,
     required FuenteLlegadas llegadas,
@@ -61,6 +65,7 @@ class AppController extends StateNotifier<AppState> implements AppActions {
     this.alIniciarViaje,
     this.alTerminarViaje,
     this.alLlegar,
+    this.trazas,
     ControlDemo? demo,
     AppState? estadoInicial,
   }) : _planificador = planificador,
@@ -175,6 +180,12 @@ class AppController extends StateNotifier<AppState> implements AppActions {
         fase.estado == EstadoViaje.enCurso &&
         _nav != null) {
       final r = _nav!.procesar(m);
+      trazas?.emitir(
+        Pieza.controlador,
+        Pieza.navegador,
+        'procesar(muestra)',
+        resultado: _resumenPaso(r),
+      );
       var nueva = fase.copyWith(
         pasoActual: r.paso,
         progreso: r.progreso,
@@ -349,6 +360,15 @@ class AppController extends StateNotifier<AppState> implements AppActions {
         salida: _ahora(),
       );
       viajes = ordenarYRecomendar(crudos, _ahora());
+      trazas?.emitir(
+        Pieza.controlador,
+        Pieza.recomendador,
+        'ordenarYRecomendar(${crudos.length} viajes)',
+        resultado:
+            viajes.isEmpty
+                ? 'sin opciones'
+                : '${viajes.length} opciones, una recomendada',
+      );
     } catch (_) {
       if (!mounted || seq != _secBusqueda) return;
       state = state.copyWith(
@@ -413,6 +433,7 @@ class AppController extends StateNotifier<AppState> implements AppActions {
       }
       final seg = _seguidorOpcion(o.id);
       final bus = (await seg)?.elegir(lista, retener: false);
+      _trazarEleccion(lista, bus);
       final llegada =
           bus == null
               ? null
@@ -506,6 +527,7 @@ class AppController extends StateNotifier<AppState> implements AppActions {
     // En la vista previa nadie espera en la parada: el bus que pasó deja
     // lugar al próximo.
     final elegido = seg?.elegir(lista, retener: false);
+    _trazarEleccion(lista, elegido);
     final f = state.fase;
     if (f is! FaseOpciones) return;
     final buses = Map.of(f.busesEnVivo);
@@ -748,6 +770,7 @@ class AppController extends StateNotifier<AppState> implements AppActions {
       usuarioEnLaParada: esperando && (f.progreso.metrosRestantes ?? 99) <= 15,
       usuario: f.usuario,
     );
+    _trazarEleccion(lista, bus);
     state = state.copyWith(
       fase: f.copyWith(
         busEsperado: bus,
@@ -858,6 +881,31 @@ class AppController extends StateNotifier<AppState> implements AppActions {
     if (state.aviso?.id == idAviso) {
       state = state.copyWith(limpiarAviso: true);
     }
+  }
+
+  // =====================================================================
+  // Trazas
+  // =====================================================================
+
+  String _resumenPaso(EstadoNavegacion r) {
+    if (r.completado) return 'llegó';
+    final m = r.progreso.metrosRestantes;
+    return 'paso ${r.paso + 1}${m == null ? '' : ', faltan $m m'}';
+  }
+
+  void _trazarEleccion(List<LlegadaEnParada> lista, BusEnCamino? bus) {
+    final t = trazas;
+    if (t == null) return;
+    t.emitir(
+      Pieza.controlador,
+      Pieza.seguidor,
+      'elegir(${lista.length} llegadas)',
+      resultado:
+          bus == null
+              ? 'ninguno viene'
+              : '${bus.linea} a ${bus.minutos} min'
+                  '${bus.metrosHastaParada == null ? '' : ', ${bus.metrosHastaParada} m'}',
+    );
   }
 
   @override

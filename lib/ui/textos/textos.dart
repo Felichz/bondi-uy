@@ -174,6 +174,21 @@ abstract class Textos {
   String get webDemo;
   String get webDescargar;
   String get webCodigo;
+  String get webVistaPresentacion;
+  String get webVistaPorDentro;
+  String get coreTitulo;
+  String get coreBajada;
+  String get coreNotaDemo;
+  String get coreConsola;
+  String get coreClaveAcciones;
+  String get coreClaveEstado;
+  String get coreClaveUbicacion;
+  String get coreClaveBuses;
+  String get coreClavePlan;
+  String get coreControlador;
+  String get coreNavegador;
+  String get coreSeguidor;
+  String get coreRecomendador;
   String get avisoApp;
   String get avisoAppDetalle;
   String get avisoAppDescargar;
@@ -492,6 +507,43 @@ class TextosEs extends Textos {
   String get webDescargar => 'Descargar para Android';
   @override
   String get webCodigo => 'Código fuente';
+  @override
+  String get webVistaPresentacion => 'Presentación';
+  @override
+  String get webVistaPorDentro => 'Por dentro';
+  @override
+  String get coreTitulo => 'Por dentro';
+  @override
+  String get coreBajada =>
+      'Dos capas unidas por un contrato. La interfaz solo lee el estado y le '
+      'pide cosas a la lógica; la lógica decide sin saber de pantallas y habla '
+      'con el mundo por puertos. Cada pulso es una llamada que la app está '
+      'haciendo ahora.';
+  @override
+  String get coreNotaDemo =>
+      'En la demo, los puertos responden con viajes grabados y un mundo '
+      'simulado; en el teléfono, con OpenTripPlanner, la API de la '
+      'Intendencia y el GPS.';
+  @override
+  String get coreConsola => 'LLAMADAS EN VIVO';
+  @override
+  String get coreClaveAcciones => 'Acciones';
+  @override
+  String get coreClaveEstado => 'Estado';
+  @override
+  String get coreClaveUbicacion => 'Ubicación';
+  @override
+  String get coreClaveBuses => 'Buses';
+  @override
+  String get coreClavePlan => 'Planificación';
+  @override
+  String get coreControlador => 'decide y publica el estado';
+  @override
+  String get coreNavegador => 'en qué paso vas, con cada lectura';
+  @override
+  String get coreSeguidor => 'qué bus viene y por dónde';
+  @override
+  String get coreRecomendador => 'ordena y elige la opción';
   @override
   String get avisoApp => 'BondiUY para Android';
   @override
@@ -816,6 +868,42 @@ class TextosEn extends Textos {
   String get webDescargar => 'Download for Android';
   @override
   String get webCodigo => 'Source code';
+  @override
+  String get webVistaPresentacion => 'Overview';
+  @override
+  String get webVistaPorDentro => 'Inside';
+  @override
+  String get coreTitulo => 'Inside';
+  @override
+  String get coreBajada =>
+      'Two layers joined by a contract. The interface only reads the state and '
+      'asks the logic for things; the logic decides without knowing about '
+      'screens and talks to the world through ports. Each pulse is a call the '
+      'app is making right now.';
+  @override
+  String get coreNotaDemo =>
+      'In the demo, the ports answer with recorded trips and a simulated '
+      'world; on the phone, with OpenTripPlanner, the city’s API and the GPS.';
+  @override
+  String get coreConsola => 'LIVE CALLS';
+  @override
+  String get coreClaveAcciones => 'Actions';
+  @override
+  String get coreClaveEstado => 'State';
+  @override
+  String get coreClaveUbicacion => 'Location';
+  @override
+  String get coreClaveBuses => 'Buses';
+  @override
+  String get coreClavePlan => 'Planning';
+  @override
+  String get coreControlador => 'decides and publishes the state';
+  @override
+  String get coreNavegador => 'which step you are on, per reading';
+  @override
+  String get coreSeguidor => 'which bus is coming, and where';
+  @override
+  String get coreRecomendador => 'sorts and picks the option';
   @override
   String get avisoApp => 'BondiUY for Android';
   @override

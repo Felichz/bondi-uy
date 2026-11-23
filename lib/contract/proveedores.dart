@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app_actions.dart';
 import 'app_state.dart';
+import 'trazas.dart';
 
 /// Estado de la app (solo lectura para la UI).
 final appStateProvider = Provider<AppState>(
@@ -22,3 +23,7 @@ final appStateProvider = Provider<AppState>(
 final appActionsProvider = Provider<AppActions>(
   (_) => throw UnimplementedError('appActionsProvider sin implementar'),
 );
+
+/// Las llamadas entre las piezas de la app, si la lógica las informa (la demo
+/// web, para mostrar la app por dentro); null si no.
+final trazasProvider = Provider<Trazas?>((_) => null);

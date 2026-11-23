@@ -1,16 +1,22 @@
 // En una pantalla ancha (la demo web abierta en una computadora), la app se
-// muestra dentro de un teléfono, con una presentación al costado. En un
+// muestra dentro de un teléfono, con una presentación al costado; o, en la
+// vista "por dentro" (`?vista=core` o el selector de arriba), enchufada a una
+// placa donde se ven las llamadas entre sus piezas (por_dentro.dart). En un
 // teléfono, o embebida con `?marco=0`, ocupa toda la pantalla como siempre; en
 // un teléfono Android, con un aviso arriba para bajar la app (la presentación,
 // con su botón, no entra), hasta que se cierra.
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../contract/proveedores.dart';
 
 import '../plataforma/almacen.dart';
 import '../plataforma/enlaces.dart';
 import '../tema/tema.dart';
 import '../textos/textos.dart';
+import 'por_dentro.dart';
 
 /// Enlaces opcionales de la presentación (se definen al compilar).
 const _urlApk = String.fromEnvironment('APK_URL');
@@ -19,14 +25,35 @@ const _urlCodigo = String.fromEnvironment('SOURCE_URL');
 /// Tamaño de pantalla de un teléfono típico (px lógicos).
 const _pantalla = Size(412, 892);
 
-class MarcoWeb extends StatelessWidget {
+class MarcoWeb extends ConsumerStatefulWidget {
   final Widget child;
 
   /// Mostrar el marco también fuera de la web (tests).
   final bool forzar;
-  const MarcoWeb({super.key, required this.child, this.forzar = false});
 
+  /// Empezar en la vista "por dentro" (si no, la decide la URL).
+  final bool? porDentro;
+  const MarcoWeb({
+    super.key,
+    required this.child,
+    this.forzar = false,
+    this.porDentro,
+  });
+
+  @override
+  ConsumerState<MarcoWeb> createState() => _MarcoWebState();
+}
+
+class _MarcoWebState extends ConsumerState<MarcoWeb> {
   static bool get _desactivado => Uri.base.queryParameters['marco'] == '0';
+
+  final _claveTelefono = GlobalKey();
+
+  late bool _porDentro =
+      widget.porDentro ?? Uri.base.queryParameters['vista'] == 'core';
+
+  Widget get child => widget.child;
+  bool get forzar => widget.forzar;
 
   @override
   Widget build(BuildContext context) {
@@ -45,22 +72,60 @@ class MarcoWeb extends StatelessWidget {
       0.5,
       1.0,
     );
+    // Con clave global: al cambiar de vista, la app se muda sin desmontarse
+    // (el viaje, el mapa y la cámara siguen como estaban).
+    final aparato = _Telefono(
+      key: _claveTelefono,
+      child: MediaQuery(
+        data: mq.copyWith(
+          size: _pantalla,
+          padding: const EdgeInsets.only(top: 24, bottom: 16),
+          viewPadding: const EdgeInsets.only(top: 24, bottom: 16),
+        ),
+        child: child,
+      ),
+    );
     final telefono = SizedBox(
       width: (_pantalla.width + 24) * escala,
       height: (_pantalla.height + 24) * escala,
-      child: FittedBox(
-        child: _Telefono(
-          child: MediaQuery(
-            data: mq.copyWith(
-              size: _pantalla,
-              padding: const EdgeInsets.only(top: 24, bottom: 16),
-              viewPadding: const EdgeInsets.only(top: 24, bottom: 16),
-            ),
-            child: child,
+      child: FittedBox(child: aparato),
+    );
+    // Por dentro: solo si la lógica informa sus llamadas (la demo) y entra.
+    final porDentroPosible =
+        ref.watch(trazasProvider) != null &&
+        tam.width >= 1280 &&
+        tam.height >= 680;
+    final selector =
+        porDentroPosible
+            ? _Selector(
+              porDentro: _porDentro,
+              oscuro: _porDentro || c.brillo == Brightness.dark,
+              alCambiar: (v) => setState(() => _porDentro = v),
+            )
+            : null;
+    if (porDentroPosible && _porDentro) {
+      final escalaCore = ((tam.height - 96) / (_pantalla.height + 24)).clamp(
+        0.5,
+        0.92,
+      );
+      return ColoredBox(
+        color: const Color(0xFF06080B),
+        child: PorDentro(
+          tamTelefono: Size(
+            (_pantalla.width + 24) * escalaCore,
+            (_pantalla.height + 24) * escalaCore,
+          ),
+          telefono: FittedBox(child: aparato),
+          encabezado: Row(
+            children: [
+              const _Marca(oscuro: true),
+              const SizedBox(width: 24),
+              selector!,
+            ],
           ),
         ),
-      ),
-    );
+      );
+    }
     final ancho = tam.width >= 1000;
     return ColoredBox(
       color:
@@ -72,7 +137,7 @@ class MarcoWeb extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (ancho) ...[
-              const SizedBox(width: 380, child: _Presentacion()),
+              SizedBox(width: 380, child: _Presentacion(selector: selector)),
               const SizedBox(width: 64),
             ],
             telefono,
@@ -85,7 +150,7 @@ class MarcoWeb extends StatelessWidget {
 
 class _Telefono extends StatelessWidget {
   final Widget child;
-  const _Telefono({required this.child});
+  const _Telefono({super.key, required this.child});
 
   @override
   Widget build(BuildContext context) {
@@ -119,7 +184,8 @@ class _Telefono extends StatelessWidget {
 }
 
 class _Presentacion extends StatelessWidget {
-  const _Presentacion();
+  final Widget? selector;
+  const _Presentacion({this.selector});
 
   @override
   Widget build(BuildContext context) {
@@ -131,28 +197,8 @@ class _Presentacion extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: c.bus,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(
-                  Icons.directions_bus_rounded,
-                  color: Colors.white,
-                  size: 26,
-                ),
-              ),
-              const SizedBox(width: 14),
-              Text(
-                'BondiUY',
-                style: t.headlineMedium?.copyWith(letterSpacing: -0.8),
-              ),
-            ],
-          ),
+          if (selector != null) ...[selector!, const SizedBox(height: 28)],
+          _Marca(oscuro: c.brillo == Brightness.dark),
           const SizedBox(height: 20),
           Text(tx.webLema, style: t.headlineSmall?.copyWith(height: 1.25)),
           const SizedBox(height: 14),
@@ -316,6 +362,103 @@ class _Aviso extends StatelessWidget {
               onPressed: onCerrar,
               icon: Icon(Icons.close_rounded, color: c.textoSuave),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Logo y nombre.
+class _Marca extends StatelessWidget {
+  final bool oscuro;
+  const _Marca({required this.oscuro});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = ColoresBondi.of(context);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: c.bus,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: const Icon(
+            Icons.directions_bus_rounded,
+            color: Colors.white,
+            size: 26,
+          ),
+        ),
+        const SizedBox(width: 14),
+        Text(
+          'BondiUY',
+          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+            letterSpacing: -0.8,
+            color: oscuro ? const Color(0xFFF2F4F7) : const Color(0xFF111318),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Elige la vista de la presentación: la de siempre o "por dentro".
+class _Selector extends StatelessWidget {
+  final bool porDentro;
+  final bool oscuro;
+  final ValueChanged<bool> alCambiar;
+  const _Selector({
+    required this.porDentro,
+    required this.oscuro,
+    required this.alCambiar,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final fondo = oscuro ? const Color(0xFF151A21) : const Color(0xFFFFFFFF);
+    final borde = oscuro ? const Color(0xFF2A323D) : const Color(0xFFDDE2EA);
+    final activo = oscuro ? const Color(0xFFF2F4F7) : const Color(0xFF111318);
+    final sobreActivo = oscuro ? const Color(0xFF111318) : Colors.white;
+    final inactivo = oscuro ? const Color(0xFFA7AEBA) : const Color(0xFF5C616C);
+    Widget opcion(String texto, bool esta, bool valor) => Material(
+      color: esta ? activo : Colors.transparent,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        key: ValueKey(valor ? 'vista-por-dentro' : 'vista-presentacion'),
+        borderRadius: BorderRadius.circular(20),
+        onTap: esta ? null : () => alCambiar(valor),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+          child: Text(
+            texto,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: esta ? sobreActivo : inactivo,
+            ),
+          ),
+        ),
+      ),
+    );
+    return Material(
+      type: MaterialType.transparency,
+      child: Container(
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: fondo,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: borde),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            opcion(tx.webVistaPresentacion, !porDentro, false),
+            const SizedBox(width: 2),
+            opcion(tx.webVistaPorDentro, porDentro, true),
           ],
         ),
       ),

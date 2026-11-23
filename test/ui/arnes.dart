@@ -10,7 +10,9 @@ import 'dart:ui' as ui;
 
 import 'package:bondi_uy/contract/app_state.dart';
 import 'package:bondi_uy/contract/proveedores.dart';
+import 'package:bondi_uy/contract/trazas.dart';
 import 'package:bondi_uy/logic/app_controller.dart';
+import 'package:bondi_uy/logic/trazado.dart';
 import 'package:bondi_uy/logic/puertos.dart';
 import 'package:bondi_uy/logic/servicios/catalogo_assets.dart';
 import 'package:bondi_uy/logic/simulacion/demo.dart';
@@ -105,6 +107,10 @@ class Arnes {
   final MundoSimulado mundo;
   final AppController controlador;
   final ProviderContainer container;
+
+  /// Las llamadas entre piezas (solo con la presentación web alrededor).
+  TrazasAnotadas? trazas;
+  bool get marco => trazas != null;
   Duration _transcurrido = Duration.zero;
   int _captura = 0;
   final String prefijo;
@@ -128,6 +134,9 @@ class Arnes {
     bool oscuro = false,
     bool demo = false,
     Idioma idioma = Idioma.es,
+    // La presentación web alrededor (true: la vista "por dentro"), con las
+    // llamadas entre piezas informadas.
+    bool? marco,
   }) async {
     await cargarFuentes();
     if (sinAnimaciones) {
@@ -138,10 +147,14 @@ class Arnes {
         tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
       );
     }
-    tester.view.physicalSize = tam * 2.625;
-    tester.view.devicePixelRatio = 2.625;
+    // Un teléfono a la densidad de uno real; la presentación web, a la de
+    // una pantalla de escritorio.
+    final densidad = marco == null ? 2.625 : 1.0;
+    tester.view.physicalSize = tam * densidad;
+    tester.view.devicePixelRatio = densidad;
     late Arnes arnes;
     final catalogo = CatalogoAssets(bundle: BundleDisco());
+    final trazas = marco == null ? null : TrazasAnotadas();
     final mundo = MundoSimulado(
       catalogo: catalogo,
       posicionInicial: demo ? casaDemo : origenFixture,
@@ -158,6 +171,7 @@ class Arnes {
               mundo: mundo,
               catalogo: catalogo,
               bundle: BundleDisco(),
+              trazas: trazas,
               config: const ConfigLogica(
                 sondeoBus: Duration(milliseconds: 1500),
               ),
@@ -178,9 +192,12 @@ class Arnes {
     final container = ProviderContainer(
       overrides: [
         appStateProvider.overrideWith((ref) => ref.watch(_controladorProvider)),
-        appActionsProvider.overrideWith(
-          (ref) => ref.watch(_controladorProvider.notifier),
-        ),
+        appActionsProvider.overrideWith((ref) {
+          final acciones = ref.watch(_controladorProvider.notifier);
+          return trazas == null ? acciones : AccionesTrazadas(acciones, trazas);
+        }),
+        trazasProvider.overrideWithValue(trazas),
+        marcoForzadoProvider.overrideWithValue(marco),
         _controladorProvider.overrideWith((ref) => controlador),
         fuenteTeselasProvider.overrideWithValue(TeselasEnMemoria.cargar()),
         teselasEnIsolateProvider.overrideWithValue(false),
@@ -194,7 +211,8 @@ class Arnes {
         ),
       ],
     );
-    arnes = Arnes._(tester, mundo, controlador, container, prefijo);
+    arnes = Arnes._(tester, mundo, controlador, container, prefijo)
+      ..trazas = trazas;
     await tester.pumpWidget(
       UncontrolledProviderScope(
         container: container,
@@ -284,7 +302,8 @@ class Arnes {
       find.byKey(_raiz),
     );
     await tester.runAsync(() async {
-      final img = await boundary.toImage(pixelRatio: 1.5);
+      // Un teléfono, más nítido; la presentación de escritorio, a tamaño real.
+      final img = await boundary.toImage(pixelRatio: marco ? 1.0 : 1.5);
       final png = await img.toByteData(format: ui.ImageByteFormat.png);
       final f = File(
         'build/capturas/${prefijo}_${(++_captura).toString().padLeft(2, '0')}_$nombre.png',
@@ -299,6 +318,18 @@ class Arnes {
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(seconds: 1));
     container.dispose();
+  }
+}
+
+/// Trazas que además anotan qué piezas se llamaron (sin suscribirse: una
+/// suscripción desde el test traba el desmontaje con el tiempo falso).
+class TrazasAnotadas extends Trazas {
+  final llamadas = <(Pieza, Pieza)>{};
+
+  @override
+  void emitir(Pieza desde, Pieza hacia, String llamada, {String? resultado}) {
+    llamadas.add((desde, hacia));
+    super.emitir(desde, hacia, llamada, resultado: resultado);
   }
 }
 
