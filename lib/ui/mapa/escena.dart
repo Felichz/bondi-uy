@@ -116,11 +116,16 @@ class MarcaUsuario extends MarcaMapa {
   final double? rumbo;
   @override
   final List<Coordenada>? camino;
+
+  /// Se espera que no se mueva (esperando el bus, llegó): el mapa no
+  /// predice su avance, lo lleva a cada lectura.
+  final bool quieto;
   const MarcaUsuario(
     super.coordenada, {
     this.caminando = false,
     this.rumbo,
     this.camino,
+    this.quieto = false,
     super.globo,
   });
 
@@ -130,6 +135,7 @@ class MarcaUsuario extends MarcaMapa {
     caminando: caminando,
     rumbo: rumbo ?? this.rumbo,
     camino: camino,
+    quieto: quieto,
     globo: globo,
   );
 }
@@ -403,7 +409,7 @@ EscenaMapa construirEscena(AppState s, EstadoUiMapa ui) {
         return EscenaMapa(
           marcas: [
             MarcaDestino(_fin(f.opcion)),
-            if (pos != null) MarcaUsuario(pos),
+            if (pos != null) MarcaUsuario(pos, quieto: true),
           ],
         );
       }
@@ -444,7 +450,7 @@ EscenaMapa construirEscena(AppState s, EstadoUiMapa ui) {
           case TramoCaminar(:final geometria):
             marcas.add(MarcaUsuario(pos, caminando: true, camino: geometria));
           case TramoEsperar():
-            marcas.add(MarcaUsuario(pos));
+            marcas.add(MarcaUsuario(pos, quieto: true));
         }
       }
       return EscenaMapa(

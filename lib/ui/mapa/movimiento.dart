@@ -60,6 +60,8 @@ class MovimientoPredicho {
   /// una sola muestra de velocidad (recién apareció) la estimación es floja:
   /// la corrección no pasa de la rapidez.
   double _tauPara(double error) {
+    // Quieto, va a la lectura enseguida: no hay movimiento que acompañar.
+    if (_quieto) return 0.4;
     final margen = _rapidez * (_lecturas <= 1 ? 1 : 2) + 3 / metrosPorUnidad;
     return (error / margen).clamp(0.5, 4.0);
   }
@@ -92,6 +94,7 @@ class MovimientoPredicho {
     Object? fuenteCamino,
     Offset? limite,
     bool reubicado = false,
+    bool predecir = true,
   }) {
     avanzar(t);
     _limite = limite;
@@ -136,9 +139,17 @@ class MovimientoPredicho {
       _velocidad = primera ? v : _velocidad * 0.5 + v * 0.5;
       if (metros >= 1.5) _rumbo = _grados(paso);
     }
+    if (!predecir) {
+      // Quieto: sin velocidad que lo lleve más allá de la lectura.
+      _rapidez = 0;
+      _velocidad = Offset.zero;
+    }
+    _quieto = !predecir;
     _fijar(p, t);
     _planear(p, t);
   }
+
+  bool _quieto = false;
 
   void _fijar(Offset p, double t) {
     _fijo = p;

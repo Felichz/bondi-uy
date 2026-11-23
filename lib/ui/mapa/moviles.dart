@@ -23,7 +23,7 @@ class MovilesEscena {
   /// Marcadores que se mueven: su posición se predice entre lecturas para
   /// que avancen de forma continua.
   final Map<String, MovimientoPredicho> _moviles = {};
-  final Map<String, Coordenada> _ultimaLectura = {};
+  final Map<String, (Coordenada, bool)> _ultimaLectura = {};
 
   /// Última marca mostrada de cada móvil y cuándo apareció: al cambiar de
   /// forma (tu punto -> vos en el bus) o al irse (el bus que llegó), la
@@ -56,14 +56,17 @@ class MovilesEscena {
       }
       final p = mercator(m.coordenada);
       final camino = m.camino;
+      final quieto = m is MarcaUsuario && m.quieto;
       final mov = _moviles[k];
       if (mov == null) {
         _moviles[k] = MovimientoPredicho(p, ahora);
-        _ultimaLectura[k] = m.coordenada;
+        _ultimaLectura[k] = (m.coordenada, quieto);
         continue;
       }
-      if (_ultimaLectura[k] == m.coordenada) continue;
-      _ultimaLectura[k] = m.coordenada;
+      // Una lectura nueva, o la misma pero ahora quieto (llegó a la parada):
+      // hay que dejar de predecir su avance.
+      if (_ultimaLectura[k] == (m.coordenada, quieto)) continue;
+      _ultimaLectura[k] = (m.coordenada, quieto);
       final caminoM = camino == null ? null : _caminoMercator(camino);
       final otro = _esOtro(k, mov.posicion, p, caminoM);
       if (otro && fundir) {
@@ -80,6 +83,7 @@ class MovilesEscena {
         fuenteCamino: camino,
         limite: m is MarcaBus && m.limite != null ? mercator(m.limite!) : null,
         reubicado: otro,
+        predecir: !quieto,
       );
     }
     for (final k in _mostradas.keys.toList()) {

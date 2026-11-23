@@ -51,6 +51,9 @@ List<String> _problemas(List<Instante> estados, double velocidad) {
   Coordenada? usuarioPrevio, busPrevio;
   double? faltabaUsuario, faltabaBus;
   Object? pasoPrevio;
+  // Desde cuándo la lógica da al usuario en el mismo lugar.
+  Coordenada? lecturaUsuario;
+  var quietoDesde = 0.0;
   final inicio = estados.first.real.inMicroseconds / 1e6;
   final fin = estados.last.real.inMicroseconds / 1e6 + 2;
   for (var t = inicio; t <= fin; t += _cuadro) {
@@ -89,6 +92,23 @@ List<String> _problemas(List<Instante> estados, double velocidad) {
 
     // --- El usuario ---------------------------------------------------------
     final u = enVista(esUsuario);
+    // Quieto (esperando el bus) un rato, se lo ve donde está: la predicción
+    // no lo deja pasado de la parada.
+    final lectura = fase is FaseViaje ? fase.usuario : null;
+    if (lectura != lecturaUsuario) {
+      lecturaUsuario = lectura;
+      quietoDesde = t;
+    }
+    if (u != null &&
+        lectura != null &&
+        fase is FaseViaje &&
+        fase.tramoActual is TramoEsperar &&
+        t - quietoDesde > 1.5) {
+      final d = distancia(u.coordenada, lectura);
+      if (d > 3) {
+        mal(t, 'esperando quieto, se lo ve a ${d.round()} m de donde está');
+      }
+    }
     if (u != null) {
       final c = u.coordenada;
       final p = usuarioPrevio;
