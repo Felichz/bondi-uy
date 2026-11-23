@@ -104,25 +104,13 @@ class _Plano {
   final List<Offset> acciones;
   final List<Offset> estado;
 
-  /// La placa sin los chips: lo vivo (pulsos, pistas encendidas) se pinta
-  /// recortado acá, así una pista entra a un chip por sus patas y no le pasa
-  /// por encima.
-  late final Path fueraDeLosChips = Path.combine(
-    PathOperation.difference,
-    Path()..addRect(Offset.zero & tam),
-    Path()
-      ..addRRect(RRect.fromRectAndRadius(contrato, const Radius.circular(12)))
-      ..addRRect(RRect.fromRectAndRadius(telefono, const Radius.circular(40)))
-      ..addPath(
-        [
-          for (final ch in chips.values)
-            Path()..addRRect(
-              RRect.fromRectAndRadius(ch.rect, const Radius.circular(12)),
-            ),
-        ].fold(Path(), (a, b) => a..addPath(b, Offset.zero)),
-        Offset.zero,
-      ),
-  );
+  /// Los cuerpos de los chips (el contrato incluido): lo vivo se pinta debajo,
+  /// así una pista entra a un chip por sus patas y no le pasa por encima.
+  late final List<RRect> cuerpos = [
+    RRect.fromRectAndRadius(contrato, const Radius.circular(12)),
+    for (final ch in chips.values)
+      RRect.fromRectAndRadius(ch.rect, const Radius.circular(12)),
+  ];
 
   _Plano._(
     this.tam,
@@ -1154,7 +1142,6 @@ class _PintorPlaca extends CustomPainter {
     final ahora = vivo.ahora;
 
     c.save();
-    c.clipPath(p.fueraDeLosChips);
     // Pistas que llevaron algo hace poco: quedan encendidas y se apagan.
     for (final e in vivo.encendidas.entries) {
       final k = (1 - (ahora - e.value.$1) / 1.2).clamp(0.0, 1.0);
@@ -1221,6 +1208,28 @@ class _PintorPlaca extends CustomPainter {
     }
 
     c.restore();
+
+    // Los cuerpos de los chips, otra vez encima de lo vivo: las pistas y los
+    // pulsos quedan debajo. Se copian de la capa fija (un recorte con un
+    // camino combinado no se respetaba en la web).
+    final escala = fijo.width / size.width;
+    for (final rr in p.cuerpos) {
+      c.save();
+      c.clipRRect(rr);
+      final r = rr.outerRect;
+      c.drawImageRect(
+        fijo,
+        Rect.fromLTRB(
+          r.left * escala,
+          r.top * escala,
+          r.right * escala,
+          r.bottom * escala,
+        ),
+        r,
+        Paint()..filterQuality = FilterQuality.medium,
+      );
+      c.restore();
+    }
 
     // El contrato: por él cruzan las acciones y el estado.
     final cruce = vivo.lecturas[Pieza.interfaz]!;
