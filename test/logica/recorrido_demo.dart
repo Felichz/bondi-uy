@@ -6,6 +6,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:bondi_uy/contract/app_state.dart';
+import 'package:bondi_uy/logic/app_controller.dart';
 import 'package:bondi_uy/logic/servicios/catalogo_assets.dart';
 import 'package:bondi_uy/logic/simulacion/demo.dart';
 import 'package:bondi_uy/logic/simulacion/mundo_simulado.dart';
@@ -37,6 +38,7 @@ List<Instante> recorrerDemo({
   required Lugar destino,
   required double velocidad,
   required Duration enOpciones,
+  void Function(AppController c, FakeAsync async)? alLlegar,
 }) {
   late List<Instante> estados;
   fakeAsync((async) {
@@ -84,6 +86,7 @@ List<Instante> recorrerDemo({
           'llega a ${destino.id}; últimos estados:\n'
           '${estados.skip(estados.length - 6).map((e) => resumenInstante(e, id)).join('\n')}',
     );
+    alLlegar?.call(c, async);
     c.dispose();
   });
   return estados;

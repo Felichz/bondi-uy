@@ -649,6 +649,13 @@ class AppController extends StateNotifier<AppState> implements AppActions {
     _esperaSeguida = null;
     _nav = null;
     alTerminarViaje?.call();
+    // Dónde quedó el usuario, ya (la demo lo vuelve a casa): la fase que
+    // sigue no espera a la próxima lectura del GPS para mostrarlo.
+    unawaited(
+      _ubicacion.actual().then((m) {
+        if (m != null) _alRecibirMuestra(m);
+      }, onError: (_) {}),
+    );
   }
 
   /// Reconfigura el seguimiento del bus según el paso actual.

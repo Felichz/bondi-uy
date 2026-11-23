@@ -216,6 +216,23 @@ List<String> _problemas(List<Instante> todos) {
 }
 
 void main() {
+  test('al cerrar la llegada, el usuario ya está en casa (no en el destino)', () {
+    recorrerDemo(
+      destino: destinosDemo.first,
+      velocidad: 30,
+      enOpciones: Duration.zero,
+      alLlegar: (c, async) {
+        c.cerrarLlegada();
+        // Sin esperar la próxima lectura del GPS: la fase de explorar ya
+        // nace con el usuario donde está (la cámara lo encuadra ahí).
+        async.flushMicrotasks();
+        expect(c.state.fase, isA<FaseExplorar>());
+        final u = c.state.ubicacion.coordenada!;
+        expect(distancia(u, casaDemo), lessThan(5));
+      },
+    );
+  });
+
   for (final destino in destinosDemo) {
     for (final (velocidad, enOpciones) in [
       (15.0, Duration.zero),
