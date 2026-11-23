@@ -110,6 +110,45 @@ void main() {
     await a.capturar('en_bus');
     await a.cerrar();
   });
+  testWidgets('al subir, el aviso de que el bus llega se va', (tester) async {
+    final a = await Arnes.montar(
+      tester,
+      prefijo: 'demo_aviso',
+      demo: true,
+      velocidad: 30,
+    );
+    await a.esperar(const Duration(seconds: 2));
+    // Con trasbordo: en la segunda espera nada más tapa el aviso al subir.
+    await tester.dragUntilVisible(
+      find.byKey(const ValueKey('demo-destino-punta-carretas')),
+      find.byKey(const ValueKey('demo-destinos')),
+      const Offset(-160, 0),
+    );
+    await a.esperar(const Duration(milliseconds: 300));
+    await a.tocar('demo-destino-punta-carretas');
+    await a.hasta(
+      () =>
+          a.fase is FaseOpciones &&
+          (a.fase as FaseOpciones).estado == EstadoOpciones.listo,
+    );
+    await a.tocar('empezar-viaje');
+    final aviso = find.byKey(const ValueKey('aviso-busLlegando'));
+    // Esperando el segundo bus, avisa que llega (a 30x, segundos antes de
+    // subir: el aviso dura más que eso).
+    await a.hasta(
+      () =>
+          a.fase is FaseViaje &&
+          (a.fase as FaseViaje).pasoActual == 3 &&
+          aviso.evaluate().isNotEmpty,
+      paso: const Duration(milliseconds: 100),
+      razon: 'aviso de que el segundo bus llega',
+    );
+    await a.hastaPaso(4);
+    await a.esperar(const Duration(seconds: 1));
+    expect(aviso, findsNothing, reason: 'ya subió: el aviso quedó viejo');
+    await a.cerrar();
+  });
+
   // En inglés las cifras son más largas ("Arrives in 1 min" contra "Llega en
   // 1 min"): en una pantalla angosta la cifra no puede partirse en dos líneas,
   // porque con maxLines: 1 la segunda (el número) se pierde.
