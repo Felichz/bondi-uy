@@ -21,6 +21,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../contract/app_state.dart';
 import '../../contract/proveedores.dart';
 import '../../contract/trazas.dart';
+import '../plataforma/enlaces.dart';
 import '../textos/textos.dart';
 
 // --- Paleta de la placa (siempre oscura) --------------------------------------
@@ -56,6 +57,71 @@ Color _colorDe(Traza t) {
     Pieza.catalogo || Pieza.lugares => _red,
     _ => _accion,
   };
+}
+
+/// El color del dominio de cada pieza.
+Color _colorPieza(Pieza p) => switch (p) {
+  Pieza.interfaz => _accion,
+  Pieza.controlador => _estado,
+  Pieza.navegador || Pieza.ubicacion => _ubicacion,
+  Pieza.seguidor || Pieza.llegadas => _bus,
+  Pieza.recomendador || Pieza.planificador => _plan,
+  Pieza.catalogo || Pieza.lugares => _red,
+};
+
+IconData _iconoPieza(Pieza p) => switch (p) {
+  Pieza.interfaz => Icons.swap_horiz,
+  Pieza.controlador => Icons.hub_outlined,
+  Pieza.navegador => Icons.navigation_outlined,
+  Pieza.seguidor => Icons.directions_bus_outlined,
+  Pieza.recomendador => Icons.sort,
+  Pieza.ubicacion => Icons.my_location,
+  Pieza.llegadas => Icons.schedule,
+  Pieza.planificador => Icons.alt_route,
+  Pieza.catalogo => Icons.map_outlined,
+  Pieza.lugares => Icons.place_outlined,
+};
+
+/// Dónde está cada pieza en el repositorio.
+String _archivoPieza(Pieza p) => switch (p) {
+  Pieza.interfaz => 'lib/contract/',
+  Pieza.controlador => 'lib/logic/app_controller.dart',
+  Pieza.navegador => 'lib/logic/viaje/navegador.dart',
+  Pieza.seguidor => 'lib/logic/viaje/seguidor_bus.dart',
+  Pieza.recomendador => 'lib/logic/viaje/recomendador.dart',
+  Pieza.ubicacion => 'lib/logic/servicios/ubicacion_gps.dart',
+  Pieza.llegadas => 'lib/logic/servicios/montevideo.dart',
+  Pieza.planificador => 'lib/logic/servicios/otp.dart',
+  Pieza.catalogo => 'lib/logic/servicios/catalogo_assets.dart',
+  Pieza.lugares => 'lib/logic/servicios/lugares.dart',
+};
+
+const _repo = 'https://github.com/Felichz/bondi-uy';
+
+String _enlacePieza(Pieza p) {
+  final f = _archivoPieza(p);
+  return f.endsWith('/') ? '$_repo/tree/main/$f' : '$_repo/blob/main/$f';
+}
+
+/// La pata por donde una pista en [pt] entra a la caja [c] (null si [pt] no
+/// está en su borde).
+Rect? _pataEn(Rect c, Offset pt) {
+  const e = 0.5;
+  final enAlto = pt.dy > c.top && pt.dy < c.bottom;
+  final enAncho = pt.dx > c.left && pt.dx < c.right;
+  if (enAlto && (pt.dx - c.left).abs() < e) {
+    return Rect.fromLTWH(c.left - 6, pt.dy - 2, 6, 4);
+  }
+  if (enAlto && (pt.dx - c.right).abs() < e) {
+    return Rect.fromLTWH(c.right, pt.dy - 2, 6, 4);
+  }
+  if (enAncho && (pt.dy - c.top).abs() < e) {
+    return Rect.fromLTWH(pt.dx - 2, c.top - 6, 4, 6);
+  }
+  if (enAncho && (pt.dy - c.bottom).abs() < e) {
+    return Rect.fromLTWH(pt.dx - 2, c.bottom, 4, 6);
+  }
+  return null;
 }
 
 TextStyle _estilo(
@@ -112,6 +178,36 @@ class _Plano {
       RRect.fromRectAndRadius(ch.rect, const Radius.circular(12)),
   ];
 
+  /// La caja de cada pieza (la interfaz es la App API).
+  late final Map<Pieza, Rect> cajas = {
+    Pieza.interfaz: contrato,
+    for (final ch in chips.values) ch.pieza: ch.rect,
+  };
+
+  /// Las patas por donde entran las pistas a las cajas, por punto de pista.
+  late final Map<Offset, Rect> patas = () {
+    final r = <Offset, Rect>{};
+    for (final ruta in [...pistas.values, acciones, estado]) {
+      for (final pt in ruta) {
+        for (final c in cajas.values) {
+          final pata = _pataEn(c, pt);
+          if (pata != null) r[pt] = pata;
+        }
+      }
+    }
+    return r;
+  }();
+
+  Pieza? piezaEn(Offset o) {
+    for (final e in cajas.entries) {
+      if (e.value.inflate(4).contains(o)) return e.key;
+    }
+    return null;
+  }
+
+  String nombreDe(Pieza p) =>
+      p == Pieza.interfaz ? 'App API' : chips[p]!.nombre;
+
   _Plano._(
     this.tam,
     this.telefono,
@@ -129,12 +225,12 @@ class _Plano {
   static const _anchoControl = 214.0;
   static const _anchoNucleo = 196.0;
   static const _altoNucleo = 120.0;
-  static const _anchoPuerto = 204.0;
+  static const _anchoPuerto = 220.0;
   static const _huecoConector = 40.0;
   static const _huecoContrato = 48.0;
 
   /// Lugar para que las pistas a los puertos doblen a la derecha del núcleo.
-  static const _huecoPuertos = 100.0;
+  static const _huecoPuertos = 92.0;
   static const _margen = 24.0;
 
   /// Ancho que necesita la placa a la derecha del teléfono.
@@ -280,7 +376,7 @@ class _Plano {
       pistas[(Pieza.controlador, c.pieza)] = _ruta(
         salida,
         Offset(c.rect.left, c.rect.center.dy),
-        quiebre: finNucleo + 28 + i * 16,
+        quiebre: finNucleo + 28 + i * 14,
       );
     }
     for (final p in [Pieza.navegador, Pieza.recomendador]) {
@@ -371,9 +467,26 @@ class _Pulso {
   final double inicio;
   final double duracion;
 
-  _Pulso(this.puntos, this.color, this.inicio)
+  /// Las patas que cruza, con su distancia sobre el recorrido.
+  final List<(double, Rect)> patas;
+
+  /// Cuántas patas ya cruzó la cabeza.
+  int cruzadas = 0;
+
+  _Pulso(this.puntos, this.color, this.inicio, Map<Offset, Rect> patasDelPlano)
     : acum = _acumular(puntos),
-      duracion = (_acumular(puntos).last / 900).clamp(0.35, 1.1);
+      duracion = (_acumular(puntos).last / 900).clamp(0.35, 1.1),
+      patas = [
+        for (final (i, a) in _acumular(puntos).indexed)
+          if (patasDelPlano[puntos[i]] case final r?) (a, r),
+      ];
+
+  /// Dónde está la cabeza en [ahora] (distancia sobre el recorrido).
+  double cabeza(double ahora) =>
+      Curves.easeInOutCubic.transform(
+        ((ahora - inicio) / duracion).clamp(0.0, 1.0),
+      ) *
+      largo;
 
   static List<double> _acumular(List<Offset> p) {
     final a = List<double>.filled(p.length, 0);
@@ -435,6 +548,13 @@ class _Vivo extends ChangeNotifier {
     for (final p in Pieza.values) p: _Lectura(),
   };
 
+  /// Lo último que cruzó la App API en cada sentido.
+  final accion = _Lectura();
+  final estado = _Lectura();
+
+  /// Cuándo entró o salió algo por cada pata (se enciende un instante).
+  final Map<Rect, (double, Color)> patas = {};
+
   /// Cuándo pasó algo por cada pista (para que quede encendida un instante).
   final Map<List<Offset>, (double, Color)> encendidas = Map.identity();
   final ValueNotifier<List<_Linea>> consola = ValueNotifier(const []);
@@ -443,6 +563,16 @@ class _Vivo extends ChangeNotifier {
   void tic(double t) {
     ahora = t;
     pulsos.removeWhere((p) => t - p.inicio > p.duracion + 0.4);
+    // La pata se enciende cuando la cabeza del pulso pasa por ella.
+    for (final pu in pulsos) {
+      final s = pu.cabeza(t);
+      while (pu.cruzadas < pu.patas.length &&
+          pu.patas[pu.cruzadas].$1 <= s + 0.5) {
+        patas[pu.patas[pu.cruzadas].$2] = (t, pu.color);
+        pu.cruzadas++;
+      }
+    }
+    patas.removeWhere((_, v) => t - v.$1 > 1);
     notifyListeners();
   }
 
@@ -454,7 +584,7 @@ class _Vivo extends ChangeNotifier {
       // alcanza para verla viva (no un tren continuo).
       final ultimo = encendidas[recorrido];
       if (ultimo == null || ahora - ultimo.$1 > 0.09) {
-        pulsos.add(_Pulso(recorrido, color, ahora));
+        pulsos.add(_Pulso(recorrido, color, ahora, plano!.patas));
       }
       encendidas[recorrido] = (ahora, color);
     }
@@ -462,6 +592,14 @@ class _Vivo extends ChangeNotifier {
     // (acciones y estado) queda en la lectura de la interfaz.
     for (final p in [t.desde, t.hacia]) {
       lecturas[p]!
+        ..llamada = t.llamada
+        ..resultado = t.resultado
+        ..color = color
+        ..momento = ahora
+        ..cuenta += 1;
+    }
+    if (t.desde == Pieza.interfaz || t.hacia == Pieza.interfaz) {
+      (t.desde == Pieza.interfaz ? accion : estado)
         ..llamada = t.llamada
         ..resultado = t.resultado
         ..color = color
@@ -581,6 +719,9 @@ class _PorDentroState extends ConsumerState<PorDentro>
   ui.Image? _fijo;
   (Size, double)? _claveFijo;
   double _ultimoEstado = -10;
+
+  /// La pieza bajo el mouse (su tarjeta se muestra al lado).
+  Pieza? _sobre;
   String? _resumenEstado;
 
   @override
@@ -673,9 +814,28 @@ class _PorDentroState extends ConsumerState<PorDentro>
           child: Stack(
             children: [
               Positioned.fill(
-                child: RepaintBoundary(
-                  child: CustomPaint(
-                    painter: _PintorPlaca(plano, _fijo!, _vivo),
+                child: MouseRegion(
+                  cursor:
+                      _sobre == null
+                          ? MouseCursor.defer
+                          : SystemMouseCursors.click,
+                  onHover: (e) {
+                    final p = plano.piezaEn(e.localPosition);
+                    if (p != _sobre) setState(() => _sobre = p);
+                  },
+                  onExit: (_) {
+                    if (_sobre != null) setState(() => _sobre = null);
+                  },
+                  child: GestureDetector(
+                    onTapUp: (e) {
+                      final p = plano.piezaEn(e.localPosition);
+                      if (p != null) abrirEnlace(_enlacePieza(p));
+                    },
+                    child: RepaintBoundary(
+                      child: CustomPaint(
+                        painter: _PintorPlaca(plano, _fijo!, _vivo),
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -699,13 +859,22 @@ class _PorDentroState extends ConsumerState<PorDentro>
                             (context, b) =>
                                 b.maxHeight < 120
                                     ? const SizedBox.shrink()
-                                    : _Consola(_vivo.consola),
+                                    // Alta como sus renglones, no más.
+                                    : Align(
+                                      alignment: Alignment.topLeft,
+                                      child: SizedBox(
+                                        height: math.min(b.maxHeight, 340),
+                                        child: _Consola(_vivo.consola),
+                                      ),
+                                    ),
                       ),
                     ),
                   ],
                 ),
               ),
               Positioned.fromRect(rect: telefono, child: widget.telefono),
+              if (_sobre case final p?)
+                _Tarjeta.junto(p, plano.nombreDe(p), plano.cajas[p]!, plano),
             ],
           ),
         );
@@ -715,6 +884,95 @@ class _PorDentroState extends ConsumerState<PorDentro>
 }
 
 // --- Texto -------------------------------------------------------------------------
+
+/// La tarjeta de una pieza: qué hace y dónde está su código.
+class _Tarjeta extends StatelessWidget {
+  final Pieza pieza;
+  final String nombre;
+  const _Tarjeta(this.pieza, this.nombre);
+
+  static const ancho = 300.0;
+  static const altoEstimado = 190.0;
+
+  /// La tarjeta debajo de la caja (o arriba, si abajo no entra), sin tapar
+  /// el teléfono.
+  static Widget junto(Pieza p, String nombre, Rect caja, _Plano plano) {
+    final abajo = caja.bottom + 12 + altoEstimado < plano.tam.height;
+    final double izq = caja.left.clamp(
+      plano.telefono.right + 16,
+      math.max(plano.telefono.right + 16, plano.tam.width - ancho - 16),
+    );
+    return Positioned(
+      left: izq,
+      top: abajo ? caja.bottom + 12 : null,
+      bottom: abajo ? null : plano.tam.height - caja.top + 12,
+      width: ancho,
+      child: IgnorePointer(child: _Tarjeta(p, nombre)),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _colorPieza(pieza);
+    return DecoratedBox(
+      key: const ValueKey('tarjeta-pieza'),
+      decoration: BoxDecoration(
+        color: const Color(0xF50F1318),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFF2E3744)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x99000000),
+            blurRadius: 30,
+            offset: Offset(0, 14),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Icon(_iconoPieza(pieza), size: 17, color: color),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    nombre,
+                    style: _estilo(15, _texto, peso: FontWeight.w700),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              _archivoPieza(pieza),
+              style: _estilo(12, color.withValues(alpha: 0.85)),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              tx.coreDetalle(pieza),
+              style: _estilo(13, _textoSuave).copyWith(height: 1.45),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                const Icon(Icons.open_in_new, size: 13, color: _textoTenue),
+                const SizedBox(width: 6),
+                Text(
+                  tx.coreVerCodigo,
+                  style: _estilo(12, _textoTenue, peso: FontWeight.w600),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class _Relato extends StatelessWidget {
   const _Relato();
@@ -1029,6 +1287,7 @@ void _pintarFijo(Canvas c, _Plano p) {
         ..strokeJoin = StrokeJoin.round,
     );
     for (final v in [pts.first, pts.last]) {
+      if (p.patas.containsKey(v)) continue;
       c.drawCircle(v, 4.5, Paint()..color = _pista);
       c.drawCircle(v, 2, Paint()..color = _fondoBorde);
     }
@@ -1058,7 +1317,9 @@ void _pintarFijo(Canvas c, _Plano p) {
   }
 
   // Cuerpos de los chips, el contrato incluido.
-  void cuerpo(Rect rect, {required bool puerto}) {
+  bool libre(Offset o) =>
+      !p.patas.values.any((q) => (q.center - o).distance < 8);
+  void cuerpo(Rect rect, {required bool puerto, Color? acento}) {
     final rr = RRect.fromRectAndRadius(rect, const Radius.circular(12));
     c.drawRRect(
       rr.shift(const Offset(0, 14)),
@@ -1071,8 +1332,12 @@ void _pintarFijo(Canvas c, _Plano p) {
     final n = (rect.height / 16).floor();
     for (var i = 0; i < n; i++) {
       final y = rect.top + 12 + i * (rect.height - 24) / math.max(1, n - 1);
-      c.drawRect(Rect.fromLTWH(rect.left - 5, y - 1.5, 5, 3), pata);
-      if (!puerto) c.drawRect(Rect.fromLTWH(rect.right, y - 1.5, 5, 3), pata);
+      if (libre(Offset(rect.left - 3, y))) {
+        c.drawRect(Rect.fromLTWH(rect.left - 5, y - 1.5, 5, 3), pata);
+      }
+      if (!puerto && libre(Offset(rect.right + 3, y))) {
+        c.drawRect(Rect.fromLTWH(rect.right, y - 1.5, 5, 3), pata);
+      }
     }
     c.drawRRect(
       rr,
@@ -1094,19 +1359,29 @@ void _pintarFijo(Canvas c, _Plano p) {
           const [0, 0.25, 1],
         ),
     );
-    // Marca de orientación del encapsulado.
-    if (!puerto) {
-      c.drawCircle(
-        rect.topLeft + const Offset(14, 14),
-        3,
-        Paint()..color = const Color(0xFF0C0F13),
+    // Los puertos (el mundo de afuera) llevan una franja de su dominio.
+    if (acento != null) {
+      c.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(rect.left + 8, rect.top + 14, 3, rect.height - 28),
+          const Radius.circular(1.5),
+        ),
+        Paint()..color = acento.withValues(alpha: 0.55),
       );
     }
   }
 
   cuerpo(p.contrato, puerto: false);
   for (final ch in p.chips.values) {
-    cuerpo(ch.rect, puerto: ch.puerto);
+    cuerpo(
+      ch.rect,
+      puerto: ch.puerto,
+      acento: ch.puerto ? _colorPieza(ch.pieza) : null,
+    );
+  }
+  // Las patas por donde entran las pistas.
+  for (final q in p.patas.values) {
+    c.drawRect(q, Paint()..color = _pin.withValues(alpha: 0.9));
   }
 }
 
@@ -1171,7 +1446,7 @@ class _PintorPlaca extends CustomPainter {
     // Pulsos: una cabeza brillante con su estela, por la pista.
     for (final pu in vivo.pulsos) {
       final f = ((ahora - pu.inicio) / pu.duracion).clamp(0.0, 1.0);
-      final s = Curves.easeInOutCubic.transform(f) * pu.largo;
+      final s = pu.cabeza(ahora);
       final cola = math.max(0.0, s - 90);
       final desvanecer =
           f >= 1
@@ -1231,84 +1506,142 @@ class _PintorPlaca extends CustomPainter {
       c.restore();
     }
 
-    // La App API (el contrato): por ella cruzan las acciones y el estado.
-    final cruce = vivo.lecturas[Pieza.interfaz]!;
-    _rotulos(
-      c,
-      p.contrato,
-      'App API',
-      'AppActions · AppState',
-      cruce.momento,
-      cruce,
-      ahora,
-      puerto: false,
-    );
-    for (final ch in p.chips.values) {
-      final l = vivo.lecturas[ch.pieza]!;
-      _rotulos(
-        c,
-        ch.rect,
-        ch.nombre,
-        ch.papel,
-        l.momento,
-        l,
-        ahora,
-        puerto: ch.puerto,
+    // Las patas encendidas: por ahí entró (o salió) algo recién.
+    for (final e in vivo.patas.entries) {
+      final k = (1 - (ahora - e.value.$1) / 0.9).clamp(0.0, 1.0);
+      if (k <= 0) continue;
+      _brillo(c, e.key.center, 11, e.value.$2, 0.6 * k);
+      c.drawRect(
+        e.key,
+        Paint()
+          ..color =
+              Color.lerp(_pin, Color.lerp(e.value.$2, Colors.white, 0.3), k)!,
       );
+    }
+
+    _api(c, p.contrato, ahora);
+    for (final ch in p.chips.values) {
+      _rotulos(c, ch, vivo.lecturas[ch.pieza]!, ahora);
     }
   }
 
-  void _rotulos(
-    Canvas c,
-    Rect r,
-    String nombre,
-    String papel,
-    double momento,
-    _Lectura? l,
-    double ahora, {
-    required bool puerto,
-  }) {
-    final activo = (1 - (ahora - momento) / 0.9).clamp(0.0, 1.0);
-    final color = l?.color ?? _estado;
-    // Luz de actividad.
+  /// La luz de actividad y la cuenta de llamadas, arriba a la derecha.
+  void _luz(Canvas c, Rect r, _Lectura l, int cuenta, double ahora) {
+    final activo = (1 - (ahora - l.momento) / 0.9).clamp(0.0, 1.0);
     final luz = r.topRight + const Offset(-16, 16);
-    if (activo > 0) {
-      _brillo(c, luz, 14, color, 0.6 * activo);
-      // El filo del chip toma el color de lo que pasó por él.
-      c.drawRRect(
-        RRect.fromRectAndRadius(r.inflate(1.5), const Radius.circular(13)),
-        Paint()
-          ..color = color.withValues(alpha: 0.35 * activo)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.5,
-      );
-    }
+    if (activo > 0) _brillo(c, luz, 14, l.color, 0.6 * activo);
     c.drawCircle(
       luz,
       3.2,
-      Paint()..color = Color.lerp(const Color(0xFF2A313B), color, activo)!,
+      Paint()..color = Color.lerp(const Color(0xFF2A313B), l.color, activo)!,
     );
+    if (cuenta == 0) return;
+    final t = _t('$cuenta', _estilo(10.5, _textoTenue, peso: FontWeight.w600));
+    t.paint(c, Offset(r.right - 26 - t.width, r.top + 10));
+  }
 
-    final x = r.left + (puerto ? 16 : 28);
+  /// El ícono de la pieza: más vivo mientras algo pasa por ella.
+  void _icono(Canvas c, Pieza p, Offset o, double activo) {
+    final i = _iconoPieza(p);
+    _t(
+      String.fromCharCode(i.codePoint),
+      TextStyle(
+        fontFamily: i.fontFamily,
+        package: i.fontPackage,
+        fontSize: 15,
+        height: 1,
+        color: _colorPieza(p).withValues(alpha: 0.6 + 0.4 * activo),
+      ),
+    ).paint(c, o);
+  }
+
+  /// La App API por dentro: arriba el carril de las acciones (entran desde
+  /// la UI), abajo el del estado (sale hacia la UI), a la altura de sus
+  /// pistas.
+  void _api(Canvas c, Rect r, double ahora) {
+    final a = vivo.accion, e = vivo.estado;
+    final ultima = a.momento >= e.momento ? a : e;
+    _luz(c, r, ultima, a.cuenta + e.cuenta, ahora);
+    final activo = (1 - (ahora - ultima.momento) / 0.9).clamp(0.0, 1.0);
+    _icono(c, Pieza.interfaz, Offset(r.left + 14, r.top + 18.5), activo);
+    final x = r.left + 36;
+    _t(
+      'App API',
+      _estilo(16, _texto, peso: FontWeight.w700),
+      ancho: r.right - x - 30,
+    ).paint(c, Offset(x, r.top + 16));
+    final cy = r.center.dy;
+    c.drawLine(
+      Offset(r.left + 12, cy + 7),
+      Offset(r.right - 12, cy + 7),
+      Paint()
+        ..color = const Color(0x14FFFFFF)
+        ..strokeWidth = 1,
+    );
+    void carril(_Lectura l, String nombre, double y, Color color, bool entra) {
+      final k = (1 - (ahora - l.momento) / 0.9).clamp(0.0, 1.0);
+      // Una flecha en el sentido del carril.
+      final m = Offset(r.left + 20, y);
+      final s = entra ? 1.0 : -1.0;
+      c.drawPath(
+        Path()
+          ..moveTo(m.dx - 3.5 * s, m.dy - 4.5)
+          ..lineTo(m.dx + 3.5 * s, m.dy)
+          ..lineTo(m.dx - 3.5 * s, m.dy + 4.5)
+          ..close(),
+        Paint()..color = Color.lerp(_textoTenue, color, 0.35 + 0.65 * k)!,
+      );
+      // El nombre a la altura de la pista; debajo, lo último que pasó (del
+      // estado, su resumen: que es un AppState ya lo dice el carril).
+      final ancho = r.right - x - 10;
+      _t(
+        nombre,
+        _estilo(11.5, _textoTenue),
+        ancho: ancho,
+      ).paint(c, Offset(x, y - 7.5));
+      if (l.cuenta == 0) return;
+      _t(
+        entra ? l.llamada : (l.resultado ?? l.llamada),
+        _estilo(11.5, l.color, peso: FontWeight.w600),
+        ancho: ancho,
+      ).paint(c, Offset(x, y + 8));
+    }
+
+    carril(a, 'AppActions', cy - 22, _accion, true);
+    carril(e, 'AppState', cy + 22, _estado, false);
+  }
+
+  void _rotulos(Canvas c, _Chip ch, _Lectura l, double ahora) {
+    final r = ch.rect;
+    final puerto = ch.puerto;
+    _luz(c, r, l, l.cuenta, ahora);
+    final activo = (1 - (ahora - l.momento) / 0.9).clamp(0.0, 1.0);
+    final x = r.left + (puerto ? 38 : 36);
     final ancho = r.right - x - 30;
     var y = r.top + (puerto ? 14 : 16);
     final tNombre = _t(
-      nombre,
+      ch.nombre,
       _estilo(puerto ? 15 : 16, _texto, peso: FontWeight.w700),
       ancho: ancho,
+    );
+    _icono(
+      c,
+      ch.pieza,
+      Offset(r.left + (puerto ? 17 : 14), y + (tNombre.height - 15) / 2),
+      activo,
     );
     tNombre.paint(c, Offset(x, y));
     y += tNombre.height + 3;
     // El papel, en dos renglones si hace falta (no se corta).
     final tPapel = _t(
-      papel,
+      ch.papel,
       _estilo(11.5, _textoTenue),
       ancho: r.right - x - 14,
       lineas: puerto ? 1 : 2,
     );
     tPapel.paint(c, Offset(x, y));
     y += tPapel.height + 8;
-    if (l == null || l.cuenta == 0 || y + 14 > r.bottom) return;
+    if (l.cuenta == 0 || y + 14 > r.bottom) return;
     final tLlamada = _t(
       l.llamada,
       _estilo(11.5, l.color, peso: FontWeight.w600),
@@ -1324,12 +1657,6 @@ class _PintorPlaca extends CustomPainter {
         ancho: r.right - x - 14,
       ).paint(c, Offset(x, y));
     }
-    // Cuántas llamadas pasaron por acá.
-    final cuenta = _t(
-      '${l.cuenta}',
-      _estilo(10.5, _textoTenue, peso: FontWeight.w600),
-    );
-    cuenta.paint(c, Offset(r.right - 26 - cuenta.width, r.top + 10));
   }
 
   /// Un resplandor redondo: degradé radial, sin desenfoque.

@@ -3,6 +3,8 @@
 // La lógica nunca manda texto: solo datos. Todo lo que se lee está acá. El
 // idioma se elige en la raíz de la app (`fijarIdioma`) y se lee con `tx`.
 
+import '../../contract/trazas.dart';
+
 enum Idioma { es, en }
 
 Textos _actual = const TextosEs();
@@ -189,6 +191,8 @@ abstract class Textos {
   String get coreNavegador;
   String get coreSeguidor;
   String get coreRecomendador;
+  String coreDetalle(Pieza p);
+  String get coreVerCodigo;
   String get avisoApp;
   String get avisoAppDetalle;
   String get avisoAppDescargar;
@@ -544,6 +548,37 @@ class TextosEs extends Textos {
   String get coreSeguidor => 'qué bus viene y por dónde';
   @override
   String get coreRecomendador => 'ordena y elige la opción';
+  @override
+  String coreDetalle(Pieza p) => switch (p) {
+    Pieza.interfaz =>
+      'La frontera entre la UI y la lógica: la UI llama acciones y lee el '
+          'estado, y nada más.',
+    Pieza.controlador =>
+      'Implementa las acciones, coordina las piezas del núcleo y los puertos, '
+          'y publica un AppState nuevo con cada cambio.',
+    Pieza.navegador =>
+      'Con cada lectura del GPS decide en qué paso del viaje estás y cuánto '
+          'falta.',
+    Pieza.seguidor =>
+      'Entre los buses que llegan a la parada elige el tuyo y lo sigue hasta '
+          'que subís.',
+    Pieza.recomendador => 'Ordena los itinerarios y marca el recomendado.',
+    Pieza.ubicacion =>
+      'Puerto de ubicación: en el teléfono, el GPS; en la demo, un usuario '
+          'simulado.',
+    Pieza.llegadas =>
+      'Puerto de llegadas: la API de transporte de la Intendencia de '
+          'Montevideo; en la demo, buses simulados con horario.',
+    Pieza.planificador =>
+      'Puerto de planificación: OpenTripPlanner arma los itinerarios; en la '
+          'demo, viajes grabados.',
+    Pieza.catalogo =>
+      'Puerto de la red: las paradas y los recorridos GTFS que vienen con la '
+          'app.',
+    Pieza.lugares => 'Puerto de búsqueda: sugiere lugares mientras escribís.',
+  };
+  @override
+  String get coreVerCodigo => 'Clic para ver el código';
   @override
   String get avisoApp => 'BondiUY para Android';
   @override
@@ -904,6 +939,36 @@ class TextosEn extends Textos {
   String get coreSeguidor => 'which bus is coming, and where';
   @override
   String get coreRecomendador => 'sorts and picks the option';
+  @override
+  String coreDetalle(Pieza p) => switch (p) {
+    Pieza.interfaz =>
+      'The boundary between the UI and the logic: the UI calls actions and '
+          'reads the state, and nothing else.',
+    Pieza.controlador =>
+      'Implements the actions, coordinates the core pieces and the ports, and '
+          'publishes a new AppState on every change.',
+    Pieza.navegador =>
+      'With every GPS reading, works out which step of the trip you are on '
+          'and how far is left.',
+    Pieza.seguidor =>
+      'Picks your bus among the ones arriving at the stop and follows it '
+          'until you board.',
+    Pieza.recomendador =>
+      'Sorts the itineraries and marks the recommended one.',
+    Pieza.ubicacion =>
+      'Location port: the GPS on the phone; a simulated user in the demo.',
+    Pieza.llegadas =>
+      'Arrivals port: the Montevideo city transit API; scheduled simulated '
+          'buses in the demo.',
+    Pieza.planificador =>
+      'Planning port: OpenTripPlanner builds the itineraries; recorded trips '
+          'in the demo.',
+    Pieza.catalogo =>
+      'Network port: the GTFS stops and route shapes bundled with the app.',
+    Pieza.lugares => 'Search port: suggests places as you type.',
+  };
+  @override
+  String get coreVerCodigo => 'Click to see the code';
   @override
   String get avisoApp => 'BondiUY for Android';
   @override

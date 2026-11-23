@@ -4,6 +4,7 @@
 
 import 'package:bondi_uy/contract/app_state.dart';
 import 'package:bondi_uy/contract/trazas.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -74,6 +75,28 @@ void main() {
         await a.hastaPaso(1);
         await a.esperar(const Duration(milliseconds: 800));
         await a.capturar('esperando');
+
+        // Con el mouse sobre una pieza, su tarjeta dice dónde está el código.
+        final telefono = telefonoPorDentro(
+          tam,
+          tamTelefonoPorDentro(tam.height),
+        );
+        final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+        await mouse.addPointer(location: Offset.zero);
+        for (final (pieza, archivo) in const [
+          ('seguidor', 'lib/logic/viaje/seguidor_bus.dart'),
+          ('contrato', 'lib/contract/'),
+          ('lugares', 'lib/logic/servicios/lugares.dart'),
+        ]) {
+          await mouse.moveTo(cajasDeLaPlaca(tam, telefono)[pieza]!.center);
+          await a.esperar(const Duration(milliseconds: 300));
+          expect(find.text(archivo), findsOneWidget, reason: pieza);
+          await a.capturar('tarjeta_$pieza');
+        }
+        await mouse.moveTo(Offset(tam.width - 4, 4));
+        await a.esperar(const Duration(milliseconds: 100));
+        expect(find.byKey(const ValueKey('tarjeta-pieza')), findsNothing);
+        await mouse.removePointer();
         await a.hastaPaso(2);
         await a.esperar(const Duration(milliseconds: 1500));
         await a.capturar('en_bus');
