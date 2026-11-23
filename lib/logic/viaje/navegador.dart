@@ -170,7 +170,9 @@ class Navegador {
         // ¿Se adelantó y ya viaja en el bus siguiente?
         final saltoBus = _pasoBusSiViaja(c, velocidad, desde: _paso + 1);
         if (saltoBus != null) return saltoBus;
-        return null;
+        final lejos =
+            _lineas[_paso]!.proyectar(c).distanciaLateral > reglas.corredorBus;
+        return lejos ? _adelante(c, velocidad) : null;
       case TramoEsperar():
         final bus = opcion.tramos[_paso + 1] as TramoBus;
         final linea = _lineas[_paso + 1]!;
@@ -178,31 +180,64 @@ class Navegador {
           return _paso + 2; // Se lo perdimos entero: ya llegó a la bajada.
         }
         if (_viajaSobre(linea, c, velocidad)) return _paso + 1;
-        return null;
+        final lejos = distancia(c, tramo.parada.coordenada) > 100;
+        return lejos ? _adelante(c, velocidad) : null;
       case TramoBus():
         final linea = _lineas[_paso]!;
         final p = linea.proyectar(c, desde: _recorridoPrevio - 100);
-        if (distancia(c, tramo.bajada.coordenada) <= reglas.radioBajada ||
-            (p.distanciaLateral <= reglas.corredorBus &&
-                linea.largo - p.recorrido <= 20)) {
+        // Bajó: está al final del recorrido o junto a la bajada, con el bus
+        // detenido (o ya a pie). Mientras el bus anda todavía va arriba: no se
+        // lo da por bajado unos metros antes de la parada.
+        final alFinal =
+            p.distanciaLateral <= reglas.corredorBus &&
+            linea.largo - p.recorrido <= 20;
+        final enLaBajada =
+            distancia(c, tramo.bajada.coordenada) <= reglas.radioBajada;
+        final enMarcha = velocidad != null && velocidad >= reglas.velocidadBus;
+        if ((alFinal || enLaBajada) && !enMarcha) return _paso + 1;
+        // Ya había llegado a la bajada y ahora va a pie: bajó, aunque entre
+        // dos lecturas se haya alejado de la parada por la misma calle.
+        if (linea.largo - _recorridoPrevio <= 20 &&
+            velocidad != null &&
+            velocidad < reglas.velocidadBus) {
           return _paso + 1;
         }
-        // Se bajó entre dos lecturas (GPS cortado, app suspendida): ya no
-        // está sobre el recorrido del bus sino sobre la caminata siguiente.
-        if (p.distanciaLateral > reglas.corredorBus &&
-            _paso + 1 < opcion.tramos.length) {
-          final sig = opcion.tramos[_paso + 1];
-          if (sig is TramoCaminar) {
-            final q = _lineas[_paso + 1]!.proyectar(c);
-            if (q.distanciaLateral <= reglas.corredorBus) {
-              final radio =
-                  sig.esAlDestino ? reglas.radioDestino : reglas.radioParada;
-              return distancia(c, sig.fin) <= radio ? _paso + 2 : _paso + 1;
-            }
-          }
+        // Se bajó entre dos lecturas (GPS cortado, app suspendida, lecturas
+        // espaciadas): ya no está sobre el recorrido del bus.
+        if (p.distanciaLateral > reglas.corredorBus) {
+          return _adelante(c, velocidad);
         }
         return null;
     }
+  }
+
+  /// El usuario ya no está donde dice el paso actual: entre dos lecturas
+  /// pasó uno o más pasos. El primer paso posterior que coincide con donde
+  /// está y cómo se mueve (viajando en un bus, caminando una caminata,
+  /// esperando en una parada), o el final si ya llegó al destino.
+  int? _adelante(Coordenada c, double? velocidad) {
+    final enMarcha = velocidad != null && velocidad >= reglas.velocidadBus;
+    for (var j = _paso + 1; j < opcion.tramos.length; j++) {
+      final t = opcion.tramos[j];
+      switch (t) {
+        case TramoBus():
+          if (_viajaSobre(_lineas[j]!, c, velocidad)) return j;
+        case TramoCaminar():
+          if (enMarcha) continue;
+          if (t.esAlDestino && distancia(c, t.fin) <= reglas.radioDestino) {
+            return j + 1;
+          }
+          if (_lineas[j]!.proyectar(c).distanciaLateral <= reglas.corredorBus) {
+            return j;
+          }
+        case TramoEsperar():
+          if (!enMarcha &&
+              distancia(c, t.parada.coordenada) <= reglas.radioParada) {
+            return j;
+          }
+      }
+    }
+    return null;
   }
 
   bool _viajaSobre(Polilinea linea, Coordenada c, double? velocidad) {
@@ -300,6 +335,9 @@ class Navegador {
         return ProgresoPaso(
           metrosRestantes: restante.round(),
           metrosTotales: _metrosTotalesPaso!.round(),
+          // Desde donde va el bus (avance que nunca retrocede) hasta la bajada.
+          recorridoRestante:
+              restante > 1 ? linea.tramo(_recorridoPrevio, linea.largo) : null,
           paradasRestantes: faltan,
           proximaParada: proxima ?? tramo.bajada,
         );
