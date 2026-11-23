@@ -7,7 +7,8 @@
 // entre lecturas, POR EL CAMINO cuando se conoce (la calle que caminás, el
 // recorrido del bus), así dobla en las esquinas. Cada lectura nueva corrige
 // el plan sin saltos: el marcador apura o afloja para alcanzar la posición
-// que predice la lectura.
+// que predice la lectura, sin pasar de unas tres veces su velocidad (una
+// corrección grande se reparte en más tiempo, no se hace de un tirón).
 //
 // Todo en coordenadas mercator normalizadas (0..1) y segundos.
 
@@ -49,6 +50,19 @@ class MovimientoPredicho {
   /// Punto que la predicción no puede pasar (la parada a la que viene el
   /// bus). Solo una lectura real más allá lo lleva del otro lado.
   Offset? _limite;
+
+  /// Constante de tiempo (s) con que se absorbe la diferencia entre lo que
+  /// se mostraba y la lectura nueva.
+  double _tau = 0.5;
+
+  /// Constante de tiempo para absorber [error] (mercator): medio segundo, o
+  /// más si así la corrección superaría el doble de la rapidez (+3 m/s). Con
+  /// una sola muestra de velocidad (recién apareció) la estimación es floja:
+  /// la corrección no pasa de la rapidez.
+  double _tauPara(double error) {
+    final margen = _rapidez * (_lecturas <= 1 ? 1 : 2) + 3 / metrosPorUnidad;
+    return (error / margen).clamp(0.5, 4.0);
+  }
 
   MovimientoPredicho(Offset inicio, double t)
     : _pos = inicio,
@@ -139,14 +153,24 @@ class MovimientoPredicho {
     // antes y corrige; si no llega (sin señal), se detiene recién entonces.
     final horizonte = math.max(2.0, _intervalo * 2);
     _t0 = t;
+    _horizonte = horizonte;
     _t1 = t + horizonte;
     _sLim = null;
     _pLim = null;
     final c = _camino;
     if (c != null) {
       final (sFijo, dFijo) = c.proyectar(p);
-      final (sPos, dPos) = c.proyectar(_pos);
-      if (dFijo * metrosPorUnidad < 30 && dPos * metrosPorUnidad < 30) {
+      // Con la lectura sobre el camino, el marcador va por el camino aunque
+      // se lo viera fuera de él: se lo ubica cerca de la lectura (no en otra
+      // vuelta del recorrido) y la diferencia se absorbe de a poco. En línea
+      // recta se saldría por la tangente en la primera curva.
+      if (dFijo * metrosPorUnidad < 30) {
+        final ventana = 400 / metrosPorUnidad;
+        final (sPos, _) = c.proyectar(
+          _pos,
+          desde: sFijo - ventana,
+          hasta: sFijo + ventana,
+        );
         final lim = _limite;
         if (lim != null) {
           // No pasarse de la parada, salvo que la lectura ya esté más allá.
@@ -156,10 +180,14 @@ class MovimientoPredicho {
         _porCamino = true;
         _s0 = sFijo;
         _errorS = sPos - sFijo;
+        _tau = _tauPara(_errorS.abs());
+        _t1 = math.max(_t1, t + 3 * _tau);
         // Muy adelantado (otra ruta, un error de GPS): se permite volver.
         _monotono = _errorS * metrosPorUnidad < 40;
         _sMostrado = sPos;
         _desvio = _pos - c.punto(sPos);
+        _tauDesvio = _tauPara(_desvio.distance);
+        _t1 = math.max(_t1, t + 3 * _tauDesvio);
         return;
       }
     }
@@ -168,6 +196,8 @@ class MovimientoPredicho {
     _porCamino = false;
     _p0 = p;
     _errorP = _pos - p;
+    _tau = _tauPara(_errorP.distance);
+    _t1 = math.max(_t1, t + 3 * _tau);
     final lim = _limite;
     final v = _velocidad.distance;
     if (lim != null && v > 0) {
@@ -179,6 +209,8 @@ class MovimientoPredicho {
   }
 
   // Plan vigente (ver [_planear]).
+  double _horizonte = 2;
+  double _tauDesvio = 0.5;
   double _errorS = 0;
   double _sMostrado = 0;
   bool _monotono = true;
@@ -190,11 +222,14 @@ class MovimientoPredicho {
   void avanzar(double t) {
     if (_t1 <= _t0) return;
     final dt = (math.min(t, _t1) - _t0).clamp(0.0, double.infinity);
-    final queda = math.exp(-dt / 0.5);
-    final absorber = 1 - (dt / 0.5).clamp(0.0, 1.0);
+    // Se predice el avance hasta el horizonte; la corrección sigue hasta
+    // absorberse.
+    final dtAvance = math.min(dt, _horizonte);
+    final queda = math.exp(-dt / _tau);
+    final absorber = math.exp(-dt / _tauDesvio);
     final c = _camino;
     if (_porCamino && c != null) {
-      var s = _s0 + _rapidez * dt + _errorS * queda;
+      var s = _s0 + _rapidez * dtAvance + _errorS * queda;
       final lim = _sLim;
       if (lim != null) s = math.min(s, lim);
       if (_monotono) s = math.max(s, _sMostrado);
@@ -204,7 +239,7 @@ class MovimientoPredicho {
       _pos = c.punto(s) + _desvio * absorber;
     } else {
       final antes = _pos;
-      var p = _p0 + _velocidad * dt + _errorP * queda;
+      var p = _p0 + _velocidad * dtAvance + _errorP * queda;
       final lim = _pLim;
       final v = _velocidad.distance;
       if (lim != null && v > 0) {
@@ -237,10 +272,13 @@ class _Camino {
 
   double get largo => acum.last;
 
-  /// (distancia recorrida hasta el punto más cercano, distancia lateral).
-  (double, double) proyectar(Offset p) {
+  /// (distancia recorrida hasta el punto más cercano, distancia lateral),
+  /// entre [desde] y [hasta] (distancias recorridas) si se indican.
+  (double, double) proyectar(Offset p, {double? desde, double? hasta}) {
     var mejorS = 0.0, mejorD = double.infinity;
     for (var i = 1; i < pts.length; i++) {
+      if (desde != null && acum[i] < desde) continue;
+      if (hasta != null && acum[i - 1] > hasta) break;
       final a = pts[i - 1], b = pts[i];
       final ab = b - a;
       final l2 = ab.dx * ab.dx + ab.dy * ab.dy;

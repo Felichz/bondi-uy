@@ -18,7 +18,7 @@ import '../../contract/modelo.dart';
 import 'encuadre.dart';
 import 'escena.dart';
 import 'estilo_mapa.dart';
-import 'movimiento.dart';
+import 'moviles.dart';
 import 'pintor_escena.dart';
 import 'proyeccion.dart';
 import 'teselas/fuente_teselas.dart';
@@ -96,19 +96,10 @@ class _MapaBondiState extends State<MapaBondi> with TickerProviderStateMixin {
   late final Ticker _reloj;
   Duration _ultimoTic = Duration.zero;
 
-  /// Marcadores que se mueven (el usuario, el bus): su posición se predice
-  /// entre lecturas para que avancen de forma continua.
-  final Map<String, MovimientoPredicho> _moviles = {};
-  final Map<String, Coordenada> _ultimaLectura = {};
+  /// Marcadores que se mueven (el usuario, el bus): se predicen entre
+  /// lecturas y se funden al cambiar de forma o irse.
+  final MovilesEscena _moviles = MovilesEscena();
   Timer? _reanudar;
-
-  /// Última marca mostrada de cada móvil y cuándo apareció: al cambiar de
-  /// forma (tu punto -> vos en el bus) o al irse (el bus que llegó), la
-  /// vieja se desvanece y la nueva aparece, en vez de saltar.
-  final Map<String, MarcaMapa> _mostradas = {};
-  final Map<String, double> _aparecio = {};
-  final List<(MarcaMapa, double)> _salientes = [];
-  static const _fundido = 0.45; // s
 
   /// La transición entre encuadres persigue al objetivo vivo (el usuario
   /// se sigue moviendo mientras la cámara viaja).
@@ -223,60 +214,14 @@ class _MapaBondiState extends State<MapaBondi> with TickerProviderStateMixin {
 
   // --- marcadores que se mueven ----------------------------------------------
 
-  static String? _claveMovil(MarcaMapa m) => switch (m) {
-    MarcaUsuario() || MarcaUsuarioEnBus() => 'usuario',
-    MarcaBus() => 'bus',
-    _ => null,
-  };
-
   void _sincronizarMoviles() {
-    final vistas = <String>{};
-    final ahora = _ahora;
-    final fundir = !_sinAnimaciones && !_tam.isEmpty;
-    for (final m in widget.escena.marcas) {
-      final k = _claveMovil(m);
-      if (k == null) continue;
-      vistas.add(k);
-      final antes = _mostradas[k];
-      if (fundir && (antes == null || antes.runtimeType != m.runtimeType)) {
-        if (antes != null) _salientes.add((antes, ahora));
-        _aparecio[k] = ahora;
-      }
-      final p = mercator(m.coordenada);
-      final camino = m.camino;
-      final mov = _moviles[k];
-      if (mov == null) {
-        _moviles[k] = MovimientoPredicho(p, ahora);
-        _ultimaLectura[k] = m.coordenada;
-        continue;
-      }
-      if (_ultimaLectura[k] == m.coordenada) continue;
-      _ultimaLectura[k] = m.coordenada;
-      mov.lectura(
-        p,
-        ahora,
-        camino: camino == null ? null : _caminoMercator(camino),
-        fuenteCamino: camino,
-        limite: m is MarcaBus && m.limite != null ? mercator(m.limite!) : null,
-        // Saltos grandes (otro bus, el GPS que se reubica) no se predicen.
-        reubicado: (p - mov.posicion).distance * metrosPorUnidad > 400,
-      );
-    }
-    for (final k in _mostradas.keys.toList()) {
-      if (vistas.contains(k)) continue;
-      // Se fue (el bus que llegó a la parada): se desvanece donde estaba.
-      if (fundir) _salientes.add((_mostradas[k]!, ahora));
-      _mostradas.remove(k);
-    }
-    _moviles.removeWhere((k, _) => !vistas.contains(k));
-    _ultimaLectura.removeWhere((k, _) => !vistas.contains(k));
-    _aparecio.removeWhere((k, _) => !vistas.contains(k));
+    _moviles.sincronizar(
+      widget.escena,
+      _ahora,
+      fundir: !_sinAnimaciones && !_tam.isEmpty,
+    );
     _asegurarReloj();
   }
-
-  final _caminos = Expando<List<Offset>>();
-  List<Offset> _caminoMercator(List<Coordenada> c) =>
-      _caminos[c] ??= [for (final p in c) mercator(p)];
 
   /// Tiempo del cuadro actual en segundos (respeta el tiempo falso de los
   /// tests).
@@ -290,90 +235,7 @@ class _MapaBondiState extends State<MapaBondi> with TickerProviderStateMixin {
 
   double _ultimoAhora = 0;
 
-  /// La escena con los marcadores móviles en su posición predicha y con su
-  /// rumbo; los recorridos que nacen en ellos (lo que falta caminar o
-  /// viajar, la aproximación del bus) arrancan donde se los ve.
-  EscenaMapa get _escenaMostrada {
-    if (_moviles.isEmpty && _salientes.isEmpty) return widget.escena;
-    final ahora = _ahora;
-    final lecturas = <String, (Coordenada, Coordenada)>{};
-    final marcas = <MarcaMapa>[];
-    final opacidad = Map<MarcaMapa, double>.identity();
-    _salientes.removeWhere((s) => ahora - s.$2 >= _fundido);
-    for (final (m, t0) in _salientes) {
-      marcas.add(m);
-      opacidad[m] = 1 - Curves.easeIn.transform((ahora - t0) / _fundido);
-    }
-    for (final m in widget.escena.marcas) {
-      final k = _claveMovil(m);
-      final mov = _moviles[k ?? ''];
-      if (k == null || mov == null) {
-        marcas.add(m);
-        continue;
-      }
-      final c = desdeMercator(mov.posicion);
-      lecturas[k] = (m.coordenada, c);
-      final mostrada = m.movidaA(c, rumbo: mov.rumbo);
-      _mostradas[k] = mostrada;
-      marcas.add(mostrada);
-      final t0 = _aparecio[k];
-      if (t0 != null && ahora - t0 < _fundido) {
-        opacidad[mostrada] = Curves.easeOut.transform(
-          ((ahora - t0) / _fundido).clamp(0.0, 1.0),
-        );
-      }
-    }
-    final trazos = [
-      for (final t in widget.escena.trazos)
-        switch (t.estilo) {
-          EstiloTrazo.caminar || EstiloTrazo.bus
-              when lecturas['usuario'] != null =>
-            _nacerEn(t, lecturas['usuario']!),
-          EstiloTrazo.aproximacion when lecturas['bus'] != null => _nacerEn(
-            t,
-            lecturas['bus']!,
-          ),
-          _ => t,
-        },
-    ];
-    return widget.escena.con(
-      marcas: marcas,
-      trazos: trazos,
-      opacidad: opacidad,
-    );
-  }
-
-  /// Si [t] nace en la lectura de un marcador móvil, lo hace nacer donde se
-  /// muestra el marcador (recortando lo que ya quedó atrás).
-  TrazoMapa _nacerEn(TrazoMapa t, (Coordenada, Coordenada) lectura) {
-    final (fijo, mostrado) = lectura;
-    final pts = t.puntos;
-    if (pts.length < 2) return t;
-    final inicio = mercator(pts.first);
-    if ((inicio - mercator(fijo)).distance * metrosPorUnidad > 30) return t;
-    final p = mercator(mostrado);
-    // Segmento más cercano a lo mostrado, entre los primeros del recorrido.
-    var mejor = 1;
-    var mejorD = double.infinity;
-    for (var i = 1; i < pts.length && i < 400; i++) {
-      final a = mercator(pts[i - 1]), b = mercator(pts[i]);
-      final ab = b - a;
-      final l2 = ab.dx * ab.dx + ab.dy * ab.dy;
-      final u =
-          l2 == 0
-              ? 0.0
-              : (((p - a).dx * ab.dx + (p - a).dy * ab.dy) / l2).clamp(
-                0.0,
-                1.0,
-              );
-      final d = (p - (a + ab * u)).distance;
-      if (d < mejorD) {
-        mejorD = d;
-        mejor = i;
-      }
-    }
-    return TrazoMapa(t.estilo, [mostrado, ...pts.skip(mejor)]);
-  }
+  EscenaMapa get _escenaMostrada => _moviles.mostrada(widget.escena, _ahora);
 
   // --- reloj: deslizamientos y seguimiento -----------------------------------
 
@@ -390,11 +252,7 @@ class _MapaBondiState extends State<MapaBondi> with TickerProviderStateMixin {
   void _asegurarReloj() {
     if (!mounted) return;
     final ahora = _ahora;
-    final hace =
-        _moviles.values.any((m) => m.enMovimientoA(ahora)) ||
-        _salientes.isNotEmpty ||
-        _aparecio.values.any((t) => ahora - t < _fundido) ||
-        _siguiendo;
+    final hace = _moviles.animando(ahora) || _siguiendo;
     if (hace && !_reloj.isActive) {
       _ultimoTic = Duration.zero;
       _reloj.start();
@@ -408,15 +266,7 @@ class _MapaBondiState extends State<MapaBondi> with TickerProviderStateMixin {
     );
     _ultimoTic = transcurrido;
     final ahora = _ahora;
-    var sigue = false;
-    for (final m in _moviles.values) {
-      m.avanzar(ahora);
-      if (m.enMovimientoA(ahora)) sigue = true;
-    }
-    if (_salientes.isNotEmpty ||
-        _aparecio.values.any((t) => ahora - t < _fundido)) {
-      sigue = true;
-    }
+    var sigue = _moviles.avanzar(ahora);
     var camara = _camara;
     if (_siguiendo) {
       final objetivo = _objetivo(widget.encuadre!);
@@ -465,11 +315,11 @@ class _MapaBondiState extends State<MapaBondi> with TickerProviderStateMixin {
     final esenciales = [
       for (final p in e.puntos) mercator(p),
       for (final k in e.moviles)
-        if (_moviles[k] case final m?) m.posicion,
+        if (_moviles.posicion(k) case final p?) p,
     ];
     final extras = [
       for (final k in e.extras)
-        if (_moviles[k] case final m?) m.posicion,
+        if (_moviles.posicion(k) case final p?) p,
     ];
     if (esenciales.isEmpty) return null;
     final v = _zonaUtil;
@@ -489,7 +339,7 @@ class _MapaBondiState extends State<MapaBondi> with TickerProviderStateMixin {
       if (todo.zoom >= math.max(e.zoomMin, e.zoomExtras) - 0.5) return todo;
     }
     var cam = encuadre(esenciales);
-    final ancla = _moviles[e.ancla ?? '']?.posicion;
+    final ancla = _moviles.posicion(e.ancla ?? '');
     if (ancla == null || cam.zoom >= e.zoomMin) return cam;
     // Ni lo esencial entra con un zoom legible: se acerca hasta el mínimo y
     // se corre hacia el grupo sin que el ancla (el usuario) salga de la vista.
