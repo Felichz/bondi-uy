@@ -128,4 +128,3 @@ class _Destino extends StatelessWidget {
     );
   }
 }
-

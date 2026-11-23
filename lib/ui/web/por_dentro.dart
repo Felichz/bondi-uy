@@ -1231,12 +1231,12 @@ class _PintorPlaca extends CustomPainter {
       c.restore();
     }
 
-    // El contrato: por él cruzan las acciones y el estado.
+    // La App API (el contrato): por ella cruzan las acciones y el estado.
     final cruce = vivo.lecturas[Pieza.interfaz]!;
     _rotulos(
       c,
       p.contrato,
-      'Contrato',
+      'App API',
       'AppActions · AppState',
       cruce.momento,
       cruce,

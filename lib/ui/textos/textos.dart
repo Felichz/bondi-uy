@@ -515,7 +515,7 @@ class TextosEs extends Textos {
   String get coreTitulo => 'Por dentro';
   @override
   String get coreBajada =>
-      'Dos capas unidas por un contrato. La interfaz solo lee el estado y le '
+      'Dos capas unidas por una API, la App API. La UI solo lee el estado y le '
       'pide cosas a la lógica; la lógica decide sin saber de pantallas y habla '
       'con el mundo por puertos. Cada pulso es una llamada que la app está '
       'haciendo ahora.';
@@ -876,7 +876,7 @@ class TextosEn extends Textos {
   String get coreTitulo => 'Inside';
   @override
   String get coreBajada =>
-      'Two layers joined by a contract. The interface only reads the state and '
+      'Two layers joined by an API, the App API. The UI only reads the state and '
       'asks the logic for things; the logic decides without knowing about '
       'screens and talks to the world through ports. Each pulse is a call the '
       'app is making right now.';

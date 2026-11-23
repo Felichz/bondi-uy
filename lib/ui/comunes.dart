@@ -48,10 +48,12 @@ class BotonCamaraViaje extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final puede = ref.watch(
-      appStateProvider.select((s) => switch (s.fase) {
-        final FaseViaje f => puedeVerBus(f),
-        _ => false,
-      }),
+      appStateProvider.select(
+        (s) => switch (s.fase) {
+          final FaseViaje f => puedeVerBus(f),
+          _ => false,
+        },
+      ),
     );
     final verBus = ref.watch(verBusProvider);
     final c = ColoresBondi.of(context);

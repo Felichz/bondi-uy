@@ -38,9 +38,7 @@ class PanelOpciones extends ConsumerWidget {
             bottom: ref.watch(altoHojaOpcionesProvider) + 20,
             child: const Column(
               mainAxisSize: MainAxisSize.min,
-              children: [
-                BotonRecentrar(),
-              ],
+              children: [BotonRecentrar()],
             ),
           ),
           Positioned(
