@@ -126,6 +126,11 @@ class BusEnCamino {
   /// Recorrido bus -> parada sobre el shape GTFS, en sentido de marcha.
   final List<Coordenada>? aproximacion;
 
+  /// Por dónde viene: el recorrido de la línea desde un tramo antes del bus
+  /// (por donde pasó hace un rato) hasta la parada. Entre una lectura y la
+  /// siguiente, el bus se mueve por acá.
+  final List<Coordenada>? camino;
+
   /// Metros que le faltan al bus para llegar, por la calle.
   final int? metrosHastaParada;
 
@@ -138,6 +143,7 @@ class BusEnCamino {
     required this.minutos,
     required this.enVivo,
     this.aproximacion,
+    this.camino,
     this.metrosHastaParada,
     this.rumbo,
   }) : assert(aproximacion == null || posicion != null);

@@ -30,11 +30,16 @@ class ParametrosSimulacion {
   final double caminarMps;
   final double busMps;
 
-  /// Cada cuánto (tiempo real) se emite una muestra de GPS.
+  /// Cada cuánto (tiempo real) se emite una muestra de GPS, como máximo.
   final Duration intervaloGps;
 
-  /// Segundos (simulados) que el usuario espera en la parada, como mínimo,
-  /// antes de que llegue su bus.
+  /// Tiempo del mundo entre dos muestras de GPS, como máximo: a velocidad
+  /// alta hay más muestras por segundo real, como en un teléfono de verdad
+  /// (si no, a 30x pasarían 250 m de bus entre una muestra y la otra).
+  final Duration intervaloGpsSimulado;
+
+  /// Segundos (simulados) que el usuario tiene que estar en la parada antes
+  /// de que llegue su bus: toma el primero que llega después de eso.
   final int esperaMinima;
 
   /// Cada cuánto pasa un bus de una misma línea por una parada.
@@ -51,7 +56,8 @@ class ParametrosSimulacion {
     this.caminarMps = 1.4,
     this.busMps = 8.3,
     this.intervaloGps = const Duration(seconds: 1),
-    this.esperaMinima = 20,
+    this.intervaloGpsSimulado = const Duration(seconds: 5),
+    this.esperaMinima = 3,
     this.frecuencia = const Duration(minutes: 4),
     this.detenido = const Duration(seconds: 10),
     this.bajada = const Duration(seconds: 8),
@@ -153,11 +159,7 @@ class MundoSimulado {
   /// geometría del tramo), con la parada de subida en la pasada correcta.
   Future<RecorridoLinea?> _recorridoDe(TramoBus t, String? shapeId) async {
     final shape = shapeId == null ? null : await catalogo.shape(shapeId);
-    final subida = t.subida.coordenada, bajada = t.bajada.coordenada;
-    return (shape == null
-            ? null
-            : RecorridoLinea.crear(shape, subida, bajada: bajada)) ??
-        RecorridoLinea.crear(t.geometria, subida, bajada: bajada);
+    return RecorridoLinea.deTramo(t, shape);
   }
 
   /// El servicio de [linea] en [parada]; si no existía, se crea con su
@@ -267,7 +269,9 @@ extension on Stopwatch {
 }
 
 /// Una línea que pasa por una parada, con horario fijo: el vehículo `k`
-/// llega a la parada en `primera + k * frecuencia`.
+/// llega a la parada en `primera + k * frecuencia`. El servicio empieza en
+/// el vehículo 0 (el que se preparó para que el usuario lo alcance): no hay
+/// buses anteriores que lleguen antes y no se puedan tomar.
 class _Servicio {
   final String linea;
   final RecorridoLinea recorrido;
@@ -297,9 +301,11 @@ class _Servicio {
   }
 
   /// El primer vehículo que llega a la parada en [t] o después.
-  int proximoDesde(DateTime t) =>
-      (t.difference(primera).inMicroseconds / p.frecuencia.inMicroseconds)
-          .ceil();
+  int proximoDesde(DateTime t) => math.max(
+    0,
+    (t.difference(primera).inMicroseconds / p.frecuencia.inMicroseconds)
+        .ceil(),
+  );
 
   /// Vehículos que pueden estar sobre el recorrido en [t].
   Iterable<int> cercanos(DateTime t) sync* {
@@ -308,7 +314,7 @@ class _Servicio {
     final despues =
         ((shape.largo - recParada) / p.busMps / f).ceil() + 1;
     final k = proximoDesde(t);
-    for (var i = k - despues; i <= k + antes; i++) {
+    for (var i = math.max(0, k - despues); i <= k + antes; i++) {
       yield i;
     }
   }
@@ -434,6 +440,7 @@ class _Guion {
           // (y no se corre); el de un trasbordo se crea ahora, con su bus
           // llegando poco después del usuario.
           final s = m._servicio(parada.id, bus.linea, rec, minimo);
+          // Toma el primero que llega después de él.
           final k = s.proximoDesde(minimo);
           vehiculo = (s, k);
           quieto(s.llegada(k));
@@ -464,9 +471,17 @@ class _Guion {
                 return (s, s.proximoDesde(t));
               }();
           vehiculo = null;
-          // Sube mientras el bus está detenido en la parada.
+          // Sube mientras el bus está detenido en la parada: termina de subir
+          // cuando el bus arranca.
           quieto(s.llegada(k));
-          haciaEn(s.shape.puntoEn(s.recParada), p.detenido);
+          final arranca = s.llegada(k).add(p.detenido);
+          final subir = arranca.difference(t);
+          haciaEn(
+            s.shape.puntoEn(s.recParada),
+            subir > const Duration(seconds: 1)
+                ? subir
+                : const Duration(seconds: 1),
+          );
           // Viaja en ese vehículo hasta la bajada.
           final recBajada = math.max(
             s.recParada + 1,
@@ -525,16 +540,30 @@ class UbicacionSimulada implements FuenteUbicacion {
   @override
   Future<MuestraUbicacion?> actual() async => mundo.muestra();
 
+  /// Revisa cada este tiempo (real) si toca una muestra.
+  static const _tic = Duration(milliseconds: 100);
+
   @override
   Stream<MuestraUbicacion> seguir() {
     late StreamController<MuestraUbicacion> c;
     Timer? timer;
     c = StreamController<MuestraUbicacion>(
       onListen: () {
-        timer = Timer.periodic(
-          mundo.p.intervaloGps,
-          (_) => c.add(mundo.muestra()),
-        );
+        // Una muestra cada intervaloGps (real) o cada intervaloGpsSimulado
+        // del mundo, lo que llegue antes (la velocidad cambia en marcha).
+        var real = Duration.zero;
+        var ultima = mundo.ahora();
+        timer = Timer.periodic(_tic, (_) {
+          real += _tic;
+          final ahora = mundo.ahora();
+          if (real < mundo.p.intervaloGps &&
+              ahora.difference(ultima) < mundo.p.intervaloGpsSimulado) {
+            return;
+          }
+          real = Duration.zero;
+          ultima = ahora;
+          c.add(mundo.muestra());
+        });
       },
       onCancel: () => timer?.cancel(),
     );

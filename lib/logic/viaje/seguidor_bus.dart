@@ -29,6 +29,16 @@ class RecorridoLinea {
 
   RecorridoLinea._(this.linea, this.recorridoParada);
 
+  /// El recorrido del bus de [tramo]: sobre su [shape] GTFS o, sin shape (o
+  /// si la parada no está sobre él), sobre la geometría del tramo. Lo usan
+  /// el seguimiento del bus y el mundo simulado, para que los dos ubiquen la
+  /// parada en el mismo lugar.
+  static RecorridoLinea? deTramo(TramoBus tramo, List<Coordenada>? shape) {
+    final subida = tramo.subida.coordenada, bajada = tramo.bajada.coordenada;
+    return (shape == null ? null : crear(shape, subida, bajada: bajada)) ??
+        crear(tramo.geometria, subida, bajada: bajada);
+  }
+
   /// Ubica la parada sobre el shape. Si se conoce la bajada, se usa para
   /// desambiguar shapes que pasan dos veces por la misma zona (ida/vuelta).
   static RecorridoLinea? crear(
@@ -78,20 +88,32 @@ class RecorridoLinea {
     return res;
   }
 
+  /// Metros de recorrido antes del bus que se incluyen en su camino.
+  static const metrosAtras = 2000.0;
+
   /// Aproximación bus -> parada, o null si el bus no está sobre el recorrido
-  /// antes de la parada.
-  ({List<Coordenada> puntos, double metros, double rumbo})? aproximacion(
+  /// antes de la parada. [camino] incluye además por dónde venía.
+  ({
+    List<Coordenada> puntos,
+    List<Coordenada> camino,
+    double metros,
+    double rumbo,
+  })?
+  aproximacion(
     Coordenada bus, {
     double maxLateral = 150,
   }) {
     final p = linea.proyectar(bus, hasta: recorridoParada);
     if (p.distanciaLateral > maxLateral) return null;
-    if (p.recorrido > recorridoParada) return null;
-    final puntos = [bus, ...linea.tramo(p.recorrido, recorridoParada)];
+    // (Detenido en la parada, el redondeo puede ubicarlo un pelo después.)
+    if (p.recorrido > recorridoParada + 1) return null;
+    final rec = math.min(p.recorrido, recorridoParada);
+    final puntos = [bus, ...linea.tramo(rec, recorridoParada)];
     return (
       puntos: puntos,
-      metros: recorridoParada - p.recorrido,
-      rumbo: linea.rumboEn(p.recorrido),
+      camino: linea.tramo(math.max(0, rec - metrosAtras), recorridoParada),
+      metros: recorridoParada - rec,
+      rumbo: linea.rumboEn(rec),
     );
   }
 
@@ -108,10 +130,22 @@ class RecorridoLinea {
 class SeguidorBus {
   final String linea;
   final RecorridoLinea? recorrido;
+  final DateTime Function()? _reloj;
+
+  /// El vehículo que se sigue y su último estado.
   String? _vehiculo;
+  BusEnCamino? _ultimo;
 
   /// El bus seguido cuando estaba por llegar (null si venía lejos).
   BusEnCamino? _llegando;
+
+  /// ¿Lo esperaba alguien la última vez que se lo vio venir?
+  bool _esperadoAlLlegar = false;
+
+  /// Ya se informó una vez que llegó; desde cuándo (o cuántos sondeos) se
+  /// lo retiene.
+  bool _llegadaInformada = false;
+  DateTime? _llegoEn;
   int _sondeosRetenido = 0;
 
   /// Sondeos que se informa "llegó" antes de pasar al siguiente bus, sin
@@ -125,16 +159,24 @@ class SeguidorBus {
   /// A esta distancia (o 0 min) el bus se considera llegando.
   static const metrosLlegando = 150;
 
-  final DateTime Function()? _reloj;
-  DateTime? _llegoEn;
+  /// A esta distancia del usuario que se quedó en la parada, el bus que se
+  /// fue ya no lo lleva.
+  static const metrosPerdido = 80.0;
 
   SeguidorBus({required this.linea, this.recorrido, DateTime Function()? reloj})
     : _reloj = reloj;
 
   /// Elige el bus relevante entre las llegadas a la parada. Con [retener]
   /// (el usuario espera en la parada), el bus que llegó se sigue informando
-  /// como llegado un rato; sin él, se pasa enseguida al próximo.
-  BusEnCamino? elegir(List<LlegadaEnParada> llegadas, {bool retener = true}) {
+  /// como llegado un rato; sin él, se pasa enseguida al próximo. Si el bus
+  /// ya se fue de la parada, [usuarioEnLaParada] (el usuario se quedó) y ya
+  /// está lejos de [usuario], lo perdió: deja de informarse.
+  BusEnCamino? elegir(
+    List<LlegadaEnParada> llegadas, {
+    bool retener = true,
+    bool usuarioEnLaParada = false,
+    Coordenada? usuario,
+  }) {
     final candidatos = [
       for (final l in llegadas)
         if (_mismaLinea(l.datos.linea, linea)) l,
@@ -148,35 +190,52 @@ class SeguidorBus {
     // 1) El mismo vehículo que veníamos siguiendo.
     if (_vehiculo != null) {
       for (final (l, b) in utiles) {
-        if (l.vehiculo == _vehiculo) return _seguido(b);
+        if (l.vehiculo == _vehiculo) return _seguido(b, retener);
       }
       // Ya no viene: si estaba llegando, llegó. También si la fuente todavía
       // lo informa del otro lado de la parada, aunque ningún sondeo lo haya
-      // visto cerca (entre dos sondeos se detuvo y siguió). Se muestra donde
-      // está de verdad; si la fuente ya no lo da, en la parada.
+      // visto cerca (entre dos sondeos se detuvo y siguió).
       Coordenada? real;
       for (final l in candidatos) {
         if (l.vehiculo == _vehiculo) real = l.datos.posicion;
       }
       final paso = real != null && (recorrido?.yaPaso(real) ?? false);
       final llegado = _llegando ?? (paso ? _ultimo : null);
+      // Se fue de la parada, el usuario sigue ahí y el bus ya está lejos de
+      // él: lo perdió (ya no se lo informa llegado, viene el próximo). Lejos
+      // es más de lo que el bus avanza entre una lectura del GPS y la otra:
+      // recién subido, la última lectura todavía lo puede dar en la parada.
+      final sinElUsuario =
+          paso &&
+          usuario != null &&
+          usuarioEnLaParada &&
+          distancia(real, usuario) > metrosPerdido;
       // Un bus que llegó se informa en la parada al menos una vez, aunque
-      // nadie lo espere: no deja su lugar al próximo sin haber llegado.
-      final primera = llegado != null && !_llegadaInformada;
-      final sigue = llegado != null && retener && _sigueRetenido();
+      // nadie lo espere: no deja su lugar al próximo sin haber llegado. Se lo
+      // retiene un rato más solo si cuando se lo vio llegar alguien lo
+      // esperaba (si llegó mientras el usuario caminaba, ya se fue: viene el
+      // próximo).
+      final primera = llegado != null && !_llegadaInformada && !sinElUsuario;
+      final sigue =
+          llegado != null &&
+          retener &&
+          _esperadoAlLlegar &&
+          !sinElUsuario &&
+          _sigueRetenido();
       if (llegado != null && (primera || sigue)) {
         _llegando = llegado;
         _llegadaInformada = true;
         return BusEnCamino(
           linea: llegado.linea,
-          // Con alguien esperándolo, donde va (el usuario va arriba); si no,
-          // en la parada, donde se lo vio llegar.
+          // Si lo esperaban, donde va (el usuario va arriba); si no, en la
+          // parada, donde se lo vio llegar.
           posicion:
-              retener
+              retener && _esperadoAlLlegar
                   ? real ?? recorrido?.parada ?? llegado.posicion
                   : recorrido?.parada ?? llegado.posicion,
           minutos: 0,
           enVivo: llegado.enVivo,
+          camino: llegado.camino,
           metrosHastaParada: 0,
           rumbo: llegado.rumbo,
         );
@@ -200,7 +259,7 @@ class SeguidorBus {
     });
     final (l, b) = utiles.first;
     _vehiculo = l.vehiculo;
-    return _seguido(b);
+    return _seguido(b, retener);
   }
 
   bool _sigueRetenido() {
@@ -211,12 +270,9 @@ class SeguidorBus {
     return ahora.difference(_llegoEn!) < retencion;
   }
 
-  /// El último estado del vehículo seguido.
-  BusEnCamino? _ultimo;
-  bool _llegadaInformada = false;
-
-  BusEnCamino _seguido(BusEnCamino b) {
+  BusEnCamino _seguido(BusEnCamino b, bool retener) {
     _ultimo = b;
+    _esperadoAlLlegar = retener;
     final m = b.metrosHastaParada;
     _llegando =
         b.enVivo && (b.minutos == 0 || (m != null && m <= metrosLlegando))
@@ -255,6 +311,7 @@ class SeguidorBus {
       minutos: d.minutos,
       enVivo: d.enVivo,
       aproximacion: ap.puntos.length >= 2 ? ap.puntos : null,
+      camino: ap.camino.length >= 2 ? ap.camino : null,
       metrosHastaParada: ap.metros.round(),
       rumbo: ap.rumbo,
     );

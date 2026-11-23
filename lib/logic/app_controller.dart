@@ -491,12 +491,7 @@ class AppController extends StateNotifier<AppState> implements AppActions {
         shape = await _catalogo.shape(shapeId);
       } catch (_) {}
     }
-    if (shape == null) return null;
-    return RecorridoLinea.crear(
-      shape,
-      bus.subida.coordenada,
-      bajada: bus.bajada.coordenada,
-    );
+    return RecorridoLinea.deTramo(bus, shape);
   }
 
   @override
@@ -755,7 +750,14 @@ class AppController extends StateNotifier<AppState> implements AppActions {
     if (lista == null) return; // error de red: se conserva lo último
     // Retiene el bus que llegó solo si el usuario lo espera en la parada;
     // caminando hacia ella, el que ya pasó no le sirve.
-    final bus = seg.elegir(lista, retener: f.tramoActual is TramoEsperar);
+    final esperando = f.tramoActual is TramoEsperar;
+    final bus = seg.elegir(
+      lista,
+      retener: esperando,
+      // A la espera, el progreso es la distancia a la parada.
+      usuarioEnLaParada: esperando && (f.progreso.metrosRestantes ?? 99) <= 15,
+      usuario: f.usuario,
+    );
     state = state.copyWith(
       fase: f.copyWith(
         busEsperado: bus,

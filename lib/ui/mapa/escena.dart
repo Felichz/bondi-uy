@@ -492,7 +492,7 @@ MarcaBus _marcaBus(BusEnCamino bus, {Coordenada? parada}) => MarcaBus(
   minutos: bus.minutos,
   rumbo: bus.rumbo,
   limite: parada,
-  camino: bus.aproximacion,
+  camino: bus.camino ?? bus.aproximacion,
   globo: Globo(
     bus.minutos <= 0 ? tx.llegando : tx.llegaEn(minutos(bus.minutos)),
     linea: bus.linea,
