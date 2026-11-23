@@ -209,6 +209,7 @@ class AppController extends StateNotifier<AppState> implements AppActions {
         fase: nueva,
       );
       if (r.avanzo || r.completado) _alCambiarPaso();
+      _sondearSiSeVa();
       _avisosDeProgreso();
       return;
     }
@@ -428,7 +429,7 @@ class AppController extends StateNotifier<AppState> implements AppActions {
         continue;
       }
       final seg = _seguidorOpcion(o.id);
-      final bus = (await seg)?.elegir(lista);
+      final bus = (await seg)?.elegir(lista, retener: false);
       final llegada =
           bus == null
               ? null
@@ -475,6 +476,7 @@ class AppController extends StateNotifier<AppState> implements AppActions {
       final seg = SeguidorBus(
         linea: bus.linea,
         recorrido: await _recorrido(v, bus),
+        reloj: _ahora,
       );
       _seguidoresOpcion[idOpcion] = seg;
       return seg;
@@ -523,7 +525,9 @@ class AppController extends StateNotifier<AppState> implements AppActions {
     }
     final seg = await _seguidorOpcion(idOpcion);
     if (!mounted || seq != _secBusqueda || _opcionEnfocada != idOpcion) return;
-    final elegido = seg?.elegir(lista);
+    // En la vista previa nadie espera en la parada: el bus que pasó deja
+    // lugar al próximo.
+    final elegido = seg?.elegir(lista, retener: false);
     final f = state.fase;
     if (f is! FaseOpciones) return;
     final buses = Map.of(f.busesEnVivo);
@@ -689,7 +693,11 @@ class AppController extends StateNotifier<AppState> implements AppActions {
       final v = _planificados[f.opcion.id] ?? ViajePlanificado(f.opcion);
       final recorrido = await _recorrido(v, bus);
       if (!mounted || seq != _secViaje) return;
-      _seguidorViaje = SeguidorBus(linea: bus.linea, recorrido: recorrido);
+      _seguidorViaje = SeguidorBus(
+        linea: bus.linea,
+        recorrido: recorrido,
+        reloj: _ahora,
+      );
       await _sondearViaje(seq);
       if (!mounted || seq != _secViaje) return;
       _timerViaje = Timer.periodic(config.sondeoBus, (_) => _sondearViaje(seq));
@@ -706,7 +714,30 @@ class AppController extends StateNotifier<AppState> implements AppActions {
     return null;
   }
 
+  /// Esperando el bus: si el usuario se aleja de la parada (se va con el
+  /// bus), se pregunta por el bus enseguida, sin esperar al próximo sondeo,
+  /// para que el bus y el usuario no se vean separados.
+  void _sondearSiSeVa() {
+    final f = state.fase;
+    if (f is! FaseViaje || f.estado != EstadoViaje.enCurso) return;
+    if (f.tramoActual is! TramoEsperar) return;
+    if ((f.progreso.metrosRestantes ?? 0) < 10) return;
+    final bus = f.busEsperado;
+    if (bus != null && bus.minutos == 0 && (bus.metrosHastaParada ?? 0) <= 30) {
+      return;
+    }
+    final ultimo = _ultimoSondeoViaje;
+    if (ultimo != null &&
+        _ahora().difference(ultimo) < const Duration(seconds: 5)) {
+      return;
+    }
+    unawaited(_sondearViaje(_secViaje));
+  }
+
+  DateTime? _ultimoSondeoViaje;
+
   Future<void> _sondearViaje(int seq) async {
+    _ultimoSondeoViaje = _ahora();
     final f0 = state.fase;
     final seg = _seguidorViaje;
     final espera = _esperaSeguida;
@@ -722,7 +753,9 @@ class AppController extends StateNotifier<AppState> implements AppActions {
     final f = state.fase;
     if (f is! FaseViaje || f.estado != EstadoViaje.enCurso) return;
     if (lista == null) return; // error de red: se conserva lo último
-    final bus = seg.elegir(lista);
+    // Retiene el bus que llegó solo si el usuario lo espera en la parada;
+    // caminando hacia ella, el que ya pasó no le sirve.
+    final bus = seg.elegir(lista, retener: f.tramoActual is TramoEsperar);
     state = state.copyWith(
       fase: f.copyWith(
         busEsperado: bus,

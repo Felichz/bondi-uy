@@ -6,10 +6,10 @@
 // - Un bus que ya pasó la parada no "viene": se descarta.
 // - Entre sondeos se sigue al mismo vehículo mientras siga viniendo.
 // - Cuando el bus que se seguía llega a la parada, deja de "venir" (la
-//   fuente lo da por pasado o deja de informarlo). Ese no es el momento de
-//   anunciar el próximo: el usuario está subiendo. Se lo informa como
-//   llegado (0 min, 0 m, en la parada) durante unos sondeos; recién después,
-//   si el usuario no subió, se pasa al siguiente.
+//   fuente lo da por pasado o deja de informarlo). Si el usuario lo está
+//   esperando, ese no es el momento de anunciar el próximo: está subiendo.
+//   Se lo informa como llegado (0 min, 0 m) durante un rato; recién después,
+//   si no subió, se pasa al siguiente.
 
 import 'dart:math' as math;
 
@@ -114,17 +114,27 @@ class SeguidorBus {
   BusEnCamino? _llegando;
   int _sondeosRetenido = 0;
 
-  /// Sondeos (~10 s cada uno) que se informa "llegó" antes de pasar al
-  /// siguiente bus.
+  /// Sondeos que se informa "llegó" antes de pasar al siguiente bus, sin
+  /// reloj (con reloj se usa [retencion]).
   static const sondeosLlegado = 6;
+
+  /// Cuánto se informa "llegó" antes de pasar al siguiente bus: lo que tarda
+  /// en confirmarse que el usuario subió, sin importar cada cuánto se sondee.
+  static const retencion = Duration(minutes: 2);
 
   /// A esta distancia (o 0 min) el bus se considera llegando.
   static const metrosLlegando = 150;
 
-  SeguidorBus({required this.linea, this.recorrido});
+  final DateTime Function()? _reloj;
+  DateTime? _llegoEn;
 
-  /// Elige el bus relevante entre las llegadas a la parada.
-  BusEnCamino? elegir(List<LlegadaEnParada> llegadas) {
+  SeguidorBus({required this.linea, this.recorrido, DateTime Function()? reloj})
+    : _reloj = reloj;
+
+  /// Elige el bus relevante entre las llegadas a la parada. Con [retener]
+  /// (el usuario espera en la parada), el bus que llegó se sigue informando
+  /// como llegado un rato; sin él, se pasa enseguida al próximo.
+  BusEnCamino? elegir(List<LlegadaEnParada> llegadas, {bool retener = true}) {
     final candidatos = [
       for (final l in llegadas)
         if (_mismaLinea(l.datos.linea, linea)) l,
@@ -140,19 +150,31 @@ class SeguidorBus {
       for (final (l, b) in utiles) {
         if (l.vehiculo == _vehiculo) return _seguido(b);
       }
-      // Ya no viene: si estaba llegando, llegó. Si la fuente todavía lo
-      // informa (ya pasó la parada), se muestra donde está de verdad; si no,
-      // en la parada.
-      final llegado = _llegando;
-      if (llegado != null && _sondeosRetenido < sondeosLlegado) {
-        _sondeosRetenido++;
-        Coordenada? real;
-        for (final l in candidatos) {
-          if (l.vehiculo == _vehiculo) real = l.datos.posicion;
-        }
+      // Ya no viene: si estaba llegando, llegó. También si la fuente todavía
+      // lo informa del otro lado de la parada, aunque ningún sondeo lo haya
+      // visto cerca (entre dos sondeos se detuvo y siguió). Se muestra donde
+      // está de verdad; si la fuente ya no lo da, en la parada.
+      Coordenada? real;
+      for (final l in candidatos) {
+        if (l.vehiculo == _vehiculo) real = l.datos.posicion;
+      }
+      final paso = real != null && (recorrido?.yaPaso(real) ?? false);
+      final llegado = _llegando ?? (paso ? _ultimo : null);
+      // Un bus que llegó se informa en la parada al menos una vez, aunque
+      // nadie lo espere: no deja su lugar al próximo sin haber llegado.
+      final primera = llegado != null && !_llegadaInformada;
+      final sigue = llegado != null && retener && _sigueRetenido();
+      if (llegado != null && (primera || sigue)) {
+        _llegando = llegado;
+        _llegadaInformada = true;
         return BusEnCamino(
           linea: llegado.linea,
-          posicion: real ?? recorrido?.parada ?? llegado.posicion,
+          // Con alguien esperándolo, donde va (el usuario va arriba); si no,
+          // en la parada, donde se lo vio llegar.
+          posicion:
+              retener
+                  ? real ?? recorrido?.parada ?? llegado.posicion
+                  : recorrido?.parada ?? llegado.posicion,
           minutos: 0,
           enVivo: llegado.enVivo,
           metrosHastaParada: 0,
@@ -161,7 +183,10 @@ class SeguidorBus {
       }
     }
     _llegando = null;
+    _ultimo = null;
+    _llegadaInformada = false;
     _sondeosRetenido = 0;
+    _llegoEn = null;
     if (utiles.isEmpty) {
       _vehiculo = null;
       return null;
@@ -178,13 +203,28 @@ class SeguidorBus {
     return _seguido(b);
   }
 
+  bool _sigueRetenido() {
+    final reloj = _reloj;
+    if (reloj == null) return _sondeosRetenido++ < sondeosLlegado;
+    final ahora = reloj();
+    _llegoEn ??= ahora;
+    return ahora.difference(_llegoEn!) < retencion;
+  }
+
+  /// El último estado del vehículo seguido.
+  BusEnCamino? _ultimo;
+  bool _llegadaInformada = false;
+
   BusEnCamino _seguido(BusEnCamino b) {
+    _ultimo = b;
     final m = b.metrosHastaParada;
     _llegando =
         b.enVivo && (b.minutos == 0 || (m != null && m <= metrosLlegando))
             ? b
             : null;
     _sondeosRetenido = 0;
+    _llegoEn = null;
+    _llegadaInformada = false;
     return b;
   }
 
