@@ -27,10 +27,11 @@ const casaDemo = Coordenada(-34.902448, -56.12828);
 /// tiempo real: el bus de la vista previa es el que se alcanza al empezar (a
 /// 15x, unos segundos leyendo serían minutos y ese bus ya habría pasado).
 class EscalasDemo {
-  /// Caminando.
+  /// Hasta subir al bus: caminando a la parada y esperándolo (el usuario y
+  /// el bus que viene se mueven a esta escala).
   final double caminar;
 
-  /// Esperando el bus y arriba de él.
+  /// Arriba del bus: un tramo largo de un punto a otro.
   final double bus;
 
   const EscalasDemo({this.caminar = 30, this.bus = 60});
@@ -39,7 +40,7 @@ class EscalasDemo {
   double para(AppState s) {
     final f = s.fase;
     if (f is! FaseViaje || f.estado != EstadoViaje.enCurso) return 1;
-    return f.tramoActual is TramoCaminar ? caminar : bus;
+    return f.tramoActual is TramoBus ? bus : caminar;
   }
 }
 

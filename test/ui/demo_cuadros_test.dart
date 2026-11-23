@@ -196,7 +196,7 @@ void main() {
       (const EscalasDemo(caminar: 5, bus: 5), const Duration(seconds: 3)),
     ]) {
       test(
-        '${destino.id} a ${escalas.caminar.round()}x caminando y '
+        '${destino.id} a ${escalas.caminar.round()}x hasta subir y '
         '${escalas.bus.round()}x en bus, ${enOpciones.inSeconds} s en opciones',
         () {
           final estados = recorrerDemo(
