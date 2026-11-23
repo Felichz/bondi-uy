@@ -74,7 +74,6 @@ flutter:
     # - assets/routes.txt     # Comentado si no se usa
     # - assets/trips.txt      # Comentado si no se usa
     # AÑADIDO: Declarar la carpeta de íconos
-    - assets/icons/
     # Fixture OAuth-free packaged for deterministic device E2E replays.
     - test/fixtures/trip_saldanha_plaza_otp_v2.json
     #   - images/a_dot_burr.jpeg
