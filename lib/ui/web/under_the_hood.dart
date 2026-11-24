@@ -727,7 +727,7 @@ class _Live extends ChangeNotifier {
         ...lines.skip(1),
       ];
     } else {
-      console.value = [_Line(t.moment, t, color), ...lines.take(13)];
+      console.value = [_Line(t.moment, t, color), ...lines.take(39)];
     }
   }
 
@@ -821,7 +821,7 @@ class UnderTheHood extends ConsumerStatefulWidget {
 }
 
 class _UnderTheHoodState extends ConsumerState<UnderTheHood>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   final _live = _Live();
   late final Ticker _clock;
   StreamSubscription<Trace>? _traces;
@@ -829,6 +829,14 @@ class _UnderTheHoodState extends ConsumerState<UnderTheHood>
   ui.Image? _fixed;
   (Size, double, Language, bool)? _fixedKey;
   double _lastStatus = -10;
+
+  /// The console maximized over the whole story column (its green light).
+  bool _consoleZoomed = false;
+
+  /// One animation for both halves of the move: the story folding away and
+  /// the console growing into its place.
+  late final AnimationController _zoom;
+  late final Animation<double> _zoomed;
 
   /// The piece under the mouse (its card is shown next to it).
   Piece? _over;
@@ -838,6 +846,11 @@ class _UnderTheHoodState extends ConsumerState<UnderTheHood>
   void initState() {
     super.initState();
     _clock = createTicker((d) => _live.tick(d.inMicroseconds / 1e6))..start();
+    _zoom = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 320),
+    );
+    _zoomed = CurvedAnimation(parent: _zoom, curve: Curves.easeInOutCubic);
     _traces = ref
         .read(tracesProvider)
         ?.stream
@@ -848,6 +861,7 @@ class _UnderTheHoodState extends ConsumerState<UnderTheHood>
   void dispose() {
     _traces?.cancel();
     _clock.dispose();
+    _zoom.dispose();
     _live.dispose();
     _fixed?.dispose();
     super.dispose();
@@ -960,23 +974,57 @@ class _UnderTheHoodState extends ConsumerState<UnderTheHood>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     widget.header,
-                    const SizedBox(height: 28),
-                    _Narrative(widget.light ? _Ink.light : _Ink.dark),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 24),
+                    // Maximized, the console takes the story's place; the
+                    // story folds away above it.
+                    SizeTransition(
+                      sizeFactor: ReverseAnimation(_zoomed),
+                      axisAlignment: -1,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(height: 4),
+                          _Narrative(widget.light ? _Ink.light : _Ink.dark),
+                          const SizedBox(height: 20),
+                        ],
+                      ),
+                    ),
                     Expanded(
                       child: LayoutBuilder(
                         builder:
                             (context, b) =>
                                 b.maxHeight < 120
                                     ? const SizedBox.shrink()
-                                    // As tall as its lines, no more.
+                                    // As tall as its lines, no more (or all of
+                                    // it, maximized).
                                     : Align(
                                       alignment: Alignment.topLeft,
-                                      child: SizedBox(
-                                        height: math.min(b.maxHeight, 340),
+                                      child: AnimatedBuilder(
+                                        animation: _zoomed,
+                                        builder:
+                                            (context, child) => SizedBox(
+                                              height:
+                                                  ui.lerpDouble(
+                                                    math.min(b.maxHeight, 340),
+                                                    b.maxHeight,
+                                                    _zoomed.value,
+                                                  )!,
+                                              child: child,
+                                            ),
                                         child: _Console(
                                           _live.console,
                                           light: widget.light,
+                                          zoomed: _consoleZoomed,
+                                          onZoom: () {
+                                            setState(
+                                              () =>
+                                                  _consoleZoomed =
+                                                      !_consoleZoomed,
+                                            );
+                                            _consoleZoomed
+                                                ? _zoom.forward()
+                                                : _zoom.reverse();
+                                          },
                                         ),
                                       ),
                                     ),
@@ -1150,9 +1198,16 @@ class _Narrative extends StatelessWidget {
 class _Console extends StatelessWidget {
   final ValueNotifier<List<_Line>> lines;
 
-  /// On a light chassis the console is a graphite terminal, like the board.
+  /// It follows the theme, like the window it sits in.
   final bool light;
-  const _Console(this.lines, {this.light = false});
+  final bool zoomed;
+  final VoidCallback onZoom;
+  const _Console(
+    this.lines, {
+    this.light = false,
+    this.zoomed = false,
+    required this.onZoom,
+  });
 
   static String _time(DateTime t) =>
       '${t.hour.toString().padLeft(2, '0')}:'
@@ -1173,115 +1228,392 @@ class _Console extends StatelessWidget {
     Piece.places => 'Places',
   };
 
+  /// A call's color, readable on a light window (the board's colors are made
+  /// for a dark one).
+  static Color _onLight(Color c) => switch (c) {
+    _action => const Color(0xFF12161D),
+    _status => const Color(0xFF0B7A50),
+    _location => const Color(0xFF2557C9),
+    _bus => const Color(0xFFC23A22),
+    _plan => const Color(0xFFA15C00),
+    _network => const Color(0xFF4A5A73),
+    _ => c,
+  };
+
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors:
-              light
-                  ? const [Color(0xFF2C333D), Color(0xFF20262E)]
-                  : const [Color(0xE6161B22), Color(0xE60D1015)],
-        ),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: light ? const Color(0xFF323A45) : const Color(0xFF262E39),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: light ? const Color(0x33000000) : const Color(0x66000000),
-            blurRadius: 40,
-            offset: const Offset(0, 20),
+    final w = light ? _WindowColors.light : _WindowColors.dark;
+    final time = light ? const Color(0xFF5A6375) : _textFaint;
+    final route = light ? const Color(0xFF485061) : _textSoft;
+    return _Window(
+      colors: w,
+      lights: _Lights(colors: w, zoomed: zoomed, onZoom: onZoom),
+      title: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const _Heartbeat(),
+          const SizedBox(width: 8),
+          Text(
+            tx.coreConsole,
+            style: _style(13, w.title, weight: FontWeight.w600),
           ),
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 14, 18, 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const _Heartbeat(),
-                const SizedBox(width: 10),
-                Text(
-                  tx.coreConsole,
-                  style: _style(
-                    11.5,
-                    _textSoft,
-                    weight: FontWeight.w700,
-                  ).copyWith(letterSpacing: 1.4),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Expanded(
-              child: ClipRect(
-                child: ValueListenableBuilder<List<_Line>>(
-                  valueListenable: lines,
-                  builder:
-                      (context, ls, _) => ListView(
-                        physics: const NeverScrollableScrollPhysics(),
-                        padding: EdgeInsets.zero,
-                        children: [
-                          for (var i = 0; i < ls.length; i++)
-                            Opacity(
-                              opacity: (1 - i * 0.07).clamp(0.25, 1.0),
-                              child: Padding(
-                                padding: const EdgeInsets.only(bottom: 5),
-                                child: Text.rich(
-                                  TextSpan(
-                                    children: [
-                                      TextSpan(
-                                        text: '${_time(ls[i].moment)}  ',
-                                        style: _style(12, _textFaint),
-                                      ),
-                                      TextSpan(
-                                        text:
-                                            '${_name(ls[i].trace.from)} › ${_name(ls[i].trace.toward)}  ',
-                                        style: _style(12, _textSoft),
-                                      ),
-                                      TextSpan(
-                                        text: ls[i].trace.call,
-                                        style: _style(
-                                          12,
-                                          ls[i].color,
-                                          weight: FontWeight.w600,
-                                        ),
-                                      ),
-                                      if (ls[i].trace.result != null)
-                                        TextSpan(
-                                          text: '  ${ls[i].trace.result}',
-                                          style: _style(12, _textFaint),
-                                        ),
-                                      if (ls[i].repeats > 1)
-                                        TextSpan(
-                                          text: '  ×${ls[i].repeats}',
-                                          style: _style(
-                                            12,
-                                            _textSoft,
-                                            weight: FontWeight.w700,
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+        child: ClipRect(
+          child: ValueListenableBuilder<List<_Line>>(
+            valueListenable: lines,
+            builder:
+                (context, ls, _) => ListView(
+                  physics: const NeverScrollableScrollPhysics(),
+                  padding: EdgeInsets.zero,
+                  children: [
+                    for (var i = 0; i < ls.length; i++)
+                      Opacity(
+                        opacity: (1 - i * (zoomed ? 0.025 : 0.07)).clamp(
+                          0.25,
+                          1.0,
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.only(bottom: 5),
+                          child: Text.rich(
+                            TextSpan(
+                              children: [
+                                TextSpan(
+                                  text: '${_time(ls[i].moment)}  ',
+                                  style: _style(12, time),
                                 ),
-                              ),
+                                TextSpan(
+                                  text:
+                                      '${_name(ls[i].trace.from)} › ${_name(ls[i].trace.toward)}  ',
+                                  style: _style(12, route),
+                                ),
+                                TextSpan(
+                                  text: ls[i].trace.call,
+                                  style: _style(
+                                    12,
+                                    light ? _onLight(ls[i].color) : ls[i].color,
+                                    weight: FontWeight.w600,
+                                  ),
+                                ),
+                                if (ls[i].trace.result != null)
+                                  TextSpan(
+                                    text: '  ${ls[i].trace.result}',
+                                    style: _style(12, time),
+                                  ),
+                                if (ls[i].repeats > 1)
+                                  TextSpan(
+                                    text: '  ×${ls[i].repeats}',
+                                    style: _style(
+                                      12,
+                                      route,
+                                      weight: FontWeight.w700,
+                                    ),
+                                  ),
+                              ],
                             ),
-                        ],
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
                       ),
+                  ],
                 ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The window the portfolio draws its previews in (and the knowgraph and
+/// LifeUI landings their films): a bar with a centered title and the three
+/// lights, over the content.
+class _WindowColors {
+  final Color background;
+  final Color bar;
+  final Color line;
+  final Color title;
+  final Color lightOff;
+  final List<BoxShadow> shadow;
+  const _WindowColors._({
+    required this.background,
+    required this.bar,
+    required this.line,
+    required this.title,
+    required this.lightOff,
+    required this.shadow,
+  });
+
+  static const dark = _WindowColors._(
+    background: Color(0xFF0E1117),
+    bar: Color(0xFF151922),
+    line: Color(0x1AD6E2FF),
+    title: Color(0xFF8A93A3),
+    lightOff: Color(0x29D6E2FF),
+    shadow: [
+      BoxShadow(
+        color: Color(0x8C000000),
+        blurRadius: 60,
+        offset: Offset(0, 24),
+      ),
+    ],
+  );
+
+  static const light = _WindowColors._(
+    background: Color(0xFFF6F7F9),
+    bar: Color(0xFFFDFDFE),
+    line: Color(0x1F121A2C),
+    title: Color(0xFF5A6375),
+    lightOff: Color(0x29121A2C),
+    shadow: [
+      BoxShadow(color: Color(0x14302414), blurRadius: 2, offset: Offset(0, 1)),
+      BoxShadow(
+        color: Color(0x42302414),
+        blurRadius: 60,
+        spreadRadius: -12,
+        offset: Offset(0, 24),
+      ),
+    ],
+  );
+}
+
+class _Window extends StatelessWidget {
+  final _WindowColors colors;
+  final Widget title;
+  final Widget lights;
+  final Widget child;
+  const _Window({
+    required this.colors,
+    required this.title,
+    required this.lights,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.background,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: colors.line),
+        boxShadow: colors.shadow,
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(15),
+        child: Column(
+          children: [
+            Container(
+              height: 34,
+              decoration: BoxDecoration(
+                color: colors.bar,
+                border: Border(bottom: BorderSide(color: colors.line)),
+              ),
+              child: Stack(
+                children: [
+                  Center(child: title),
+                  Positioned(
+                    left: 13,
+                    top: 0,
+                    bottom: 0,
+                    child: Center(child: lights),
+                  ),
+                ],
               ),
             ),
+            Expanded(child: child),
           ],
         ),
       ),
     );
   }
+}
+
+/// The three lights. Red and yellow have nothing to do here and stay grey;
+/// green maximizes (and restores). Under the pointer they show their glyphs;
+/// until green has been used on this visit, a ring ripples out of it.
+class _Lights extends StatefulWidget {
+  final _WindowColors colors;
+  final bool zoomed;
+  final VoidCallback onZoom;
+  const _Lights({
+    required this.colors,
+    required this.zoomed,
+    required this.onZoom,
+  });
+
+  @override
+  State<_Lights> createState() => _LightsState();
+}
+
+class _LightsState extends State<_Lights> with SingleTickerProviderStateMixin {
+  static bool _used = false;
+  static const _green = Color(0xFF28C840);
+
+  // Created up front: a lazy controller would be created in dispose(), when
+  // the widget is already inactive.
+  late final AnimationController _ring;
+  bool _hover = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _ring = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1600),
+    );
+    if (!_used) _ring.repeat();
+  }
+
+  @override
+  void dispose() {
+    _ring.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    Widget off() => Container(
+      width: 12,
+      height: 12,
+      decoration: BoxDecoration(
+        color: widget.colors.lightOff,
+        shape: BoxShape.circle,
+      ),
+    );
+    final zoom = Semantics(
+      button: true,
+      label: widget.zoomed ? tx.coreConsoleRestore : tx.coreConsoleMaximize,
+      child: GestureDetector(
+        key: const ValueKey('console-zoom'),
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          if (!_used) {
+            _used = true;
+            _ring.stop();
+          }
+          widget.onZoom();
+        },
+        // A hit area a little larger than the dot.
+        child: SizedBox(
+          width: 20,
+          height: 20,
+          child: Center(
+            child: Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                if (!_used)
+                  AnimatedBuilder(
+                    animation: _ring,
+                    builder: (context, _) {
+                      final k = (_ring.value / 0.75).clamp(0.0, 1.0);
+                      final e = Curves.easeOutCubic.transform(k);
+                      return Transform.scale(
+                        scale: 1 + 1.6 * e,
+                        child: Opacity(
+                          opacity: 0.9 * (1 - k),
+                          child: Container(
+                            width: 12,
+                            height: 12,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(color: _green, width: 1.5),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                AnimatedScale(
+                  scale: _hover ? 1.3 : 1,
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeOutCubic,
+                  child: Container(
+                    width: 12,
+                    height: 12,
+                    decoration: const BoxDecoration(
+                      color: _green,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Color(0x33000000),
+                          spreadRadius: -0.25,
+                        ),
+                      ],
+                    ),
+                    child: AnimatedOpacity(
+                      opacity: _hover ? 1 : 0,
+                      duration: const Duration(milliseconds: 150),
+                      child: CustomPaint(
+                        painter: _ZoomGlyph(restore: widget.zoomed),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          off(),
+          const SizedBox(width: 8),
+          off(),
+          const SizedBox(width: 4),
+          zoom,
+        ],
+      ),
+    );
+  }
+}
+
+/// The green light's glyph: two arrowheads out (maximize) or in (restore),
+/// drawn like the landings' SVG (a 24-unit box).
+class _ZoomGlyph extends CustomPainter {
+  final bool restore;
+  const _ZoomGlyph({required this.restore});
+
+  @override
+  void paint(Canvas c, Size size) {
+    const glyph = 9.0;
+    final k = glyph / 24;
+    c.translate((size.width - glyph) / 2, (size.height - glyph) / 2);
+    c.scale(k);
+    final paint = Paint()..color = const Color(0x8C000000);
+    final path =
+        restore
+            ? (Path()
+              ..moveTo(11.5, 11.5)
+              ..lineTo(3.5, 11.5)
+              ..lineTo(11.5, 3.5)
+              ..close()
+              ..moveTo(12.5, 12.5)
+              ..lineTo(20.5, 12.5)
+              ..lineTo(12.5, 20.5)
+              ..close())
+            : (Path()
+              ..moveTo(6, 6)
+              ..lineTo(15, 6)
+              ..lineTo(6, 15)
+              ..close()
+              ..moveTo(18, 18)
+              ..lineTo(9, 18)
+              ..lineTo(18, 9)
+              ..close());
+    c.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(_ZoomGlyph old) => old.restore != restore;
 }
 
 /// A green dot that pulses: "live".

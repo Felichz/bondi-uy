@@ -184,6 +184,8 @@ abstract class Texts {
   String get coreLede;
   String get coreNoteDemo;
   String get coreConsole;
+  String get coreConsoleMaximize;
+  String get coreConsoleRestore;
   String get coreKeyActions;
   String get coreKeyStatus;
   String get coreKeyLocation;
@@ -537,7 +539,11 @@ class SpanishTexts extends Texts {
       'simulado; en el teléfono, con OpenTripPlanner, la API de la '
       'Intendencia y el GPS.';
   @override
-  String get coreConsole => 'LLAMADAS EN VIVO';
+  String get coreConsole => 'Llamadas en vivo';
+  @override
+  String get coreConsoleMaximize => 'Maximizar';
+  @override
+  String get coreConsoleRestore => 'Restaurar';
   @override
   String get coreKeyActions => 'Acciones';
   @override
@@ -932,7 +938,11 @@ class EnglishTexts extends Texts {
       'In the demo, the ports answer with recorded trips and a simulated '
       'world; on the phone, with OpenTripPlanner, the city’s API and the GPS.';
   @override
-  String get coreConsole => 'LIVE CALLS';
+  String get coreConsole => 'Live calls';
+  @override
+  String get coreConsoleMaximize => 'Maximize';
+  @override
+  String get coreConsoleRestore => 'Restore';
   @override
   String get coreKeyActions => 'Actions';
   @override

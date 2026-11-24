@@ -123,6 +123,20 @@ void main() {
             reason: 'calls ${pair.$1} -> ${pair.$2}',
           );
         }
+        // The console sits in the portfolio's window: the green light
+        // maximizes it over the story column, and restores it.
+        final zoom = find.byKey(const ValueKey('console-zoom'));
+        expect(zoom, findsOneWidget);
+        final lede = find.textContaining('App API.').hitTestable();
+        expect(lede, findsOneWidget);
+        await tester.tap(zoom);
+        await a.wait(const Duration(milliseconds: 600));
+        expect(lede, findsNothing, reason: 'maximized, the story folds away');
+        await a.capture('console_maximized');
+        await tester.tap(zoom);
+        await a.wait(const Duration(milliseconds: 600));
+        expect(lede, findsOneWidget);
+
         // No tabs: this is the only landing. The theme button switches
         // between light and dark.
         expect(find.text('Presentación'), findsNothing);
