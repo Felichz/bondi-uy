@@ -38,7 +38,7 @@ void main() {
         final obstacles = ProviderScope.containerOf(
           tester.element(find.byType(BondiMap)),
         ).read(mapObstaclesProvider);
-        var seen = 0, withControls = 0;
+        var seen = 0, withControls = 0, pills = 0;
         Future<void> watch(Duration time) async {
           for (
             var t = Duration.zero;
@@ -65,6 +65,21 @@ void main() {
             }
             final controls = obstacles.rects.toList();
             if (controls.isNotEmpty) withControls++;
+            // The pills at the edge (the bus that is coming, your stop): not
+            // under a control, nor over a balloon.
+            for (final pill in SceneDrawer.last!.borderBoxes) {
+              pills++;
+              for (final other in [
+                ...controls,
+                ...SceneDrawer.last!.balloonBoxes,
+              ]) {
+                expect(
+                  pill.overlaps(other),
+                  isFalse,
+                  reason: 'an edge pill ($pill) is over $other',
+                );
+              }
+            }
             for (final (i, box) in SceneDrawer.last!.balloonBoxes.indexed) {
               seen++;
               for (final c in controls) {
@@ -90,6 +105,7 @@ void main() {
         await watch(const Duration(seconds: 3));
         expect(seen, greaterThan(50), reason: 'there were balloons');
         expect(withControls, greaterThan(20), reason: 'and floating controls');
+        expect(pills, greaterThan(10), reason: 'and pills at the edge');
         await a.close();
       },
     );

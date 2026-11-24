@@ -36,6 +36,9 @@ class SceneDrawer {
   /// Where they were drawn (diagnostics and tests).
   final List<Rect> balloonBoxes = [];
 
+  /// The pills at the edge that flag what is out of view (same).
+  final List<Rect> borderBoxes = [];
+
   /// Where the user ended up in the last frame (diagnostics and tests).
   Offset? userOnScreen;
 
@@ -189,7 +192,10 @@ class SceneDrawer {
     // (where it is and how far it has to go) and your destination.
     targetInBorder = null;
     busInBorder = null;
-    final inBorder = <Rect>[];
+    // They move along the edge away from each other, and away from the
+    // floating controls and the balloons already drawn.
+    final taken = <Rect>[...obstacles, for (final g in balloons) g.box];
+    final inBorder = [...taken];
     for (final (m, p) in [
       for (final m in scene.marks) (m, toScreen(m.coordinate)),
     ]) {
@@ -225,6 +231,10 @@ class SceneDrawer {
         )) {
       targetInBorder = obj.text;
     }
+
+    borderBoxes
+      ..clear()
+      ..addAll(inBorder.skip(taken.length));
 
     _attribution(c, size, margins.bottom);
   }
@@ -1209,18 +1219,35 @@ class SceneDrawer {
     if (dir.dy > 0) t = math.min(t, (interior.bottom - center.dy) / dir.dy);
     if (dir.dy < 0) t = math.min(t, (interior.top - center.dy) / dir.dy);
     var q = center + dir * t;
-    // If it overlaps another, it is shifted along the edge.
+    // If it overlaps something (another pill, a balloon, a floating control)
+    // it moves along its edge to the nearest free place.
     final vertical =
         (q.dx - interior.left).abs() < 1 || (q.dx - interior.right).abs() < 1;
-    for (var i = 1; i <= 4; i++) {
-      final box = Rect.fromCenter(center: q, width: width, height: height);
-      if (!placed.any((r) => r.overlaps(box.inflate(4)))) break;
-      final step = (height + 8) * (i.isOdd ? i : -i);
-      q = vertical ? q.translate(0, step) : q.translate(step, 0);
-      q = Offset(
-        q.dx.clamp(interior.left, interior.right),
-        q.dy.clamp(interior.top, interior.bottom),
-      );
+    bool clear(Offset o) {
+      final box = Rect.fromCenter(center: o, width: width, height: height);
+      return !placed.any((r) => r.overlaps(box.inflate(4)));
+    }
+
+    if (!clear(q)) {
+      final lo = vertical ? interior.top : interior.left;
+      final hi = vertical ? interior.bottom : interior.right;
+      final at = vertical ? q.dy : q.dx;
+      Offset? found;
+      search:
+      for (var d = 8.0; d < hi - lo; d += 8) {
+        for (final v in [at + d, at - d]) {
+          if (v < lo || v > hi) continue;
+          final o = vertical ? Offset(q.dx, v) : Offset(v, q.dy);
+          if (clear(o)) {
+            found = o;
+            break search;
+          }
+        }
+      }
+      // No room on its edge: better no pill than one over something else
+      // (typically the balloon of the very stop it points to).
+      if (found == null) return false;
+      q = found;
     }
     final rect = Rect.fromCenter(center: q, width: width, height: height);
     placed.add(rect);
