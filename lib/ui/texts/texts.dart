@@ -184,6 +184,9 @@ abstract class Texts {
   String get coreLede;
   String get coreNoteDemo;
   String get coreConsole;
+  String get coreTapCode;
+  String get coreOpen;
+  String get coreClose;
   String get coreConsoleMaximize;
   String get coreConsoleRestore;
   String get coreKeyActions;
@@ -540,6 +543,12 @@ class SpanishTexts extends Texts {
       'Intendencia y el GPS.';
   @override
   String get coreConsole => 'Llamadas en vivo';
+  @override
+  String get coreTapCode => 'Tocá para ver el código';
+  @override
+  String get coreOpen => 'Ver por dentro';
+  @override
+  String get coreClose => 'Cerrar';
   @override
   String get coreConsoleMaximize => 'Maximizar';
   @override
@@ -939,6 +948,12 @@ class EnglishTexts extends Texts {
       'world; on the phone, with OpenTripPlanner, the city’s API and the GPS.';
   @override
   String get coreConsole => 'Live calls';
+  @override
+  String get coreTapCode => 'Tap to see the code';
+  @override
+  String get coreOpen => 'See inside';
+  @override
+  String get coreClose => 'Close';
   @override
   String get coreConsoleMaximize => 'Maximize';
   @override

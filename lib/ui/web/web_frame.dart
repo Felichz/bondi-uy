@@ -5,6 +5,8 @@
 // `?marco=0`, the app fills the whole screen as always; on an Android phone,
 // with a notice on top to download the app, until it is closed.
 
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -60,9 +62,13 @@ class _WebFrameState extends ConsumerState<WebFrame> {
     if (!(kIsWeb || force) || _disabled) return child;
     if (size.width < 700 || size.height < 560) {
       final android = defaultTargetPlatform == TargetPlatform.android;
-      return kIsWeb && android && _urlApk.isNotEmpty
-          ? _WithNotice(child: child)
-          : child;
+      final app =
+          kIsWeb && android && _urlApk.isNotEmpty
+              ? _WithNotice(child: child)
+              : child;
+      // On a phone, the board lives in a sheet under the app (the demo only:
+      // it is the one that reports its calls).
+      return ref.watch(tracesProvider) == null ? app : _Pocket(child: app);
     }
     final c = BondiColors.of(context);
     // The phone fits entirely in the window, with some room above and below.
@@ -231,6 +237,68 @@ class _Presentation extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// The app full screen over a strip that opens into the board's sheet. Open,
+/// the sheet covers the bottom of the app, which stays live and usable above.
+class _Pocket extends StatefulWidget {
+  final Widget child;
+  const _Pocket({required this.child});
+
+  @override
+  State<_Pocket> createState() => _PocketState();
+}
+
+class _PocketState extends State<_Pocket> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final mq = MediaQuery.of(context);
+    final inset = mq.padding.bottom;
+    final closed = UnderTheHoodPocket.stripHeight + inset;
+    final open = math.min(
+      UnderTheHoodPocket.sheetHeight(inset),
+      mq.size.height * 0.62,
+    );
+    final light = BondiColors.of(context).brightness == Brightness.light;
+    return Stack(
+      children: [
+        // The app above the strip: it is told the screen ends there.
+        Positioned(
+          left: 0,
+          right: 0,
+          top: 0,
+          bottom: closed,
+          child: MediaQuery(
+            data: mq.copyWith(
+              size: Size(mq.size.width, mq.size.height - closed),
+              padding: mq.padding.copyWith(bottom: 0),
+              viewPadding: mq.viewPadding.copyWith(bottom: 0),
+            ),
+            child: widget.child,
+          ),
+        ),
+        AnimatedPositioned(
+          duration: const Duration(milliseconds: 320),
+          curve: Curves.easeInOutCubic,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: _open ? open : closed,
+          child: Padding(
+            padding: EdgeInsets.only(bottom: inset),
+            child: UnderTheHoodPocket(
+              light: light,
+              open: _open,
+              bottomInset: inset,
+              onToggle: () => setState(() => _open = !_open),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

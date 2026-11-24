@@ -245,6 +245,13 @@ class _Plane {
   final List<Offset> actions;
   final List<Offset> status;
 
+  /// The compact board, for the phone's sheet: everything stacked from the
+  /// top (where the app is) down to the ports.
+  final bool compact;
+
+  /// In the compact board, where the chassis ends and the board begins.
+  final double edgeY;
+
   /// The bodies of the chips (the contract included): the live part is painted underneath,
   /// so a track enters a chip through its pins and does not cross over it.
   /// Where the circuit board starts: the UI side (the story and the phone)
@@ -254,7 +261,32 @@ class _Plane {
   /// The board's outline. It has a notch where the App API sits, so the
   /// contract stands half on the chassis and half on the board: it is the
   /// boundary between the two layers.
-  late final Path board = () {
+  late final Path board = compact ? _compactBoard() : _wideBoard();
+
+  /// Compact: the board below a strip of chassis, with a notch under the App
+  /// API (its top half sits on the chassis, like the wide one's left half).
+  Path _compactBoard() {
+    final y = edgeY;
+    final l = contract.left - 14, r = contract.right + 14;
+    final b = contract.center.dy;
+    const outer = Radius.circular(8), inner = Radius.circular(14);
+    return Path()
+      ..moveTo(0, y)
+      ..lineTo(l - outer.x, y)
+      ..arcToPoint(Offset(l, y + outer.y), radius: outer)
+      ..lineTo(l, b - inner.y)
+      ..arcToPoint(Offset(l + inner.x, b), radius: inner, clockwise: false)
+      ..lineTo(r - inner.x, b)
+      ..arcToPoint(Offset(r, b - inner.y), radius: inner, clockwise: false)
+      ..lineTo(r, y + outer.y)
+      ..arcToPoint(Offset(r + outer.x, y), radius: outer)
+      ..lineTo(size.width, y)
+      ..lineTo(size.width, size.height)
+      ..lineTo(0, size.height)
+      ..close();
+  }
+
+  Path _wideBoard() {
     final x = boardEdge;
     final notchX = contract.center.dx;
     final top = contract.top - 24, bottom = contract.bottom + 24;
@@ -281,7 +313,7 @@ class _Plane {
       ..lineTo(x + outer.x, top)
       ..arcToPoint(Offset(x, top - outer.y), radius: outer)
       ..close();
-  }();
+  }
 
   late final List<RRect> bodies = [
     RRect.fromRectAndRadius(contract, const Radius.circular(12)),
@@ -327,8 +359,10 @@ class _Plane {
     this.contract,
     this.tracks,
     this.actions,
-    this.status,
-  );
+    this.status, {
+    this.compact = false,
+    this.edgeY = 0,
+  });
 
   // Plate measurements: the chips never shrink (nor their texts);
   // whatever width is left over is shared among the gaps.
@@ -353,6 +387,147 @@ class _Plane {
       _gapPorts +
       _portWidth +
       _margin;
+
+  /// Height of the compact board (its width is the phone's).
+  static const compactHeight = 356.0;
+
+  /// The compact board: the app's connector on top, then the App API, the
+  /// controller, the core in a row and the ports in a row. The tracks to the
+  /// ports go down the side margins and the gaps between the core chips.
+  factory _Plane.compact(double width) {
+    const m = 14.0, g = 12.0, edgeY = 34.0;
+    final size = Size(width, compactHeight);
+    final contractW = math.min(260.0, width - 2 * m - 48);
+    final contract = Rect.fromLTWH(
+      (width - contractW) / 2,
+      edgeY - 12,
+      contractW,
+      60,
+    );
+    final laneA = contract.left + contractW * 0.25;
+    final laneS = contract.left + contractW * 0.75;
+    final connector = Rect.fromLTRB(laneA - 24, 5, laneS + 24, 17);
+    final control = Rect.fromLTWH(m, contract.bottom + 26, width - 2 * m, 52);
+    final cw = (width - 2 * m - 2 * g) / 3;
+    final coreTop = control.bottom + 28;
+    const corePieces = [Piece.navigator, Piece.recommender, Piece.tracker];
+    final core = {
+      for (var i = 0; i < 3; i++)
+        corePieces[i]: Rect.fromLTWH(m + i * (cw + g), coreTop, cw, 58),
+    };
+    const ports = [
+      Piece.location,
+      Piece.arrivals,
+      Piece.planner,
+      Piece.catalog,
+      Piece.places,
+    ];
+    const pg = 6.0;
+    final pw = (width - 2 * m - 4 * pg) / 5;
+    final portTop = coreTop + 58 + 44;
+    final portRects = {
+      for (var i = 0; i < 5; i++)
+        ports[i]: Rect.fromLTWH(m + i * (pw + pg), portTop, pw, 52),
+    };
+    final chips = <Piece, _Chip>{
+      Piece.controller: _Chip(
+        Piece.controller,
+        control,
+        'AppController',
+        tx.coreController,
+      ),
+      Piece.navigator: _Chip(
+        Piece.navigator,
+        core[Piece.navigator]!,
+        'TripNavigator',
+        tx.coreNavigator,
+      ),
+      Piece.recommender: _Chip(
+        Piece.recommender,
+        core[Piece.recommender]!,
+        'Recommender',
+        tx.coreRecommender,
+      ),
+      Piece.tracker: _Chip(
+        Piece.tracker,
+        core[Piece.tracker]!,
+        'BusTracker',
+        tx.coreTracker,
+      ),
+      for (final p in ports)
+        p: _Chip(
+          p,
+          portRects[p]!,
+          switch (p) {
+            Piece.location => 'GPS',
+            Piece.arrivals => 'Montevideo API',
+            Piece.planner => 'OpenTripPlanner',
+            Piece.catalog => 'GTFS',
+            _ => 'Places',
+          },
+          switch (p) {
+            Piece.location => 'follow() · current()',
+            Piece.arrivals => 'arrivals(stop)',
+            Piece.planner => 'plan(a, b)',
+            Piece.catalog => 'stops() · shape(id)',
+            _ => 'suggestions(text)',
+          },
+          isPort: true,
+        ),
+    };
+
+    final tracks = <(Piece, Piece), List<Offset>>{};
+    // The core hangs straight below the controller.
+    for (final p in corePieces) {
+      final x = core[p]!.center.dx;
+      tracks[(Piece.controller, p)] = [
+        Offset(x, control.bottom),
+        Offset(x, core[p]!.top),
+      ];
+    }
+    // The ports: down a margin or a gap between core chips, then across to
+    // the port, each one turning a little lower so they never cross.
+    final gap1 = m + cw + g / 2, gap2 = m + 2 * cw + 1.5 * g;
+    final corridors = [m / 2, gap1 - 3, gap1 + 3, gap2, width - m / 2];
+    for (var i = 0; i < ports.length; i++) {
+      final x = corridors[i];
+      final port = portRects[ports[i]]!;
+      final turn = coreTop + 58 + 10 + i * 6;
+      final start =
+          i == 0
+              ? Offset(control.left, control.center.dy)
+              : i == ports.length - 1
+              ? Offset(control.right, control.center.dy)
+              : Offset(x, control.bottom);
+      tracks[(Piece.controller, ports[i])] = _chamfer([
+        start,
+        if (i == 0 || i == ports.length - 1) Offset(x, start.dy),
+        Offset(x, turn),
+        Offset(port.center.dx, turn),
+        Offset(port.center.dx, port.top),
+      ], 6);
+    }
+    // The UI reaches the controller through the App API, in two lanes: the
+    // actions go down, the state comes up.
+    List<Offset> lane(double x) => [
+      Offset(x, connector.bottom),
+      Offset(x, contract.top),
+      Offset(x, contract.bottom),
+      Offset(x, control.top),
+    ];
+    return _Plane._(
+      size,
+      Rect.fromLTWH(-200, -200, 0, 0),
+      connector,
+      chips,
+      contract,
+      tracks,
+      lane(laneA),
+      lane(laneS),
+      compact: true,
+      edgeY: edgeY,
+    );
+  }
 
   factory _Plane(Size size, Rect phone) {
     final cy = phone.center.dy;
@@ -548,6 +723,25 @@ List<Offset> _route(Offset a, Offset b, {required double breakValue}) {
     Offset(breakValue + c, b.dy),
     b,
   ];
+}
+
+/// A path with its corners cut at 45° (by [r], or less where a segment is
+/// short), like the copper tracks of the wide board.
+List<Offset> _chamfer(List<Offset> pts, double r) {
+  final out = <Offset>[pts.first];
+  for (var i = 1; i < pts.length - 1; i++) {
+    final a = pts[i - 1], b = pts[i], c = pts[i + 1];
+    final inLen = (b - a).distance, outLen = (c - b).distance;
+    final k = math.min(r, math.min(inLen, outLen) / 2);
+    if (k < 0.5) {
+      out.add(b);
+      continue;
+    }
+    out
+      ..add(b - (b - a) / inLen * k)
+      ..add(b + (c - b) / outLen * k);
+  }
+  return out..add(pts.last);
 }
 
 /// Leaves vertically and arrives vertically, with a horizontal segment in the middle.
@@ -792,6 +986,21 @@ Map<String, Rect> plateBoxes(Size size, Rect phone) {
   };
 }
 
+/// The boxes of the compact board (the phone's) for a [width], and its size.
+/// To check they do not overlap.
+@visibleForTesting
+({Size size, Map<String, Rect> boxes}) boxesOfCompactBoard(double width) {
+  final p = _Plane.compact(width);
+  return (
+    size: p.size,
+    boxes: {
+      for (final e in p.chips.entries) e.key.name: e.value.rect,
+      'contract': p.contract,
+      'connector': p.connector,
+    },
+  );
+}
+
 /// Window width needed by the "under the hood" view with a phone of
 /// [widthPhone]: the narrative, the phone and the whole plate.
 double widthMinUnderTheHood(double widthPhone) =>
@@ -820,51 +1029,33 @@ class UnderTheHood extends ConsumerStatefulWidget {
   ConsumerState<UnderTheHood> createState() => _UnderTheHoodState();
 }
 
-class _UnderTheHoodState extends ConsumerState<UnderTheHood>
-    with TickerProviderStateMixin {
+/// What both boards share (the wide one beside the phone and the compact one
+/// in the phone's sheet): the live traces, the clock that moves the pulses,
+/// the state the logic publishes, and the fixed layer rasterized once.
+mixin _LiveBoard<T extends ConsumerStatefulWidget> on ConsumerState<T>
+    implements TickerProvider {
   final _live = _Live();
   late final Ticker _clock;
   StreamSubscription<Trace>? _traces;
   _Plane? _plane;
   ui.Image? _fixed;
-  (Size, double, Language, bool)? _fixedKey;
+  Object? _fixedKey;
   double _lastStatus = -10;
-
-  /// The console maximized over the whole story column (its green light).
-  bool _consoleZoomed = false;
-
-  /// One animation for both halves of the move: the story folding away and
-  /// the console growing into its place.
-  late final AnimationController _zoom;
-  late final Animation<double> _zoomed;
-
-  /// The piece under the mouse (its card is shown next to it).
-  Piece? _over;
   String? _summaryStatus;
 
-  @override
-  void initState() {
-    super.initState();
+  void _startLive() {
     _clock = createTicker((d) => _live.tick(d.inMicroseconds / 1e6))..start();
-    _zoom = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 320),
-    );
-    _zoomed = CurvedAnimation(parent: _zoom, curve: Curves.easeInOutCubic);
     _traces = ref
         .read(tracesProvider)
         ?.stream
         .listen((t) => _live.call(t, _plane));
   }
 
-  @override
-  void dispose() {
+  void _stopLive() {
     _traces?.cancel();
     _clock.dispose();
-    _zoom.dispose();
     _live.dispose();
     _fixed?.dispose();
-    super.dispose();
   }
 
   /// The state the logic publishes, as a call toward the interface
@@ -901,19 +1092,57 @@ class _UnderTheHoodState extends ConsumerState<UnderTheHood>
               '${f.progress.metersLeft == null ? '' : ', ${f.progress.metersLeft} m'}',
   };
 
-  /// The fixed part, rasterized once: each frame only copies the image (a
-  /// Picture would run its shadows and grid again every time).
-  ui.Image _recordFixed(_Plane p, double density) {
-    final rec = ui.PictureRecorder();
-    final c = Canvas(rec)..scale(density);
-    _paintFixed(c, p, widget.light ? _Finish.light : _Finish.dark);
-    final drawing = rec.endRecording();
-    final image = drawing.toImageSync(
-      (p.size.width * density).ceil(),
-      (p.size.height * density).ceil(),
+  /// The fixed part, rasterized once per size, density, language and theme:
+  /// each frame only copies the image (a Picture would run its shadows and
+  /// grid again every time).
+  ui.Image _fixedFor(_Plane p, double density, bool light) {
+    final key = (p.size, p.compact, density, tx.language, light);
+    if (_fixedKey != key || _fixed == null) {
+      _fixed?.dispose();
+      final rec = ui.PictureRecorder();
+      final c = Canvas(rec)..scale(density);
+      _paintFixed(c, p, light ? _Finish.light : _Finish.dark);
+      final drawing = rec.endRecording();
+      _fixed = drawing.toImageSync(
+        (p.size.width * density).ceil(),
+        (p.size.height * density).ceil(),
+      );
+      drawing.dispose();
+      _fixedKey = key;
+    }
+    return _fixed!;
+  }
+}
+
+class _UnderTheHoodState extends ConsumerState<UnderTheHood>
+    with TickerProviderStateMixin, _LiveBoard {
+  /// The console maximized over the whole story column (its green light).
+  bool _consoleZoomed = false;
+
+  /// One animation for both halves of the move: the story folding away and
+  /// the console growing into its place.
+  late final AnimationController _zoom;
+  late final Animation<double> _zoomed;
+
+  /// The piece under the mouse (its card is shown next to it).
+  Piece? _over;
+
+  @override
+  void initState() {
+    super.initState();
+    _startLive();
+    _zoom = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 320),
     );
-    drawing.dispose();
-    return image;
+    _zoomed = CurvedAnimation(parent: _zoom, curve: Curves.easeInOutCubic);
+  }
+
+  @override
+  void dispose() {
+    _zoom.dispose();
+    _stopLive();
+    super.dispose();
   }
 
   @override
@@ -927,12 +1156,11 @@ class _UnderTheHoodState extends ConsumerState<UnderTheHood>
           _plane = _Plane(size, phone);
         }
         final plane = _plane!;
-        final density = MediaQuery.devicePixelRatioOf(context);
-        if (_fixedKey != (size, density, tx.language, widget.light)) {
-          _fixed?.dispose();
-          _fixed = _recordFixed(plane, density);
-          _fixedKey = (size, density, tx.language, widget.light);
-        }
+        final fixed = _fixedFor(
+          plane,
+          MediaQuery.devicePixelRatioOf(context),
+          widget.light,
+        );
         return Material(
           type: MaterialType.transparency,
           child: Stack(
@@ -957,7 +1185,7 @@ class _UnderTheHoodState extends ConsumerState<UnderTheHood>
                     },
                     child: RepaintBoundary(
                       child: CustomPaint(
-                        painter: _PainterPlate(plane, _fixed!, _live),
+                        painter: _PainterPlate(plane, fixed, _live),
                       ),
                     ),
                   ),
@@ -1044,13 +1272,221 @@ class _UnderTheHoodState extends ConsumerState<UnderTheHood>
   }
 }
 
+/// The board on a phone: a strip under the app (the last call, live) that
+/// opens into a sheet with the compact board. The app stays usable above it.
+class UnderTheHoodPocket extends ConsumerStatefulWidget {
+  final bool light;
+  final bool open;
+  final VoidCallback onToggle;
+
+  /// The phone's bottom safe area (the sheet reaches under it).
+  final double bottomInset;
+
+  static const stripHeight = 48.0;
+
+  /// The open sheet's height: the strip, the whole board and the safe area.
+  static double sheetHeight(double bottomInset) =>
+      stripHeight + _Plane.compactHeight + bottomInset;
+
+  const UnderTheHoodPocket({
+    super.key,
+    required this.light,
+    required this.open,
+    required this.onToggle,
+    this.bottomInset = 0,
+  });
+
+  @override
+  ConsumerState<UnderTheHoodPocket> createState() => _UnderTheHoodPocketState();
+}
+
+class _UnderTheHoodPocketState extends ConsumerState<UnderTheHoodPocket>
+    with TickerProviderStateMixin, _LiveBoard {
+  /// The piece whose card is showing (a tap on it; a tap on the card opens
+  /// its code).
+  Piece? _card;
+
+  @override
+  void initState() {
+    super.initState();
+    _startLive();
+  }
+
+  @override
+  void dispose() {
+    _stopLive();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    ref.listen<AppState>(appStateProvider, (_, s) => _onPublish(s));
+    final finish = widget.light ? _Finish.light : _Finish.dark;
+    final ink = widget.light ? _Ink.light : _Ink.dark;
+    return LayoutBuilder(
+      builder: (context, box) {
+        final width = box.maxWidth;
+        if (_plane?.size.width != width || !(_plane?.compact ?? false)) {
+          _plane = _Plane.compact(width);
+          _card = null;
+        }
+        final plane = _plane!;
+        final fixed = _fixedFor(
+          plane,
+          MediaQuery.devicePixelRatioOf(context),
+          widget.light,
+        );
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 320),
+          curve: Curves.easeInOutCubic,
+          decoration: BoxDecoration(
+            color: finish.chassisTop,
+            borderRadius: BorderRadius.vertical(
+              top: Radius.circular(widget.open ? 18 : 0),
+            ),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x40000000),
+                blurRadius: 20,
+                offset: Offset(0, -4),
+              ),
+            ],
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Material(
+            type: MaterialType.transparency,
+            child: Column(
+              children: [
+                _strip(ink),
+                // The board, only while there is room for it (the sheet
+                // animates its height; the board keeps its own and is cut).
+                Expanded(
+                  child: LayoutBuilder(
+                    builder:
+                        (context, b) =>
+                            b.maxHeight < 60
+                                ? const SizedBox.shrink()
+                                : ClipRect(
+                                  child: OverflowBox(
+                                    alignment: Alignment.topCenter,
+                                    minHeight: _Plane.compactHeight,
+                                    maxHeight: _Plane.compactHeight,
+                                    child: _board(plane, fixed),
+                                  ),
+                                ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// The strip: always there, under the app. Closed, it invites in; open,
+  /// it is the sheet's handle. Either way it shows the last call.
+  Widget _strip(_Ink ink) {
+    return InkWell(
+      key: const ValueKey('inside-strip'),
+      onTap: widget.onToggle,
+      child: SizedBox(
+        height: UnderTheHoodPocket.stripHeight,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              Container(
+                width: 7,
+                height: 7,
+                decoration: const BoxDecoration(
+                  color: _status,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                widget.open ? tx.coreTitle : tx.coreOpen,
+                style: _style(14, ink.text, weight: FontWeight.w700),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ValueListenableBuilder<List<_Line>>(
+                  valueListenable: _live.console,
+                  builder: (context, ls, _) {
+                    if (ls.isEmpty) return const SizedBox.shrink();
+                    final l = ls.first;
+                    return Text(
+                      l.trace.call,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: _style(
+                        12,
+                        widget.light ? _Console._onLight(l.color) : l.color,
+                        weight: FontWeight.w600,
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(
+                widget.open
+                    ? Icons.keyboard_arrow_down_rounded
+                    : Icons.keyboard_arrow_up_rounded,
+                color: ink.soft,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _board(_Plane plane, ui.Image fixed) {
+    return SizedBox(
+      width: plane.size.width,
+      height: plane.size.height,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTapUp: (e) {
+                final p = plane.pieceIn(e.localPosition);
+                setState(() => _card = p == _card ? null : p);
+              },
+              child: RepaintBoundary(
+                child: CustomPaint(painter: _PainterPlate(plane, fixed, _live)),
+              ),
+            ),
+          ),
+          if (_card case final p?)
+            Positioned(
+              left: 12,
+              right: 12,
+              bottom: 12,
+              child: GestureDetector(
+                onTap: () => openLink(_linkPiece(p)),
+                child: _Card(p, plane.nameOf(p), action: tx.coreTapCode),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 // --- Text -------------------------------------------------------------------------
 
 /// The card of a piece: what it does and where its code is.
 class _Card extends StatelessWidget {
   final Piece piece;
   final String name;
-  const _Card(this.piece, this.name);
+
+  /// What opens the code: a click on the desktop, a tap on the phone.
+  final String? action;
+  const _Card(this.piece, this.name, {this.action});
 
   static const width = 300.0;
   static const heightEstimated = 190.0;
@@ -1123,7 +1559,7 @@ class _Card extends StatelessWidget {
                 const Icon(Icons.open_in_new, size: 13, color: _textFaint),
                 const SizedBox(width: 6),
                 Text(
-                  tx.coreSeeCode,
+                  action ?? tx.coreSeeCode,
                   style: _style(12, _textFaint, weight: FontWeight.w600),
                 ),
               ],
@@ -1697,7 +2133,8 @@ void _paintFixed(Canvas c, _Plane p, _Finish f) {
   final dot = Paint()..color = const Color(0x0FFFFFFF);
   for (var x = 12.0; x < p.size.width; x += 24) {
     for (var y = 12.0; y < p.size.height; y += 24) {
-      if (x < p.boardEdge + 6 || !board.contains(Offset(x, y))) continue;
+      final onChassis = p.compact ? y < p.edgeY + 6 : x < p.boardEdge + 6;
+      if (onChassis || !board.contains(Offset(x, y))) continue;
       c.drawRect(Rect.fromLTWH(x, y, 1.2, 1.2), dot);
     }
   }
@@ -1707,8 +2144,17 @@ void _paintFixed(Canvas c, _Plane p, _Finish f) {
     p.contract.inflate(30),
     for (final ch in p.chips.values) ch.rect.inflate(14),
   ];
-  for (var y = 18.0; y < p.size.height - 12; y += 22) {
-    final v = Offset(p.boardEdge + 9, y);
+  final edge =
+      p.compact
+          ? [
+            for (var x = 12.0; x < p.size.width - 8; x += 22)
+              Offset(x, p.edgeY + 9),
+          ]
+          : [
+            for (var y = 18.0; y < p.size.height - 12; y += 22)
+              Offset(p.boardEdge + 9, y),
+          ];
+  for (final v in edge) {
     if (!board.contains(v) || stitched.any((o) => o.contains(v))) continue;
     c.drawCircle(v, 2.4, Paint()..color = const Color(0x1AFFFFFF));
     c.drawCircle(v, 1, Paint()..color = f.boardBorder);
@@ -1726,11 +2172,14 @@ void _paintFixed(Canvas c, _Plane p, _Finish f) {
     ),
     textDirection: TextDirection.ltr,
   )..layout();
-  final ui_ = silkscreen(tx.coreLayerUi, f.uiSilkscreen);
-  final logic = silkscreen(tx.coreLayerLogic, const Color(0x40FFFFFF));
-  final y = p.size.height - 26;
-  ui_.paint(c, Offset(p.boardEdge - 14 - ui_.width, y));
-  logic.paint(c, Offset(p.boardEdge + 14, y));
+  // (The compact board has no room for it: its materials say it.)
+  if (!p.compact) {
+    final ui_ = silkscreen(tx.coreLayerUi, f.uiSilkscreen);
+    final logic = silkscreen(tx.coreLayerLogic, const Color(0x40FFFFFF));
+    final y = p.size.height - 26;
+    ui_.paint(c, Offset(p.boardEdge - 14 - ui_.width, y));
+    logic.paint(c, Offset(p.boardEdge + 14, y));
+  }
 
   // Background tracks: the plate keeps going beyond what is used.
   final chance = math.Random(7);
@@ -1767,7 +2216,11 @@ void _paintFixed(Canvas c, _Plane p, _Finish f) {
             ? _route(a, b, breakValue: (a.dx + b.dx) / 2)
             : _routeVertical(a, b);
     if (busy.any((o) => pts.any(o.contains))) continue;
-    if (pts.any((q) => q.dx < p.boardEdge + 16 || !board.contains(q))) {
+    if (pts.any(
+      (q) =>
+          (p.compact ? q.dy < p.edgeY + 16 : q.dx < p.boardEdge + 16) ||
+          !board.contains(q),
+    )) {
       continue;
     }
     c.drawPath(Path()..addPolygon(pts, false), faint);
@@ -1818,11 +2271,23 @@ void _paintFixed(Canvas c, _Plane p, _Finish f) {
         Color(0xFF181C23),
       ]),
   );
-  for (var i = 0; i < 9; i++) {
-    c.drawRect(
-      Rect.fromLTWH(conn.right - 9, conn.top + 12 + i * 12.5, 6, 4),
-      Paint()..color = _pin.withValues(alpha: 0.85),
-    );
+  final connPin = Paint()..color = _pin.withValues(alpha: 0.85);
+  if (p.compact) {
+    // On top of the compact board: its pins face down, toward the board.
+    final n = ((conn.width - 20) / 12.5).floor() + 1;
+    for (var i = 0; i < n; i++) {
+      c.drawRect(
+        Rect.fromLTWH(conn.left + 10 + i * 12.5 - 2, conn.bottom - 7, 4, 5),
+        connPin,
+      );
+    }
+  } else {
+    for (var i = 0; i < 9; i++) {
+      c.drawRect(
+        Rect.fromLTWH(conn.right - 9, conn.top + 12 + i * 12.5, 6, 4),
+        connPin,
+      );
+    }
   }
 
   // Chip bodies, the contract included.
@@ -1837,14 +2302,29 @@ void _paintFixed(Canvas c, _Plane p, _Finish f) {
     );
     // Pins.
     final pin = Paint()..color = _pin.withValues(alpha: isPort ? 0.5 : 0.75);
-    final n = (rect.height / 16).floor();
-    for (var i = 0; i < n; i++) {
-      final y = rect.top + 12 + i * (rect.height - 24) / math.max(1, n - 1);
-      if (free(Offset(rect.left - 3, y))) {
-        c.drawRect(Rect.fromLTWH(rect.left - 5, y - 1.5, 5, 3), pin);
+    if (p.compact) {
+      // Compact: pins on top and below, so the tracks that run down the
+      // margins and the gaps between chips have their room.
+      final n = (rect.width / 16).floor();
+      for (var i = 0; i < n; i++) {
+        final x = rect.left + 12 + i * (rect.width - 24) / math.max(1, n - 1);
+        if (free(Offset(x, rect.top - 3))) {
+          c.drawRect(Rect.fromLTWH(x - 1.5, rect.top - 5, 3, 5), pin);
+        }
+        if (free(Offset(x, rect.bottom + 3))) {
+          c.drawRect(Rect.fromLTWH(x - 1.5, rect.bottom, 3, 5), pin);
+        }
       }
-      if (!isPort && free(Offset(rect.right + 3, y))) {
-        c.drawRect(Rect.fromLTWH(rect.right, y - 1.5, 5, 3), pin);
+    } else {
+      final n = (rect.height / 16).floor();
+      for (var i = 0; i < n; i++) {
+        final y = rect.top + 12 + i * (rect.height - 24) / math.max(1, n - 1);
+        if (free(Offset(rect.left - 3, y))) {
+          c.drawRect(Rect.fromLTWH(rect.left - 5, y - 1.5, 5, 3), pin);
+        }
+        if (!isPort && free(Offset(rect.right + 3, y))) {
+          c.drawRect(Rect.fromLTWH(rect.right, y - 1.5, 5, 3), pin);
+        }
       }
     }
     c.drawRRect(
@@ -1902,13 +2382,23 @@ class _PainterPlate extends CustomPainter {
   static final Map<String, TextPainter> _texts = {};
 
   /// Text cached by content and style.
-  TextPainter _t(String s, TextStyle e, {double? width, int lines = 1}) {
+  /// Its width is that of its longest line (not [width]), so it can be
+  /// centered by hand.
+  TextPainter _t(
+    String s,
+    TextStyle e, {
+    double? width,
+    int lines = 1,
+    bool center = false,
+  }) {
     final k =
-        '$s|${e.fontSize}|${e.color?.toARGB32()}|${e.fontWeight}|$width|$lines';
+        '$s|${e.fontSize}|${e.color?.toARGB32()}|${e.fontWeight}|$width|$lines|$center';
     if (_texts.length > 400) _texts.clear();
     return _texts[k] ??= (TextPainter(
       text: TextSpan(text: s, style: e),
       textDirection: TextDirection.ltr,
+      textAlign: center ? TextAlign.center : TextAlign.start,
+      textWidthBasis: TextWidthBasis.longestLine,
       maxLines: lines,
       ellipsis: '…',
     )..layout(maxWidth: width ?? double.infinity));
@@ -2027,20 +2517,35 @@ class _PainterPlate extends CustomPainter {
       );
     }
 
-    _api(c, p.contract, now);
-    for (final ch in p.chips.values) {
-      _labels(c, ch, live.readings[ch.piece]!, now);
+    if (p.compact) {
+      _apiCompact(c, p, now);
+      for (final ch in p.chips.values) {
+        _labelsCompact(c, ch, live.readings[ch.piece]!, now);
+      }
+    } else {
+      _api(c, p.contract, now);
+      for (final ch in p.chips.values) {
+        _labels(c, ch, live.readings[ch.piece]!, now);
+      }
     }
   }
 
   /// The activity light and the call count, top right.
-  void _light(Canvas c, Rect r, _Reading l, int count, double now) {
+  void _light(
+    Canvas c,
+    Rect r,
+    _Reading l,
+    int count,
+    double now, {
+    Offset inset = const Offset(-16, 16),
+    double radius = 3.2,
+  }) {
     final active = (1 - (now - l.moment) / 0.9).clamp(0.0, 1.0);
-    final light = r.topRight + const Offset(-16, 16);
-    if (active > 0) _glow(c, light, 14, l.color, 0.6 * active);
+    final light = r.topRight + inset;
+    if (active > 0) _glow(c, light, radius * 4.4, l.color, 0.6 * active);
     c.drawCircle(
       light,
-      3.2,
+      radius,
       Paint()..color = Color.lerp(const Color(0xFF2A313B), l.color, active)!,
     );
     if (count == 0) return;
@@ -2049,18 +2554,133 @@ class _PainterPlate extends CustomPainter {
   }
 
   /// The piece's icon: livelier while something passes through it.
-  void _icon(Canvas c, Piece p, Offset o, double active) {
+  void _icon(Canvas c, Piece p, Offset o, double active, {double size = 15}) {
     final i = _iconPiece(p);
     _t(
       String.fromCharCode(i.codePoint),
       TextStyle(
         fontFamily: i.fontFamily,
         package: i.fontPackage,
-        fontSize: 15,
+        fontSize: size,
         height: 1,
         color: _colorPiece(p).withValues(alpha: 0.6 + 0.4 * active),
       ),
     ).paint(c, o);
+  }
+
+  /// The compact App API: its name on top, and its two lanes as two columns,
+  /// each one under the track that enters it (the actions on the left, going
+  /// down; the state on the right, going up).
+  void _apiCompact(Canvas c, _Plane p, double now) {
+    final r = p.contract;
+    final a = live.action, e = live.status;
+    final last = a.moment >= e.moment ? a : e;
+    _light(c, r, last, a.count + e.count, now, inset: const Offset(-12, 12));
+    final active = (1 - (now - last.moment) / 0.9).clamp(0.0, 1.0);
+    final title = _t('App API', _style(13, _text, weight: FontWeight.w700));
+    final tx0 = r.center.dx - (title.width + 18) / 2;
+    _icon(c, Piece.interfaceValue, Offset(tx0, r.top + 8), active, size: 13);
+    title.paint(c, Offset(tx0 + 18, r.top + 6));
+    c.drawLine(
+      Offset(r.center.dx, r.top + 28),
+      Offset(r.center.dx, r.bottom - 8),
+      Paint()
+        ..color = const Color(0x14FFFFFF)
+        ..strokeWidth = 1,
+    );
+    void column(_Reading l, String name, double x, Color color, bool down) {
+      final w = r.width / 2 - 14;
+      final k = (1 - (now - l.moment) / 0.9).clamp(0.0, 1.0);
+      final label = _t(name, _style(10.5, _textFaint), width: w);
+      final lx = x - (label.width + 10) / 2;
+      // An arrow in the lane's direction.
+      final m = Offset(lx + 3, r.top + 32);
+      final d = down ? 1.0 : -1.0;
+      c.drawPath(
+        Path()
+          ..moveTo(m.dx - 3.5, m.dy - 2.5 * d)
+          ..lineTo(m.dx + 3.5, m.dy - 2.5 * d)
+          ..lineTo(m.dx, m.dy + 2.5 * d)
+          ..close(),
+        Paint()..color = Color.lerp(_textFaint, color, 0.35 + 0.65 * k)!,
+      );
+      label.paint(c, Offset(lx + 10, r.top + 25));
+      if (l.count == 0) return;
+      final call = _t(
+        down ? l.call : (l.result ?? l.call),
+        _style(10.5, l.color, weight: FontWeight.w600),
+        width: w,
+      );
+      call.paint(c, Offset(x - call.width / 2, r.top + 40));
+    }
+
+    column(a, 'AppActions', p.actions.first.dx, _action, true);
+    column(e, 'AppState', p.status.first.dx, _status, false);
+  }
+
+  /// A compact chip: the controller with its name and, below, what last went
+  /// through it; a core chip with its icon, name and last call on three rows;
+  /// a port with its icon and name, centered.
+  void _labelsCompact(Canvas c, _Chip ch, _Reading l, double now) {
+    final r = ch.rect;
+    final active = (1 - (now - l.moment) / 0.9).clamp(0.0, 1.0);
+    if (ch.isPort) {
+      _light(c, r, l, 0, now, inset: const Offset(-9, 9), radius: 2.4);
+      _icon(
+        c,
+        ch.piece,
+        Offset(r.center.dx - 6.5, r.top + 9),
+        active,
+        size: 13,
+      );
+      final name = _t(
+        ch.piece == Piece.planner ? 'OTP' : ch.name,
+        _style(10, _text, weight: FontWeight.w700).copyWith(height: 1.15),
+        width: r.width - 8,
+        lines: 2,
+        center: true,
+      );
+      name.paint(c, Offset(r.center.dx - name.width / 2, r.top + 26));
+      return;
+    }
+    final control = ch.piece == Piece.controller;
+    _light(
+      c,
+      r,
+      l,
+      control ? l.count : 0,
+      now,
+      inset: const Offset(-11, 11),
+      radius: 2.8,
+    );
+    final x = r.left + 10;
+    final w = r.width - 20;
+    if (control) {
+      _icon(c, ch.piece, Offset(x, r.top + 9), active, size: 14);
+      _t(
+        ch.name,
+        _style(13, _text, weight: FontWeight.w700),
+      ).paint(c, Offset(x + 20, r.top + 7));
+      if (l.count == 0) return;
+      _t(
+        '${l.call}${l.result == null ? '' : '  = ${l.result}'}',
+        _style(10.5, l.color, weight: FontWeight.w600),
+        width: w,
+      ).paint(c, Offset(x, r.top + 30));
+      return;
+    }
+    _icon(c, ch.piece, Offset(x, r.top + 8), active, size: 13);
+    _t(
+      ch.name,
+      _style(11.5, _text, weight: FontWeight.w700),
+      width: w,
+    ).paint(c, Offset(x, r.top + 24));
+    if (l.count == 0) return;
+    _t(
+      l.call,
+      _style(10, l.color, weight: FontWeight.w600),
+      width: w,
+    ).paint(c, Offset(x, r.top + 40));
   }
 
   /// The App API from the inside: the actions lane on top (they enter from
