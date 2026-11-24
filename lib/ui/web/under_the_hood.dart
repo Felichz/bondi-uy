@@ -1272,46 +1272,65 @@ class _Console extends StatelessWidget {
                           0.25,
                           1.0,
                         ),
+                        // A log entry: the time in its gutter; beside it, who
+                        // calls whom, and under that the whole call (it wraps,
+                        // it is never cut).
                         child: Padding(
-                          padding: const EdgeInsets.only(top: 5),
-                          child: Text.rich(
-                            TextSpan(
-                              children: [
-                                TextSpan(
-                                  text: '${_time(ls[i].moment)}  ',
+                          key: const ValueKey('console-entry'),
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              SizedBox(
+                                width: 72,
+                                child: Text(
+                                  _time(ls[i].moment),
                                   style: _style(12, time),
                                 ),
-                                TextSpan(
-                                  text:
-                                      '${_name(ls[i].trace.from)} › ${_name(ls[i].trace.toward)}  ',
-                                  style: _style(12, route),
-                                ),
-                                TextSpan(
-                                  text: ls[i].trace.call,
-                                  style: _style(
-                                    12,
-                                    light ? _onLight(ls[i].color) : ls[i].color,
-                                    weight: FontWeight.w600,
-                                  ),
-                                ),
-                                if (ls[i].trace.result != null)
-                                  TextSpan(
-                                    text: '  ${ls[i].trace.result}',
-                                    style: _style(12, time),
-                                  ),
-                                if (ls[i].repeats > 1)
-                                  TextSpan(
-                                    text: '  ×${ls[i].repeats}',
-                                    style: _style(
-                                      12,
-                                      route,
-                                      weight: FontWeight.w700,
+                              ),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '${_name(ls[i].trace.from)} › ${_name(ls[i].trace.toward)}',
+                                      style: _style(12, route),
                                     ),
-                                  ),
-                              ],
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                                    const SizedBox(height: 1),
+                                    Text.rich(
+                                      TextSpan(
+                                        children: [
+                                          TextSpan(
+                                            text: ls[i].trace.call,
+                                            style: _style(
+                                              12,
+                                              light
+                                                  ? _onLight(ls[i].color)
+                                                  : ls[i].color,
+                                              weight: FontWeight.w600,
+                                            ),
+                                          ),
+                                          if (ls[i].trace.result != null)
+                                            TextSpan(
+                                              text: '  = ${ls[i].trace.result}',
+                                              style: _style(12, time),
+                                            ),
+                                          if (ls[i].repeats > 1)
+                                            TextSpan(
+                                              text: '  ×${ls[i].repeats}',
+                                              style: _style(
+                                                12,
+                                                route,
+                                                weight: FontWeight.w700,
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),

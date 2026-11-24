@@ -6,6 +6,7 @@ import 'package:bondi_uy/contract/app_state.dart';
 import 'package:bondi_uy/contract/traces.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:bondi_uy/ui/web/web_frame.dart';
@@ -124,23 +125,30 @@ void main() {
           );
         }
         // The console reads like a terminal: the newest call is the bottom
-        // line (the list holds them newest first).
-        final lines =
-            tester
-                .widgetList<RichText>(
-                  find.descendant(
-                    of: find.byKey(const ValueKey('console-lines')),
-                    matching: find.byType(RichText),
-                  ),
-                )
-                .toList();
-        expect(lines.length, greaterThan(3));
-        double top(RichText r) => tester.getTopLeft(find.byWidget(r)).dy;
+        // entry (the list holds them newest first), and no line is cut.
+        final entries = find.descendant(
+          of: find.byKey(const ValueKey('console-lines')),
+          matching: find.byKey(const ValueKey('console-entry')),
+        );
+        expect(entries.evaluate().length, greaterThan(3));
         expect(
-          top(lines.first),
-          greaterThan(top(lines[1])),
+          tester.getTopLeft(entries.at(0)).dy,
+          greaterThan(tester.getTopLeft(entries.at(1)).dy),
           reason: 'the newest call is below the previous one',
         );
+        for (final p in tester.renderObjectList<RenderParagraph>(
+          find.descendant(
+            of: find.byKey(const ValueKey('console-lines')),
+            matching: find.byType(RichText),
+          ),
+        )) {
+          expect(
+            p.didExceedMaxLines,
+            isFalse,
+            reason: 'a console line was cut: ${p.text.toPlainText()}',
+          );
+          expect(p.maxLines, isNull);
+        }
 
         // The console sits in the portfolio's window: the green light
         // maximizes it over the story column, and restores it.
