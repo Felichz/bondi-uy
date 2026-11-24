@@ -179,6 +179,8 @@ abstract class Texts {
   String get webViewPresentation;
   String get webViewByInside;
   String get coreTitle;
+  String get coreLayerUi;
+  String get coreLayerLogic;
   String get coreAlighting;
   String get coreNoteDemo;
   String get coreConsole;
@@ -519,6 +521,10 @@ class TextosEs extends Texts {
   String get webViewByInside => 'Por dentro';
   @override
   String get coreTitle => 'Por dentro';
+  @override
+  String get coreLayerUi => 'CAPA DE UI';
+  @override
+  String get coreLayerLogic => 'CAPA DE LÓGICA';
   @override
   String get coreAlighting =>
       'Dos capas unidas por una API, la App API. La UI solo lee el estado y le '
@@ -911,6 +917,10 @@ class TextosEn extends Texts {
   String get webViewByInside => 'Inside';
   @override
   String get coreTitle => 'Inside';
+  @override
+  String get coreLayerUi => 'UI LAYER';
+  @override
+  String get coreLayerLogic => 'LOGIC LAYER';
   @override
   String get coreAlighting =>
       'Two layers joined by an API, the App API. The UI only reads the state and '

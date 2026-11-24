@@ -172,6 +172,42 @@ class _Plane {
 
   /// The bodies of the chips (the contract included): the live part is painted underneath,
   /// so a track enters a chip through its pins and does not cross over it.
+  /// Where the circuit board starts: the UI side (the story and the phone)
+  /// sits on the chassis, the logic on the board.
+  late final double boardEdge = connector.right + 4;
+
+  /// The board's outline. It has a notch where the App API sits, so the
+  /// contract stands half on the chassis and half on the board: it is the
+  /// boundary between the two layers.
+  late final Path board = () {
+    final x = boardEdge;
+    final notchX = contract.center.dx;
+    final top = contract.top - 24, bottom = contract.bottom + 24;
+    const outer = Radius.circular(8), inner = Radius.circular(14);
+    return Path()
+      ..moveTo(x, 0)
+      ..lineTo(size.width, 0)
+      ..lineTo(size.width, size.height)
+      ..lineTo(x, size.height)
+      ..lineTo(x, bottom + outer.y)
+      ..arcToPoint(Offset(x + outer.x, bottom), radius: outer)
+      ..lineTo(notchX - inner.x, bottom)
+      ..arcToPoint(
+        Offset(notchX, bottom - inner.y),
+        radius: inner,
+        clockwise: false,
+      )
+      ..lineTo(notchX, top + inner.y)
+      ..arcToPoint(
+        Offset(notchX - inner.x, top),
+        radius: inner,
+        clockwise: false,
+      )
+      ..lineTo(x + outer.x, top)
+      ..arcToPoint(Offset(x, top - outer.y), radius: outer)
+      ..close();
+  }();
+
   late final List<RRect> bodies = [
     RRect.fromRectAndRadius(contract, const Radius.circular(12)),
     for (final ch in chips.values)
@@ -712,7 +748,7 @@ class _ByInsideState extends ConsumerState<UnderTheHood>
   StreamSubscription<Trace>? _traces;
   _Plane? _plane;
   ui.Image? _fixed;
-  (Size, double)? _claveFixed;
+  (Size, double, Language)? _fixedKey;
   double _lastStatus = -10;
 
   /// The piece under the mouse (its card is shown next to it).
@@ -774,7 +810,7 @@ class _ByInsideState extends ConsumerState<UnderTheHood>
 
   /// The fixed part, rasterized once: each frame only copies the image (a
   /// Picture would run its shadows and grid again every time).
-  ui.Image _grabarFijo(_Plane p, double density) {
+  ui.Image _recordFixed(_Plane p, double density) {
     final rec = ui.PictureRecorder();
     final c = Canvas(rec)..scale(density);
     _paintFixed(c, p);
@@ -799,10 +835,10 @@ class _ByInsideState extends ConsumerState<UnderTheHood>
         }
         final plane = _plane!;
         final density = MediaQuery.devicePixelRatioOf(context);
-        if (_claveFixed != (size, density)) {
+        if (_fixedKey != (size, density, tx.language)) {
           _fixed?.dispose();
-          _fixed = _grabarFijo(plane, density);
-          _claveFixed = (size, density);
+          _fixed = _recordFixed(plane, density);
+          _fixedKey = (size, density, tx.language);
         }
         return Material(
           type: MaterialType.transparency,
@@ -1206,8 +1242,42 @@ class _HeartbeatState extends State<_Heartbeat>
 /// chip bodies.
 void _paintFixed(Canvas c, _Plane p) {
   final r = Offset.zero & p.size;
+  final board = p.board;
+
+  // The chassis, under everything: dark brushed metal, a touch cooler than
+  // the board. This is the UI side.
   c.drawRect(
     r,
+    Paint()
+      ..shader = ui.Gradient.linear(r.topCenter, r.bottomCenter, const [
+        Color(0xFF14181E),
+        Color(0xFF0A0C10),
+      ]),
+  );
+  // Brushed grain: fine horizontal streaks of uneven length and brightness.
+  final grain = math.Random(11);
+  for (var i = 0; i < 900; i++) {
+    final y = grain.nextDouble() * p.size.height;
+    final x = grain.nextDouble() * p.size.width;
+    final long = 40 + grain.nextDouble() * 260;
+    c.drawLine(
+      Offset(x, y),
+      Offset(x + long, y),
+      Paint()
+        ..color = Color.fromARGB(4 + grain.nextInt(6), 255, 255, 255)
+        ..strokeWidth = 0.6,
+    );
+  }
+
+  // The board, raised over the chassis: its shadow first, then the board.
+  c.drawPath(
+    board.shift(const Offset(-2, 6)),
+    Paint()
+      ..color = const Color(0x99000000)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12),
+  );
+  c.drawPath(
+    board,
     Paint()
       ..shader = ui.Gradient.radial(
         Offset(p.size.width * 0.6, p.size.height * 0.5),
@@ -1215,13 +1285,54 @@ void _paintFixed(Canvas c, _Plane p) {
         const [_backgroundCenter, _backgroundBorder],
       ),
   );
-  // Dot grid.
-  final punto = Paint()..color = const Color(0x0FFFFFFF);
+  // Its edge catches a bit of light.
+  c.drawPath(
+    board,
+    Paint()
+      ..color = const Color(0x1CFFFFFF)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1,
+  );
+
+  // Dot grid, only on the board.
+  final dot = Paint()..color = const Color(0x0FFFFFFF);
   for (var x = 12.0; x < p.size.width; x += 24) {
     for (var y = 12.0; y < p.size.height; y += 24) {
-      c.drawRect(Rect.fromLTWH(x, y, 1.2, 1.2), punto);
+      if (x < p.boardEdge + 6 || !board.contains(Offset(x, y))) continue;
+      c.drawRect(Rect.fromLTWH(x, y, 1.2, 1.2), dot);
     }
   }
+
+  // Stitching vias along the board's edge.
+  final stitched = [
+    p.contract.inflate(30),
+    for (final ch in p.chips.values) ch.rect.inflate(14),
+  ];
+  for (var y = 18.0; y < p.size.height - 12; y += 22) {
+    final v = Offset(p.boardEdge + 9, y);
+    if (!board.contains(v) || stitched.any((o) => o.contains(v))) continue;
+    c.drawCircle(v, 2.4, Paint()..color = const Color(0x1AFFFFFF));
+    c.drawCircle(v, 1, Paint()..color = _backgroundBorder);
+  }
+
+  // Silkscreen: which layer is which, at the foot of the edge.
+  TextPainter silkscreen(String s) => TextPainter(
+    text: TextSpan(
+      text: s,
+      style: _style(
+        10,
+        const Color(0x40FFFFFF),
+        weight: FontWeight.w700,
+      ).copyWith(letterSpacing: 2.2),
+    ),
+    textDirection: TextDirection.ltr,
+  )..layout();
+  final ui_ = silkscreen(tx.coreLayerUi);
+  final logic = silkscreen(tx.coreLayerLogic);
+  final y = p.size.height - 26;
+  ui_.paint(c, Offset(p.boardEdge - 14 - ui_.width, y));
+  logic.paint(c, Offset(p.boardEdge + 14, y));
+
   // Background tracks: the plate keeps going beyond what is used.
   final chance = math.Random(7);
   final faint =
@@ -1257,6 +1368,9 @@ void _paintFixed(Canvas c, _Plane p) {
             ? _route(a, b, breakValue: (a.dx + b.dx) / 2)
             : _routeVertical(a, b);
     if (busy.any((o) => pts.any(o.contains))) continue;
+    if (pts.any((q) => q.dx < p.boardEdge + 16 || !board.contains(q))) {
+      continue;
+    }
     c.drawPath(Path()..addPolygon(pts, false), faint);
     c.drawCircle(a, 2.6, via);
     c.drawCircle(b, 2.6, via);
