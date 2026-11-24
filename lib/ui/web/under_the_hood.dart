@@ -1247,8 +1247,8 @@ void _paintFixed(Canvas c, _Plane p) {
     r,
     Paint()
       ..shader = ui.Gradient.linear(r.topCenter, r.bottomCenter, const [
-        Color(0xFF14181E),
-        Color(0xFF0A0C10),
+        Color(0xFF1C222B),
+        Color(0xFF0F1318),
       ]),
   );
   // Brushed grain: fine horizontal streaks of uneven length and brightness.
@@ -1261,7 +1261,7 @@ void _paintFixed(Canvas c, _Plane p) {
       Offset(x, y),
       Offset(x + long, y),
       Paint()
-        ..color = Color.fromARGB(4 + grain.nextInt(6), 255, 255, 255)
+        ..color = Color.fromARGB(6 + grain.nextInt(9), 255, 255, 255)
         ..strokeWidth = 0.6,
     );
   }
@@ -1270,8 +1270,8 @@ void _paintFixed(Canvas c, _Plane p) {
   c.drawPath(
     board.shift(const Offset(-2, 6)),
     Paint()
-      ..color = const Color(0x99000000)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12),
+      ..color = const Color(0xCC000000)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 16),
   );
   c.drawPath(
     board,
@@ -1286,7 +1286,7 @@ void _paintFixed(Canvas c, _Plane p) {
   c.drawPath(
     board,
     Paint()
-      ..color = const Color(0x1CFFFFFF)
+      ..color = const Color(0x2EFFFFFF)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1,
   );
