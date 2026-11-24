@@ -1248,16 +1248,9 @@ class _Console extends StatelessWidget {
     return _Window(
       colors: w,
       lights: _Lights(colors: w, zoomed: zoomed, onZoom: onZoom),
-      title: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const _Heartbeat(),
-          const SizedBox(width: 8),
-          Text(
-            tx.coreConsole,
-            style: _style(13, w.title, weight: FontWeight.w600),
-          ),
-        ],
+      title: Text(
+        tx.coreConsole,
+        style: _style(13, w.title, weight: FontWeight.w600),
       ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
@@ -1329,7 +1322,7 @@ class _Console extends StatelessWidget {
 
 /// The window the portfolio draws its previews in (and the knowgraph and
 /// LifeUI landings their films): a bar with a centered title and the three
-/// lights, over the content.
+/// lights (here on the right), over the content.
 class _WindowColors {
   final Color background;
   final Color bar;
@@ -1414,7 +1407,7 @@ class _Window extends StatelessWidget {
                 children: [
                   Center(child: title),
                   Positioned(
-                    left: 13,
+                    right: 13,
                     top: 0,
                     bottom: 0,
                     child: Center(child: lights),
@@ -1614,49 +1607,6 @@ class _ZoomGlyph extends CustomPainter {
 
   @override
   bool shouldRepaint(_ZoomGlyph old) => old.restore != restore;
-}
-
-/// A green dot that pulses: "live".
-class _Heartbeat extends StatefulWidget {
-  const _Heartbeat();
-
-  @override
-  State<_Heartbeat> createState() => _HeartbeatState();
-}
-
-class _HeartbeatState extends State<_Heartbeat>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _a = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1400),
-  )..repeat();
-
-  @override
-  void dispose() {
-    _a.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => AnimatedBuilder(
-    animation: _a,
-    builder:
-        (context, _) => Container(
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(
-            color: _status,
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: _status.withValues(alpha: 0.8 * (1 - _a.value)),
-                blurRadius: 2 + 10 * _a.value,
-                spreadRadius: 6 * _a.value,
-              ),
-            ],
-          ),
-        ),
-  );
 }
 
 // --- Painting -----------------------------------------------------------------------
