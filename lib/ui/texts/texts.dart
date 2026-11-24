@@ -176,8 +176,8 @@ abstract class Texts {
   String get webDemo;
   String get webDownload;
   String get webCode;
-  String get webViewPresentation;
-  String get webViewInside;
+  String get webThemeToLight;
+  String get webThemeToDark;
   String get coreTitle;
   String get coreLayerUi;
   String get coreLayerLogic;
@@ -516,9 +516,9 @@ class SpanishTexts extends Texts {
   @override
   String get webCode => 'Código fuente';
   @override
-  String get webViewPresentation => 'Presentación';
+  String get webThemeToLight => 'Modo claro';
   @override
-  String get webViewInside => 'Por dentro';
+  String get webThemeToDark => 'Modo oscuro';
   @override
   String get coreTitle => 'Por dentro';
   @override
@@ -912,9 +912,9 @@ class EnglishTexts extends Texts {
   @override
   String get webCode => 'Source code';
   @override
-  String get webViewPresentation => 'Overview';
+  String get webThemeToLight => 'Light mode';
   @override
-  String get webViewInside => 'Inside';
+  String get webThemeToDark => 'Dark mode';
   @override
   String get coreTitle => 'Inside';
   @override

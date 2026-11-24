@@ -9,8 +9,8 @@ import 'map/tiles/tile_source.dart';
 /// Option in the carousel that the user is looking at.
 final optionFocusedProvider = StateProvider<String?>((_) => null);
 
-/// Show the web presentation also outside the web (tests): null = no;
-/// otherwise, true starts in the "inside" view.
+/// Show the web landing also outside the web (tests): null = no, any value
+/// = yes.
 final frameForcedProvider = Provider<bool?>((_) => null);
 
 /// On a trip, the camera follows the approaching bus (true) or the user.

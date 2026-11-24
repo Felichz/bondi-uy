@@ -1,10 +1,9 @@
-// On a wide screen (the web demo opened on a computer), the app is shown inside
-// a phone, with a presentation alongside; or, in the "inside" view (`?vista=core`
-// or the selector above), plugged into a board where the calls between its
-// pieces are seen (por_dentro.dart). On a phone, or embedded with `?marco=0`, it
-// fills the whole screen as always; on an Android phone, with a notice on top to
-// download the app (the presentation, with its button, does not fit), until it
-// is closed.
+// On a wide screen (the web demo opened on a computer), the landing: the app
+// inside a phone, plugged into a board where the calls between its pieces are
+// seen (under_the_hood.dart). If the window is too small for the whole board,
+// a simpler presentation with the phone alongside. On a phone, or embedded with
+// `?marco=0`, the app fills the whole screen as always; on an Android phone,
+// with a notice on top to download the app, until it is closed.
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -15,6 +14,7 @@ import '../../contract/providers.dart';
 import '../platform/storage.dart';
 import '../platform/links.dart';
 import '../theme/app_theme.dart';
+import '../theme/theme_preference.dart';
 import '../texts/texts.dart';
 import 'under_the_hood.dart';
 
@@ -39,15 +39,7 @@ class WebFrame extends ConsumerStatefulWidget {
 
   /// Show the frame also outside the web (tests).
   final bool force;
-
-  /// Start in the "inside" view (otherwise the URL decides).
-  final bool? underTheHood;
-  const WebFrame({
-    super.key,
-    required this.child,
-    this.force = false,
-    this.underTheHood,
-  });
+  const WebFrame({super.key, required this.child, this.force = false});
 
   @override
   ConsumerState<WebFrame> createState() => _WebFrameState();
@@ -57,9 +49,6 @@ class _WebFrameState extends ConsumerState<WebFrame> {
   static bool get _disabled => Uri.base.queryParameters['marco'] == '0';
 
   final _phoneKey = GlobalKey();
-
-  late bool _underTheHood =
-      widget.underTheHood ?? Uri.base.queryParameters['vista'] == 'core';
 
   Widget get child => widget.child;
   bool get force => widget.force;
@@ -78,8 +67,9 @@ class _WebFrameState extends ConsumerState<WebFrame> {
     final c = BondiColors.of(context);
     // The phone fits entirely in the window, with some room above and below.
     final scale = ((size.height - 64) / (_screen.height + 24)).clamp(0.5, 1.0);
-    // With a global key: when switching views, the app moves without being
-    // unmounted (the trip, the map and the camera stay as they were).
+    // With a global key: when the window changes between the board and the
+    // simple presentation, the app moves without being unmounted (the trip,
+    // the map and the camera stay as they were).
     final device = _Phone(
       key: _phoneKey,
       child: MediaQuery(
@@ -96,35 +86,27 @@ class _WebFrameState extends ConsumerState<WebFrame> {
       height: (_screen.height + 24) * scale,
       child: FittedBox(child: device),
     );
-    // Inside view: only if the logic reports its calls (the demo) and it fits
+    // The board: only if the logic reports its calls (the demo) and it fits
     // whole (the story, the phone and the board, without shrinking texts).
     final sizeCore = phoneSizeUnderTheHood(size.height);
     final underTheHoodPossible =
         ref.watch(tracesProvider) != null &&
         size.height >= heightMinUnderTheHood &&
         size.width >= widthMinUnderTheHood(sizeCore.width);
-    final selector =
-        underTheHoodPossible
-            ? _Selector(
-              underTheHood: _underTheHood,
-              dark: c.brightness == Brightness.dark,
-              onChange: (v) => setState(() => _underTheHood = v),
-            )
-            : null;
-    if (underTheHoodPossible && _underTheHood) {
-      final light = c.brightness == Brightness.light;
+    final dark = c.brightness == Brightness.dark;
+    if (underTheHoodPossible) {
       return ColoredBox(
-        color: light ? const Color(0xFFDDE1E6) : const Color(0xFF06080B),
+        color: dark ? const Color(0xFF06080B) : const Color(0xFFDDE1E6),
         child: UnderTheHood(
-          light: light,
+          light: !dark,
           sizePhone: sizeCore,
           phone: FittedBox(child: device),
-          // If they do not fit in one line, the selector moves to the next.
-          header: Wrap(
-            spacing: 24,
-            runSpacing: 14,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [_Marker(dark: !light), selector!],
+          header: Row(
+            children: [
+              _Marker(dark: dark),
+              const Spacer(),
+              _ThemeButton(dark: dark),
+            ],
           ),
         ),
       );
@@ -140,7 +122,7 @@ class _WebFrameState extends ConsumerState<WebFrame> {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (width) ...[
-              SizedBox(width: 380, child: _Presentation(selector: selector)),
+              const SizedBox(width: 380, child: _Presentation()),
               const SizedBox(width: 64),
             ],
             phone,
@@ -187,8 +169,7 @@ class _Phone extends StatelessWidget {
 }
 
 class _Presentation extends StatelessWidget {
-  final Widget? selector;
-  const _Presentation({this.selector});
+  const _Presentation();
 
   @override
   Widget build(BuildContext context) {
@@ -200,8 +181,13 @@ class _Presentation extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (selector != null) ...[selector!, const SizedBox(height: 28)],
-          _Marker(dark: c.brightness == Brightness.dark),
+          Row(
+            children: [
+              _Marker(dark: c.brightness == Brightness.dark),
+              const Spacer(),
+              _ThemeButton(dark: c.brightness == Brightness.dark),
+            ],
+          ),
           const SizedBox(height: 20),
           Text(tx.webMotto, style: t.headlineSmall?.copyWith(height: 1.25)),
           const SizedBox(height: 14),
@@ -409,60 +395,41 @@ class _Marker extends StatelessWidget {
   }
 }
 
-/// Chooses the presentation view: the usual one or "inside".
-class _Selector extends StatelessWidget {
-  final bool underTheHood;
+/// Switches between light and dark (and remembers it).
+class _ThemeButton extends ConsumerWidget {
   final bool dark;
-  final ValueChanged<bool> onChange;
-  const _Selector({
-    required this.underTheHood,
-    required this.dark,
-    required this.onChange,
-  });
+  const _ThemeButton({required this.dark});
 
   @override
-  Widget build(BuildContext context) {
-    final background = dark ? const Color(0xFF151A21) : const Color(0xFFFFFFFF);
-    final border = dark ? const Color(0xFF2A323D) : const Color(0xFFDDE2EA);
-    final active = dark ? const Color(0xFFF2F4F7) : const Color(0xFF111318);
-    final overActive = dark ? const Color(0xFF111318) : Colors.white;
-    final inactive = dark ? const Color(0xFFA7AEBA) : const Color(0xFF5C616C);
-    Widget option(String text, bool current, bool value) => Material(
-      color: current ? active : Colors.transparent,
-      borderRadius: BorderRadius.circular(20),
-      child: InkWell(
-        key: ValueKey(value ? 'view-under-the-hood' : 'view-presentation'),
-        borderRadius: BorderRadius.circular(20),
-        onTap: current ? null : () => onChange(value),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-          child: Text(
-            text,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: current ? overActive : inactive,
-            ),
+  Widget build(BuildContext context, WidgetRef ref) {
+    // A label for screen readers (a Tooltip needs an Overlay, and the frame
+    // lives above the app's Navigator).
+    return Semantics(
+      button: true,
+      label: dark ? tx.webThemeToLight : tx.webThemeToDark,
+      child: Material(
+        color: dark ? const Color(0xFF151A21) : Colors.white,
+        shape: CircleBorder(
+          side: BorderSide(
+            color: dark ? const Color(0xFF2A323D) : const Color(0xFFD5DAE1),
           ),
         ),
-      ),
-    );
-    return Material(
-      type: MaterialType.transparency,
-      child: Container(
-        padding: const EdgeInsets.all(4),
-        decoration: BoxDecoration(
-          color: background,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: border),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            option(tx.webViewPresentation, !underTheHood, false),
-            const SizedBox(width: 2),
-            option(tx.webViewInside, underTheHood, true),
-          ],
+        child: InkWell(
+          key: const ValueKey('theme-toggle'),
+          customBorder: const CircleBorder(),
+          onTap:
+              () => ref
+                  .read(preferenceThemeProvider.notifier)
+                  .choose(dark ? ThemeMode.light : ThemeMode.dark),
+          child: SizedBox(
+            width: 44,
+            height: 44,
+            child: Icon(
+              dark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
+              size: 20,
+              color: dark ? const Color(0xFFE9EDF3) : const Color(0xFF111318),
+            ),
+          ),
         ),
       ),
     );

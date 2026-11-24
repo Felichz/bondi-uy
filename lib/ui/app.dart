@@ -45,11 +45,7 @@ class BondiApp extends ConsumerWidget {
       // On the web, on wide screens, inside a phone frame.
       builder: (context, child) {
         final forced = ref.watch(frameForcedProvider);
-        return WebFrame(
-          force: forced != null,
-          underTheHood: forced,
-          child: child!,
-        );
+        return WebFrame(force: forced != null, child: child!);
       },
     );
   }

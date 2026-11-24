@@ -123,6 +123,20 @@ void main() {
             reason: 'calls ${pair.$1} -> ${pair.$2}',
           );
         }
+        // No tabs: this is the only landing. The theme button switches
+        // between light and dark.
+        expect(find.text('Presentación'), findsNothing);
+        expect(find.text('Overview'), findsNothing);
+        final toggle = find.byKey(const ValueKey('theme-toggle'));
+        expect(toggle, findsOneWidget);
+        final before =
+            dark ? Icons.light_mode_rounded : Icons.dark_mode_rounded;
+        final after = dark ? Icons.dark_mode_rounded : Icons.light_mode_rounded;
+        expect(find.byIcon(before), findsOneWidget);
+        await tester.tap(toggle);
+        await a.wait(const Duration(milliseconds: 600));
+        expect(find.byIcon(after), findsOneWidget);
+        await a.capture('theme_toggled');
         await a.close();
       },
     );

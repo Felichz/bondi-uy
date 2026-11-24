@@ -29,6 +29,12 @@ class ThemePreference extends StateNotifier<ThemeMode> {
     if (persist) savePreference('tema', state.name);
   }
 
+  /// A mode chosen by the user (remembered).
+  void choose(ThemeMode m) {
+    state = m;
+    if (persist) savePreference('tema', m.name);
+  }
+
   void pin(ThemeMode m) => state = m;
 }
 
