@@ -9,6 +9,7 @@ import '../contract/app_state.dart';
 import '../contract/providers.dart';
 import 'ui_status.dart';
 import 'map/framing.dart';
+import 'map/obstacles.dart';
 import 'theme/app_theme.dart';
 import 'theme/sheet.dart';
 import 'texts/texts.dart';
@@ -24,16 +25,19 @@ class RecenterButton extends ConsumerWidget {
     return ListenableBuilder(
       listenable: ctl,
       builder:
-          (context, _) => AnimatedScale(
-            scale: ctl.free ? 1 : 0,
-            duration: const Duration(milliseconds: 200),
-            curve: Curves.easeOutBack,
-            child: SheetButton(
-              key: const ValueKey('button-recenter'),
-              icon: Icons.my_location_rounded,
-              label: tx.recenterMap,
-              color: c.walk,
-              onTap: ctl.recenter,
+          (context, _) => MapObstacle(
+            active: ctl.free,
+            child: AnimatedScale(
+              scale: ctl.free ? 1 : 0,
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOutBack,
+              child: SheetButton(
+                key: const ValueKey('button-recenter'),
+                icon: Icons.my_location_rounded,
+                label: tx.recenterMap,
+                color: c.walk,
+                onTap: ctl.recenter,
+              ),
             ),
           ),
     );
@@ -62,6 +66,21 @@ class TripCameraButton extends ConsumerWidget {
             ? Icons.person_pin_circle_rounded
             : Icons.directions_bus_rounded;
     final text = showBus ? tx.seeMe : tx.seeTheBus;
+    return MapObstacle(
+      active: can,
+      child: _cameraButton(context, ref, can, showBus, c, icon, text),
+    );
+  }
+
+  Widget _cameraButton(
+    BuildContext context,
+    WidgetRef ref,
+    bool can,
+    bool showBus,
+    BondiColors c,
+    IconData icon,
+    String text,
+  ) {
     return AnimatedScale(
       key: const ValueKey('button-camera-scale'),
       scale: can ? 1 : 0,

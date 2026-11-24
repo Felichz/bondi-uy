@@ -2,7 +2,9 @@
 // into a sheet with the compact board, live, while the app keeps running.
 
 import 'package:bondi_uy/contract/app_state.dart';
+import 'package:bondi_uy/ui/map/bondi_map.dart';
 import 'package:bondi_uy/ui/web/under_the_hood.dart';
+import 'package:bondi_uy/ui/web/web_frame.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -33,8 +35,9 @@ void main() {
   });
 
   for (final (size, dark) in const [
-    (Size(390, 844), false),
-    (Size(360, 800), true),
+    // A 393-wide phone with the browser's bars taken out, and a small one.
+    (Size(393, 773), true),
+    (Size(360, 800), false),
   ]) {
     testWidgets(
       'a trip with the board in a sheet (${size.width.round()}x${size.height.round()}${dark ? ', dark' : ''})',
@@ -53,6 +56,17 @@ void main() {
         expect(strip, findsOneWidget, reason: 'the strip under the app');
         await a.capture('closed');
 
+        // In a phone's browser the app is drawn a little smaller: it is laid
+        // out for a larger screen than the one it is shown in.
+        final scale = phoneWebScale(
+          Size(size.width, size.height - UnderTheHoodPocket.stripHeight),
+        );
+        expect(scale, lessThan(1));
+        expect(
+          tester.getSize(find.byType(BondiMap)).width,
+          closeTo(size.width / scale, 0.5),
+        );
+
         // The app works as always above the strip.
         await a.tap('demo-destination-plaza-independencia');
         await a.until(
@@ -62,6 +76,10 @@ void main() {
         );
         await a.tap('start-trip');
         await a.wait(const Duration(milliseconds: 1500));
+        await a.capture('walking');
+        await a.untilStep(1);
+        await a.wait(const Duration(milliseconds: 800));
+        await a.capture('waiting');
 
         // Open: the sheet rises with the board, and the app stays above it.
         await tester.tap(strip);
@@ -70,9 +88,6 @@ void main() {
           tester.getTopLeft(strip).dy,
           lessThan(size.height - UnderTheHoodPocket.sheetHeight(0) + 1),
         );
-        await a.capture('open_walking');
-        await a.untilStep(1);
-        await a.wait(const Duration(milliseconds: 800));
         await a.capture('open_waiting');
 
         // A tap on a piece shows its card.

@@ -33,6 +33,9 @@ class SceneDrawer {
   /// Balloons drawn in the last frame (diagnostics and tests).
   final List<String> balloonsPlaced = [];
 
+  /// Where they were drawn (diagnostics and tests).
+  final List<Rect> balloonBoxes = [];
+
   /// Where the user ended up in the last frame (diagnostics and tests).
   Offset? userOnScreen;
 
@@ -71,6 +74,9 @@ class SceneDrawer {
     double phase = 0,
     EdgeInsets margins = EdgeInsets.zero,
     bool free = false,
+
+    /// Floating controls over the map: no balloon or street name under them.
+    List<Rect> obstacles = const [],
   }) {
     final half = Offset(
       (size.width / 2).floorToDouble(),
@@ -123,7 +129,11 @@ class SceneDrawer {
       area,
       boxesMarks,
       phase,
+      obstacles,
     );
+    balloonBoxes
+      ..clear()
+      ..addAll([for (final g in balloons) g.box]);
 
     final reserved = <Rect>[
       Rect.fromLTWH(0, 0, size.width, margins.top),
@@ -134,6 +144,7 @@ class SceneDrawer {
         margins.bottom,
       ),
       ...boxesMarks,
+      ...obstacles,
       for (final g in balloons) g.box,
     ];
     _labels(c, size, cam, half, reserved);
@@ -919,6 +930,7 @@ class SceneDrawer {
     Rect area,
     List<Rect> boxesMarks,
     double phase,
+    List<Rect> obstacles,
   ) {
     final candidates = [
       for (final (m, p) in marks)
@@ -937,6 +949,7 @@ class SceneDrawer {
       }
       final loose = r.inflate(3);
       if (placed.any((g) => g.box.overlaps(loose))) return false;
+      if (obstacles.any((o) => o.overlaps(loose))) return false;
       if (strict && boxesMarks.any((m) => m.overlaps(r.deflate(2)))) {
         return false;
       }
@@ -999,7 +1012,13 @@ class SceneDrawer {
       var chosen = options.where((o) => free(o.$2, strict: strict));
       if (chosen.isEmpty && g.priority >= 90) {
         // The essentials are shown anyway, on the side that fits in the view.
-        chosen = [options[0].$2.top >= area.top ? options[0] : options[1]];
+        // (and, of those, one that no floating control covers, if any).
+        final inView = options[0].$2.top >= area.top ? options[0] : options[1];
+        bool clear((_Side, Rect, Offset) o) =>
+            o.$2.top >= area.top &&
+            o.$2.bottom <= area.bottom &&
+            !obstacles.any((x) => x.overlaps(o.$2));
+        chosen = [options.take(2).where(clear).firstOrNull ?? inView];
       }
       if (chosen.isEmpty) continue;
       final (side, box, tip) = chosen.first;

@@ -62,10 +62,12 @@ class _WebFrameState extends ConsumerState<WebFrame> {
     if (!(kIsWeb || force) || _disabled) return child;
     if (size.width < 700 || size.height < 560) {
       final android = defaultTargetPlatform == TargetPlatform.android;
-      final app =
-          kIsWeb && android && _urlApk.isNotEmpty
-              ? _WithNotice(child: child)
-              : child;
+      final app = _Shrunk(
+        child:
+            kIsWeb && android && _urlApk.isNotEmpty
+                ? _WithNotice(child: child)
+                : child,
+      );
       // On a phone, the board lives in a sheet under the app (the demo only:
       // it is the one that reports its calls).
       return ref.watch(tracesProvider) == null ? app : _Pocket(child: app);
@@ -237,6 +239,49 @@ class _Presentation extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// How much smaller the app is drawn in a phone's browser. Its screens are
+/// designed for a 412×892 phone; a browser leaves it less (its own bars, and
+/// here the strip), so everything is drawn a little smaller and fits as it
+/// does in the installed app.
+double phoneWebScale(Size area) =>
+    math.min(area.width / 440, area.height / 840).clamp(0.8, 1.0);
+
+/// Draws [child] at [phoneWebScale]: it believes the screen is larger, and is
+/// scaled down to the real one.
+class _Shrunk extends StatelessWidget {
+  final Widget child;
+  const _Shrunk({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final mq = MediaQuery.of(context);
+    return LayoutBuilder(
+      builder: (context, box) {
+        final area = box.biggest;
+        final k = phoneWebScale(area);
+        if (k > 0.995) return child;
+        final logical = area / k;
+        return FittedBox(
+          fit: BoxFit.fill,
+          child: SizedBox.fromSize(
+            size: logical,
+            child: MediaQuery(
+              data: mq.copyWith(
+                size: logical,
+                devicePixelRatio: mq.devicePixelRatio * k,
+                padding: mq.padding / k,
+                viewPadding: mq.viewPadding / k,
+                viewInsets: mq.viewInsets / k,
+              ),
+              child: child,
+            ),
+          ),
+        );
+      },
     );
   }
 }

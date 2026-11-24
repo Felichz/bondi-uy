@@ -18,6 +18,7 @@ import '../../contract/model.dart';
 import 'framing.dart';
 import 'scene.dart';
 import 'map_style.dart';
+import 'obstacles.dart';
 import 'vehicles.dart';
 import 'scene_painter.dart';
 import 'projection.dart';
@@ -51,6 +52,10 @@ class BondiMap extends StatefulWidget {
 
   /// Areas covered by panels (logical px): the framing avoids them.
   final EdgeInsets margins;
+
+  /// Floating controls over the map: its balloons and street names stay out
+  /// from under them.
+  final MapObstacles? obstacles;
   final MapController? controller;
   final TileSource source;
   final bool decodeInIsolate;
@@ -65,6 +70,7 @@ class BondiMap extends StatefulWidget {
     this.style = MapStyle.light,
     this.framing,
     this.margins = EdgeInsets.zero,
+    this.obstacles,
     this.controller,
     this.decodeInIsolate = true,
     this.onTapStop,
@@ -117,9 +123,31 @@ class _BondiMapState extends State<BondiMap> with TickerProviderStateMixin {
         useIsolate: widget.decodeInIsolate,
       )..addListener(_repaint);
 
+  void _onObstacles() {
+    if (mounted) setState(() {});
+  }
+
+  /// The floating controls, in the map's own coordinates (they report
+  /// themselves in the screen's; the web frame may scale the app).
+  List<Rect> _obstacles() {
+    final o = widget.obstacles;
+    final box = context.findRenderObject();
+    if (o == null || box is! RenderBox || !box.attached) return const [];
+    final toLocal = Matrix4.tryInvert(box.getTransformTo(null));
+    if (toLocal == null) return const [];
+    final view = Offset.zero & box.size;
+    return [
+      for (final r in o.rects)
+        if (MatrixUtils.transformRect(toLocal, r) case final local
+            when local.overlaps(view))
+          local.inflate(4),
+    ];
+  }
+
   @override
   void initState() {
     super.initState();
+    widget.obstacles?.addListener(_onObstacles);
     _painter = SceneDrawer(_manager(widget.style), widget.style);
     _anim = AnimationController(
       vsync: this,
@@ -169,6 +197,10 @@ class _BondiMapState extends State<BondiMap> with TickerProviderStateMixin {
   @override
   void didUpdateWidget(BondiMap old) {
     super.didUpdateWidget(old);
+    if (old.obstacles != widget.obstacles) {
+      old.obstacles?.removeListener(_onObstacles);
+      widget.obstacles?.addListener(_onObstacles);
+    }
     if (old.controller != widget.controller) {
       widget.controller?._recenter = _recenter;
     }
@@ -525,6 +557,7 @@ class _BondiMapState extends State<BondiMap> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    widget.obstacles?.removeListener(_onObstacles);
     _resume?.cancel();
     _clock.dispose();
     _anim.dispose();
@@ -576,6 +609,7 @@ class _BondiMapState extends State<BondiMap> with TickerProviderStateMixin {
               scene: _sceneShown,
               heartbeat: _heartbeat,
               margins: widget.margins,
+              obstacles: _obstacles,
               free: widget.controller?.free ?? false,
             ),
           ),
@@ -591,6 +625,7 @@ class _PainterMap extends CustomPainter {
   final MapScene scene;
   final Animation<double> heartbeat;
   final EdgeInsets margins;
+  final List<Rect> Function() obstacles;
   final bool free;
 
   _PainterMap({
@@ -599,6 +634,7 @@ class _PainterMap extends CustomPainter {
     required this.scene,
     required this.heartbeat,
     required this.margins,
+    required this.obstacles,
     required this.free,
   }) : super(repaint: heartbeat);
 
@@ -613,6 +649,7 @@ class _PainterMap extends CustomPainter {
       scene,
       phase: heartbeat.value,
       margins: margins,
+      obstacles: obstacles(),
       free: free,
     );
   }

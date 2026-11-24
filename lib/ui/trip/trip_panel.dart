@@ -11,6 +11,7 @@ import '../../contract/app_state.dart';
 import '../../contract/providers.dart';
 import '../common.dart';
 import '../ui_status.dart';
+import '../map/obstacles.dart';
 import '../formats.dart';
 import '../theme/badges.dart';
 import '../theme/app_theme.dart';
@@ -155,10 +156,9 @@ class _TripPanelState extends ConsumerState<TripPanel> {
                   child:
                       advance == null
                           ? const SizedBox.shrink()
-                          : _AdvancePill(
-                            advance.text,
-                            advance.icon,
+                          : MapObstacle(
                             key: ValueKey('advance-${advance.id}'),
+                            child: _AdvancePill(advance.text, advance.icon),
                           ),
                 ),
               ),
@@ -187,7 +187,7 @@ class _TripPanelState extends ConsumerState<TripPanel> {
 class _AdvancePill extends StatelessWidget {
   final String text;
   final IconData icon;
-  const _AdvancePill(this.text, this.icon, {super.key});
+  const _AdvancePill(this.text, this.icon);
 
   @override
   Widget build(BuildContext context) {
@@ -515,7 +515,9 @@ class _Figure extends StatelessWidget {
       textBaseline: TextBaseline.alphabetic,
       children: [
         // Only the big figure animates, and only when it changes ("Faltan 9
-        // paradas" -> "Faltan 8 paradas"): the new one rises with a fade.
+        // paradas" -> "Faltan 8 paradas"): the new one rises with a fade. The
+        // old one leaves at once: fading out under the new one, two numbers
+        // were read on top of each other (and a distance changes often).
         Flexible(
           child: AnimatedSwitcher(
             duration: Duration(
@@ -526,7 +528,7 @@ class _Figure extends StatelessWidget {
             layoutBuilder:
                 (current, previous) => Stack(
                   alignment: Alignment.centerLeft,
-                  children: [...previous, if (current != null) current],
+                  children: [if (current != null) current],
                 ),
             transitionBuilder:
                 (child, a) => ClipRect(

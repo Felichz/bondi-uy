@@ -8,6 +8,7 @@ import '../../contract/providers.dart';
 import '../common.dart';
 import '../demo/demo.dart';
 import '../ui_status.dart';
+import '../map/obstacles.dart';
 import '../formats.dart';
 import '../theme/badges.dart';
 import '../theme/theme_preference.dart';
@@ -70,9 +71,9 @@ class ExplorePanel extends ConsumerWidget {
               children: [
                 RecenterButton(),
                 SizedBox(height: 12),
-                _ButtonLanguage(),
+                MapObstacle(child: _ButtonLanguage()),
                 SizedBox(height: 12),
-                _ButtonTheme(),
+                MapObstacle(child: _ButtonTheme()),
               ],
             ),
           ),

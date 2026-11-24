@@ -12,6 +12,7 @@ import 'demo/demo.dart';
 import 'ui_status.dart';
 import 'explore/explore_panel.dart';
 import 'map/framing.dart';
+import 'map/obstacles.dart';
 import 'map/scene.dart';
 import 'map/bondi_map.dart';
 import 'options/options_panel.dart';
@@ -126,6 +127,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 framing: framingOf(status, uiMap),
                 style: c.map,
                 margins: margins,
+                obstacles: ref.watch(mapObstaclesProvider),
                 controller: ref.watch(controllerMapProvider),
                 source: ref.watch(sourceTilesProvider),
                 decodeInIsolate: ref.watch(tilesInIsolateProvider),
