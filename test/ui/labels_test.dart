@@ -14,7 +14,7 @@ import 'harness.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('las calles se rotulan en vistas cercanas', () async {
+  test('streets are labeled in close-up views', () async {
     await loadSources();
     final g = TileManager(
       MemoryTiles.load(),
@@ -25,7 +25,7 @@ void main() {
     const size = ui.Size(412, 892);
     // 18 de Julio y Ejido.
     for (final z in [15.0, 16.0, 17.0]) {
-      final cam = Camera.en(const Coordinate(-34.9055, -56.1905), z);
+      final cam = Camera.at(const Coordinate(-34.9055, -56.1905), z);
       for (var i = 0; i < 10; i++) {
         painter.paint(
           ui.Canvas(ui.PictureRecorder()),
@@ -40,7 +40,7 @@ void main() {
     }
     // Area of the recorded trip (Malvín), with the margins of the trip phase.
     for (final z in [16.0, 16.5, 17.0]) {
-      final cam = Camera.en(const Coordinate(-34.8990, -56.1170), z);
+      final cam = Camera.at(const Coordinate(-34.8990, -56.1170), z);
       for (var i = 0; i < 10; i++) {
         painter.paint(
           ui.Canvas(ui.PictureRecorder()),

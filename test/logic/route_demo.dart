@@ -71,7 +71,7 @@ List<Instant> traverseDemo({
     expect(
       f.status,
       OptionsStatus.ready,
-      reason: 'opciones a ${destination.id}',
+      reason: 'options to ${destination.id}',
     );
     final id = f.options.firstWhere((o) => o.recommended).id;
     c.focusOption(id);
@@ -83,12 +83,12 @@ List<Instant> traverseDemo({
       final phase = c.state.phase;
       if (phase is TripPhase && phase.status == TripStatus.completed) break;
     }
-    final fin = c.state.phase;
+    final end = c.state.phase;
     expect(
-      fin is TripPhase && fin.status == TripStatus.completed,
+      end is TripPhase && end.status == TripStatus.completed,
       isTrue,
       reason:
-          'llega a ${destination.id}; últimos estados:\n'
+          'arrives at ${destination.id}; last states:\n'
           '${states.skip(states.length - 6).map((e) => summaryInstant(e, id)).join('\n')}',
     );
     onArrive?.call(c, async);
@@ -102,7 +102,7 @@ int? waitVisible(AppState s) {
   final f = s.phase;
   if (f is OptionsPhase) return 1; // the preview follows the first bus
   if (f is! TripPhase || f.status != TripStatus.inProgress) return null;
-  for (var i = f.stepActual; i < f.totalSteps; i++) {
+  for (var i = f.currentStep; i < f.totalSteps; i++) {
     final t = f.option.legs[i];
     if (t is BusLeg) return null;
     if (t is WaitLeg) return i;
@@ -111,7 +111,7 @@ int? waitVisible(AppState s) {
 }
 
 BusInPath? busVisible(AppState s, String idOption) => switch (s.phase) {
-  OptionsPhase(:final busesInVivo) => busesInVivo[idOption],
+  OptionsPhase(:final liveBuses) => liveBuses[idOption],
   TripPhase(:final busExpected) => busExpected,
   _ => null,
 };
@@ -123,10 +123,10 @@ String summaryInstant(Instant i, String idOption) {
   final bus = busVisible(i.s, idOption);
   final b =
       bus == null
-          ? 'sin bus'
+          ? 'no bus'
           : 'bus ${bus.minutes} min ${bus.metersUntilStop} m';
   if (f is! TripPhase) return '    t=${t}s ${f.runtimeType} $b';
-  return '    t=${t}s paso ${f.stepActual} (${f.legActual.runtimeType}) '
-      'faltan ${f.progress.metersRestantes} m, $b, '
-      'usuario ${f.user?.lat.toStringAsFixed(6)},${f.user?.lng.toStringAsFixed(6)}';
+  return '    t=${t}s step ${f.currentStep} (${f.currentLeg.runtimeType}) '
+      '${f.progress.metersLeft} m left, $b, '
+      'user ${f.user?.lat.toStringAsFixed(6)},${f.user?.lng.toStringAsFixed(6)}';
 }

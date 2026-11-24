@@ -22,9 +22,9 @@ Future<File?> _file(String name) async {
 }
 
 /// Small saved text (preferences), or null.
-Future<String?> readPreference(String clave) async {
+Future<String?> readPreference(String key) async {
   try {
-    final f = await _file('pref-$clave.txt');
+    final f = await _file('pref-$key.txt');
     if (f == null || !await f.exists()) return null;
     return (await f.readAsString()).trim();
   } catch (_) {
@@ -32,9 +32,9 @@ Future<String?> readPreference(String clave) async {
   }
 }
 
-Future<void> guardarPreference(String clave, String value) async {
+Future<void> savePreference(String key, String value) async {
   try {
-    await (await _file('pref-$clave.txt'))?.writeAsString(value);
+    await (await _file('pref-$key.txt'))?.writeAsString(value);
   } catch (_) {}
 }
 
@@ -49,7 +49,7 @@ Future<Uint8List?> readCache(String name) async {
   }
 }
 
-Future<void> guardarCache(String name, Uint8List data) async {
+Future<void> saveCache(String name, Uint8List data) async {
   try {
     final f = await _file('cache/$name');
     if (f == null) return;
@@ -59,7 +59,7 @@ Future<void> guardarCache(String name, Uint8List data) async {
 }
 
 /// Some servers send the body compressed without saying so over HTTP.
-Uint8List decompressSiGzip(Uint8List data) =>
+Uint8List decompressIfGzip(Uint8List data) =>
     data.length > 2 && data[0] == 0x1f && data[1] == 0x8b
         ? Uint8List.fromList(gzip.decode(data))
         : data;

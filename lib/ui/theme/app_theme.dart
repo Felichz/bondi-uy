@@ -32,7 +32,7 @@ class BondiColors extends ThemeExtension<BondiColors> {
   final Color text;
   final Color textSoft;
   final Color textFaint;
-  final Color separador;
+  final Color separator;
   final Color surface; // chips, rows, fields
 
   /// Primary action (button "Empezar viaje"): ink on white / white on graphite.
@@ -43,7 +43,7 @@ class BondiColors extends ThemeExtension<BondiColors> {
   final Color bus;
   final Color live;
   final Color scheduled;
-  final Color alerta;
+  final Color alert;
   final Color danger;
 
   final MapStyle map;
@@ -62,7 +62,7 @@ class BondiColors extends ThemeExtension<BondiColors> {
     required this.text,
     required this.textSoft,
     required this.textFaint,
-    required this.separador,
+    required this.separator,
     required this.surface,
     required this.action,
     required this.overAction,
@@ -70,7 +70,7 @@ class BondiColors extends ThemeExtension<BondiColors> {
     required this.bus,
     required this.live,
     required this.scheduled,
-    required this.alerta,
+    required this.alert,
     required this.danger,
     required this.map,
   });
@@ -89,7 +89,7 @@ class BondiColors extends ThemeExtension<BondiColors> {
     text: Color(0xFF111318),
     textSoft: Color(0xFF5C616C),
     textFaint: Color(0xFF8A8F99),
-    separador: Color(0x14111318),
+    separator: Color(0x14111318),
     surface: Color(0x0D111318),
     action: Color(0xFF111318),
     overAction: Color(0xFFFFFFFF),
@@ -97,7 +97,7 @@ class BondiColors extends ThemeExtension<BondiColors> {
     bus: Color(0xFFE0412F),
     live: Color(0xFF0B8A5C),
     scheduled: Color(0xFFB86E00),
-    alerta: Color(0xFFB86E00),
+    alert: Color(0xFFB86E00),
     danger: Color(0xFFC62828),
     map: MapStyle.light,
   );
@@ -116,7 +116,7 @@ class BondiColors extends ThemeExtension<BondiColors> {
     text: Color(0xFFF2F4F7),
     textSoft: Color(0xFFA7AEBA),
     textFaint: Color(0xFF7A818D),
-    separador: Color(0x14FFFFFF),
+    separator: Color(0x14FFFFFF),
     surface: Color(0x12FFFFFF),
     action: Color(0xFFF2F4F7),
     overAction: Color(0xFF111318),
@@ -124,7 +124,7 @@ class BondiColors extends ThemeExtension<BondiColors> {
     bus: Color(0xFFFF6A55),
     live: Color(0xFF36D08F),
     scheduled: Color(0xFFF2A93B),
-    alerta: Color(0xFFF2A93B),
+    alert: Color(0xFFF2A93B),
     danger: Color(0xFFFF6B6B),
     map: MapStyle.dark,
   );
@@ -212,7 +212,7 @@ ThemeData themeBondi(Brightness glow) {
       style: OutlinedButton.styleFrom(
         minimumSize: const Size(48, 52),
         shape: round,
-        side: BorderSide(color: c.separador, width: 1.5),
+        side: BorderSide(color: c.separator, width: 1.5),
         foregroundColor: c.text,
         textStyle: t.labelLarge,
       ),
@@ -248,7 +248,7 @@ ThemeData themeBondi(Brightness glow) {
       backgroundColor: c.sheetSolid,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
     ),
-    dividerTheme: DividerThemeData(color: c.separador, thickness: 1, space: 1),
+    dividerTheme: DividerThemeData(color: c.separator, thickness: 1, space: 1),
     progressIndicatorTheme: ProgressIndicatorThemeData(color: c.walk),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,

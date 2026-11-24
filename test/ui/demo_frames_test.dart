@@ -15,15 +15,15 @@ import 'package:flutter_test/flutter_test.dart';
 
 import '../logic/route_demo.dart';
 
-const _cuadro = 1 / 60;
+const _frame = 1 / 60;
 const _nothing = Coordinate(0, 0);
 
-/// Meters left, along [path], from [c] to its end. With [antes]
+/// Meters left, along [path], from [c] to its end. With [before]
 /// (what was left one frame earlier) it is measured near there: a path that loops
 /// comes close to itself and must not be confused with the other loop.
-double _missing(List<Coordinate> path, Coordinate c, double? antes) {
+double _missing(List<Coordinate> path, Coordinate c, double? before) {
   final l = Polyline(path);
-  final near = antes == null ? null : l.long - antes;
+  final near = before == null ? null : l.long - before;
   return l.long -
       l
           .project(
@@ -36,7 +36,7 @@ double _missing(List<Coordinate> path, Coordinate c, double? antes) {
 
 List<String> _problems(List<Instant> states, DemoScales scales) {
   final res = <String>[];
-  void mal(double t, String that) {
+  void bad(double t, String that) {
     if (res.length < 40) res.add('t=${t.toStringAsFixed(2)}s: $that');
   }
 
@@ -55,9 +55,9 @@ List<String> _problems(List<Instant> states, DemoScales scales) {
   // Since when the logic has placed the user in the same spot.
   Coordinate? readingUser;
   var stillFrom = 0.0;
-  final inicio = states.first.real.inMicroseconds / 1e6;
-  final fin = states.last.real.inMicroseconds / 1e6 + 2;
-  for (var t = inicio; t <= fin; t += _cuadro) {
+  final start = states.first.real.inMicroseconds / 1e6;
+  final end = states.last.real.inMicroseconds / 1e6 + 2;
+  for (var t = start; t <= end; t += _frame) {
     var fresh = false;
     while (i < states.length && states[i].real.inMicroseconds / 1e6 <= t) {
       status = states[i].s;
@@ -71,7 +71,7 @@ List<String> _problems(List<Instant> states, DemoScales scales) {
     vehicles.advance(t);
     final view = vehicles.shown(scene, t);
     final phase = status.phase;
-    final step = phase is TripPhase ? (phase.stepActual, phase.status) : phase;
+    final step = phase is TripPhase ? (phase.currentStep, phase.status) : phase;
 
     // The moving marker in effect as it is seen (those fading out come
     // first in the list), if it is fully visible; and its path (from the scene).
@@ -92,7 +92,7 @@ List<String> _problems(List<Instant> states, DemoScales scales) {
     }
 
     bool isUser(MapMarker m) => m is MarkerUser || m is MarkerUserInBus;
-    bool esBus(MapMarker m) => m is MarkerBus;
+    bool isBus(MapMarker m) => m is MarkerBus;
 
     // --- The user ---------------------------------------------------------
     final u = inView(isUser);
@@ -106,11 +106,11 @@ List<String> _problems(List<Instant> states, DemoScales scales) {
     if (u != null &&
         reading != null &&
         phase is TripPhase &&
-        phase.legActual is WaitLeg &&
+        phase.currentLeg is WaitLeg &&
         t - stillFrom > 1.5) {
       final d = distance(u.coordinate, reading);
       if (d > 3) {
-        mal(t, 'esperando quieto, se lo ve a ${d.round()} m de donde está');
+        bad(t, 'waiting still, shown ${d.round()} m from where they are');
       }
     }
     if (u != null) {
@@ -118,19 +118,19 @@ List<String> _problems(List<Instant> states, DemoScales scales) {
       final p = userPrevious;
       if (p != null) {
         final d = distance(p, c);
-        if (d > fast * _cuadro + 1) {
-          mal(t, 'el usuario salta ${d.round()} m en un cuadro');
+        if (d > fast * _frame + 1) {
+          bad(t, 'the user jumps ${d.round()} m in one frame');
         }
       }
       final cam = path(isUser);
-      final antes = step == stepPrevious ? missingUser : null;
+      final before = step == stepPrevious ? missingUser : null;
       final missing =
-          cam == null || cam.length < 2 ? null : _missing(cam, c, antes);
+          cam == null || cam.length < 2 ? null : _missing(cam, c, before);
       if (missing != null &&
-          antes != null &&
+          before != null &&
           step == stepPrevious &&
-          missing > antes + 1.5) {
-        mal(t, 'el usuario retrocede ${(missing - antes).round()} m');
+          missing > before + 1.5) {
+        bad(t, 'the user goes back ${(missing - before).round()} m');
       }
       missingUser = missing;
       userPrevious = c;
@@ -140,22 +140,25 @@ List<String> _problems(List<Instant> states, DemoScales scales) {
     }
 
     // --- The incoming bus ---------------------------------------------------
-    final b = inView(esBus);
+    final b = inView(isBus);
     if (b != null) {
       final c = b.coordinate;
       final p = busPrevious;
       if (p != null) {
         final d = distance(p, c);
-        if (d > fast * _cuadro + 1) {
-          mal(t, 'el bus salta ${d.round()} m en un cuadro');
+        if (d > fast * _frame + 1) {
+          bad(t, 'the bus jumps ${d.round()} m in one frame');
         }
       }
-      final cam = path(esBus);
-      final antes = missingBus;
+      final cam = path(isBus);
+      final before = missingBus;
       final missing =
-          cam == null || cam.length < 2 ? null : _missing(cam, c, antes);
-      if (missing != null && antes != null && missing > antes + 1.5) {
-        mal(t, 'el bus se aleja ${(missing - antes).round()} m de la parada');
+          cam == null || cam.length < 2 ? null : _missing(cam, c, before);
+      if (missing != null && before != null && missing > before + 1.5) {
+        bad(
+          t,
+          'the bus moves ${(missing - before).round()} m away from the stop',
+        );
       }
       missingBus = missing;
       busPrevious = c;
@@ -167,21 +170,21 @@ List<String> _problems(List<Instant> states, DemoScales scales) {
 
     // --- Routes start at their marker -------------------------------
     if (phase is TripPhase && phase.status == TripStatus.inProgress) {
-      final actual = phase.legActual;
+      final current = phase.currentLeg;
       for (final stroke in view.strokes) {
         final marker = switch (stroke.style) {
-          StrokeStyle.walk when actual is WalkLeg => u,
-          StrokeStyle.bus when actual is BusLeg => u,
+          StrokeStyle.walk when current is WalkLeg => u,
+          StrokeStyle.bus when current is BusLeg => u,
           StrokeStyle.approximation => b,
           _ => null,
         };
         if (marker == null || stroke.points.length < 2) continue;
         final d = distance(stroke.points.first, marker.coordinate);
         if (d > 3) {
-          mal(
+          bad(
             t,
-            'el recorrido (${stroke.style.name}) nace a ${d.round()} m '
-            'de donde se ve su marcador',
+            'the route (${stroke.style.name}) starts ${d.round()} m '
+            'from where its marker is shown',
           );
         }
       }
@@ -199,8 +202,8 @@ void main() {
       (const DemoScales(walk: 5, bus: 5), const Duration(seconds: 3)),
     ]) {
       test(
-        '${destination.id} a ${scales.walk.round()}x hasta subir y '
-        '${scales.bus.round()}x en bus, ${inOptions.inSeconds} s en opciones',
+        '${destination.id} at ${scales.walk.round()}x until boarding and '
+        '${scales.bus.round()}x on the bus, ${inOptions.inSeconds} s in options',
         () {
           final states = traverseDemo(
             destination: destination,
@@ -211,7 +214,7 @@ void main() {
           expect(
             p,
             isEmpty,
-            reason: '${p.length} problemas:\n${p.take(15).join('\n')}',
+            reason: '${p.length} problems:\n${p.take(15).join('\n')}',
           );
         },
         timeout: const Timeout(Duration(minutes: 3)),

@@ -20,14 +20,13 @@ class GpsLocation implements LocationSource {
     return switch (p) {
       LocationPermission.always ||
       LocationPermission.whileInUse => LocationPermissionState.granted,
-      LocationPermission.deniedForever =>
-        LocationPermissionState.deniedParaAlways,
+      LocationPermission.deniedForever => LocationPermissionState.deniedForever,
       _ => LocationPermissionState.denied,
     };
   }
 
   @override
-  Future<LocationSample?> actual() async {
+  Future<LocationSample?> current() async {
     try {
       final last = await Geolocator.getLastKnownPosition();
       if (last != null &&

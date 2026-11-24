@@ -5,7 +5,7 @@
 
 import 'dart:typed_data';
 
-enum GeometryType { unknown, punto, line, polygon }
+enum GeometryType { unknown, point, line, polygon }
 
 class TilePoint {
   final int x;
@@ -13,7 +13,7 @@ class TilePoint {
   const TilePoint(this.x, this.y);
 }
 
-class ElementoMvt {
+class MvtElement {
   final GeometryType type;
   final Map<String, Object?> properties;
 
@@ -21,7 +21,7 @@ class ElementoMvt {
   /// Polygon: one list per ring (exterior clockwise, holes counterclockwise).
   final List<List<TilePoint>> geometry;
 
-  const ElementoMvt(this.type, this.properties, this.geometry);
+  const MvtElement(this.type, this.properties, this.geometry);
 
   String? get classValue => properties['class'] as String?;
   String? get name =>
@@ -32,8 +32,8 @@ class ElementoMvt {
 class MvtLayer {
   final String name;
   final int extent;
-  final List<ElementoMvt> elementos;
-  const MvtLayer(this.name, this.extent, this.elementos);
+  final List<MvtElement> elements;
+  const MvtLayer(this.name, this.extent, this.elements);
 }
 
 class TileMvt {
@@ -60,11 +60,11 @@ const layersUseful = {
 };
 
 TileMvt decodeMvt(Uint8List bytes, {Set<String> layers = layersUseful}) {
-  final r = _Lector(bytes);
+  final r = _Reader(bytes);
   final res = <String, MvtLayer>{};
-  while (!r.fin) {
-    final clave = r.varint();
-    final field = clave >> 3, type = clave & 7;
+  while (!r.end) {
+    final key = r.varint();
+    final field = key >> 3, type = key & 7;
     if (field == 3 && type == 2) {
       final layer = _layer(r.sub(), layers);
       if (layer != null) res[layer.name] = layer;
@@ -75,15 +75,15 @@ TileMvt decodeMvt(Uint8List bytes, {Set<String> layers = layersUseful}) {
   return TileMvt(res);
 }
 
-MvtLayer? _layer(_Lector r, Set<String> filter) {
+MvtLayer? _layer(_Reader r, Set<String> filter) {
   String? name;
   var extent = 4096;
-  final raw = <_Lector>[];
+  final raw = <_Reader>[];
   final keys = <String>[];
   final values = <Object?>[];
-  while (!r.fin) {
-    final clave = r.varint();
-    final field = clave >> 3, type = clave & 7;
+  while (!r.end) {
+    final key = r.varint();
+    final field = key >> 3, type = key & 7;
     switch (field) {
       case 1:
         name = r.text();
@@ -102,15 +102,15 @@ MvtLayer? _layer(_Lector r, Set<String> filter) {
   }
   if (name == null) return null;
   return MvtLayer(name, extent, [
-    for (final c in raw) _elemento(c, keys, values),
+    for (final c in raw) _element(c, keys, values),
   ]);
 }
 
-Object? _value(_Lector r) {
+Object? _value(_Reader r) {
   Object? v;
-  while (!r.fin) {
-    final clave = r.varint();
-    final field = clave >> 3, type = clave & 7;
+  while (!r.end) {
+    final key = r.varint();
+    final field = key >> 3, type = key & 7;
     switch (field) {
       case 1:
         v = r.text();
@@ -133,13 +133,13 @@ Object? _value(_Lector r) {
   return v;
 }
 
-ElementoMvt _elemento(_Lector r, List<String> keys, List<Object?> values) {
+MvtElement _element(_Reader r, List<String> keys, List<Object?> values) {
   var type = GeometryType.unknown;
   final props = <String, Object?>{};
   List<int> commands = const [];
-  while (!r.fin) {
-    final clave = r.varint();
-    final field = clave >> 3, t = clave & 7;
+  while (!r.end) {
+    final key = r.varint();
+    final field = key >> 3, t = key & 7;
     switch (field) {
       case 2:
         final tags = r.packed();
@@ -157,7 +157,7 @@ ElementoMvt _elemento(_Lector r, List<String> keys, List<Object?> values) {
         r.jump(t);
     }
   }
-  return ElementoMvt(type, props, _geometry(commands));
+  return MvtElement(type, props, _geometry(commands));
 }
 
 /// Protobuf zigzag with plain arithmetic: on web the bit operators
@@ -167,44 +167,44 @@ int _zigzag(int v) => v.isOdd ? -((v + 1) ~/ 2) : v ~/ 2;
 
 List<List<TilePoint>> _geometry(List<int> cmd) {
   final res = <List<TilePoint>>[];
-  var actual = <TilePoint>[];
+  var current = <TilePoint>[];
   var x = 0, y = 0, i = 0;
   int zz(int v) => _zigzag(v);
   while (i < cmd.length) {
     final c = cmd[i++];
-    final id = c & 7, cuenta = c >> 3;
+    final id = c & 7, count = c >> 3;
     switch (id) {
       case 1: // MoveTo
-        for (var k = 0; k < cuenta && i + 1 < cmd.length; k++) {
-          if (actual.isNotEmpty) res.add(actual);
-          actual = <TilePoint>[];
+        for (var k = 0; k < count && i + 1 < cmd.length; k++) {
+          if (current.isNotEmpty) res.add(current);
+          current = <TilePoint>[];
           x += zz(cmd[i++]);
           y += zz(cmd[i++]);
-          actual.add(TilePoint(x, y));
+          current.add(TilePoint(x, y));
         }
       case 2: // LineTo
-        for (var k = 0; k < cuenta && i + 1 < cmd.length; k++) {
+        for (var k = 0; k < count && i + 1 < cmd.length; k++) {
           x += zz(cmd[i++]);
           y += zz(cmd[i++]);
-          actual.add(TilePoint(x, y));
+          current.add(TilePoint(x, y));
         }
       case 7: // ClosePath
-        if (actual.isNotEmpty) actual.add(actual.first);
+        if (current.isNotEmpty) current.add(current.first);
       default:
         return res;
     }
   }
-  if (actual.isNotEmpty) res.add(actual);
+  if (current.isNotEmpty) res.add(current);
   return res;
 }
 
-class _Lector {
+class _Reader {
   final Uint8List b;
   int i;
-  final int finPos;
-  _Lector(this.b, [this.i = 0, int? fin]) : finPos = fin ?? b.length;
+  final int endPos;
+  _Reader(this.b, [this.i = 0, int? end]) : endPos = end ?? b.length;
 
-  bool get fin => i >= finPos;
+  bool get end => i >= endPos;
 
   int varint() {
     // Multiplying (not shifting bits) so values over 32 bits
@@ -218,9 +218,9 @@ class _Lector {
     }
   }
 
-  _Lector sub() {
+  _Reader sub() {
     final l = varint();
-    final s = _Lector(b, i, i + l);
+    final s = _Reader(b, i, i + l);
     i += l;
     return s;
   }
@@ -235,7 +235,7 @@ class _Lector {
   List<int> packed() {
     final s = sub();
     final res = <int>[];
-    while (!s.fin) {
+    while (!s.end) {
       res.add(s.varint());
     }
     return res;
@@ -264,7 +264,7 @@ class _Lector {
       case 5:
         i += 4;
       default:
-        throw FormatException('tipo de campo protobuf desconocido: $type');
+        throw FormatException('unknown protobuf field type: $type');
     }
   }
 }

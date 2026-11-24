@@ -58,7 +58,7 @@ class RouteLine {
       // Try each nearby pass of the boarding point and keep the one whose
       // alighting point is further ahead and closest to the shape.
       var bestCost = double.infinity;
-      for (final s in _pasadasCercanas(line, boarding, maxLateral)) {
+      for (final s in _nearbyPasses(line, boarding, maxLateral)) {
         final b = line.project(alighting, from: s.route);
         if (b.route <= s.route) continue;
         final cost = s.distanceLateral + b.distanceLateral;
@@ -73,7 +73,7 @@ class RouteLine {
     return RouteLine._(line, chosen.route);
   }
 
-  static List<Projection> _pasadasCercanas(
+  static List<Projection> _nearbyPasses(
     Polyline line,
     Coordinate c,
     double maxLateral,
@@ -121,9 +121,9 @@ class RouteLine {
   /// true if the bus is on the route but has already passed the stop.
   bool alreadyPassed(Coordinate bus, {double maxLateral = 150}) {
     final after = line.project(bus, from: routeStop);
-    final antes = line.project(bus, until: routeStop);
+    final before = line.project(bus, until: routeStop);
     return after.distanceLateral <= maxLateral &&
-        after.distanceLateral + 20 < antes.distanceLateral &&
+        after.distanceLateral + 20 < before.distanceLateral &&
         after.route > routeStop + 30;
   }
 }
@@ -147,7 +147,7 @@ class BusTracker {
   /// polls) it is kept.
   bool _arrivalReported = false;
   DateTime? _arrivedIn;
-  int _sondeosRetenido = 0;
+  int _heldPolls = 0;
 
   /// Polls during which "arrived" is reported before moving on to the next bus,
   /// without a clock (with a clock, [retencion] is used).
@@ -176,7 +176,7 @@ class BusTracker {
   BusInPath? choose(
     List<StopArrival> arrivals, {
     bool retain = true,
-    bool userInTheStop = false,
+    bool userAtTheStop = false,
     Coordinate? user,
   }) {
     final candidates = [
@@ -211,21 +211,21 @@ class BusTracker {
       final withoutTheUser =
           step &&
           user != null &&
-          userInTheStop &&
+          userAtTheStop &&
           distance(real, user) > metersLost;
       // A bus that arrived is reported at the stop at least once, even if
       // nobody is waiting for it: it does not give up its place to the next
       // one without having arrived. It is kept a while longer only if, when it
       // was seen arriving, someone was waiting for it (if it arrived while the
       // user was walking, it has already left: the next one comes).
-      final primera = arrived != null && !_arrivalReported && !withoutTheUser;
+      final first = arrived != null && !_arrivalReported && !withoutTheUser;
       final follows =
           arrived != null &&
           retain &&
           _expectedOnArrive &&
           !withoutTheUser &&
-          _sigueRetenido();
-      if (arrived != null && (primera || follows)) {
+          _stillHeld();
+      if (arrived != null && (first || follows)) {
         _arriving = arrived;
         _arrivalReported = true;
         return BusInPath(
@@ -247,7 +247,7 @@ class BusTracker {
     _arriving = null;
     _last = null;
     _arrivalReported = false;
-    _sondeosRetenido = 0;
+    _heldPolls = 0;
     _arrivedIn = null;
     if (useful.isEmpty) {
       _vehicle = null;
@@ -265,9 +265,9 @@ class BusTracker {
     return _followed(b, retain);
   }
 
-  bool _sigueRetenido() {
+  bool _stillHeld() {
     final clock = _clock;
-    if (clock == null) return _sondeosRetenido++ < pollsArrived;
+    if (clock == null) return _heldPolls++ < pollsArrived;
     final now = clock();
     _arrivedIn ??= now;
     return now.difference(_arrivedIn!) < retention;
@@ -281,7 +281,7 @@ class BusTracker {
         b.live && (b.minutes == 0 || (m != null && m <= metersArriving))
             ? b
             : null;
-    _sondeosRetenido = 0;
+    _heldPolls = 0;
     _arrivedIn = null;
     _arrivalReported = false;
     return b;

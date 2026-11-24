@@ -68,14 +68,14 @@ class _Header extends ConsumerWidget {
     final c = BondiColors.of(context);
     final t = Theme.of(context).textTheme;
     return Sheet(
-      key: const ValueKey('opciones-encabezado'),
+      key: const ValueKey('options-header'),
       padding: const EdgeInsets.fromLTRB(4, 6, 14, 6),
       radio: BorderRadius.circular(26),
       child: Row(
         children: [
           IconButton(
-            key: const ValueKey('opciones-cerrar'),
-            tooltip: tx.returnValue,
+            key: const ValueKey('options-close'),
+            tooltip: tx.back,
             onPressed: () {
               ref.read(optionFocusedProvider.notifier).state = null;
               ref.read(appActionsProvider).closeOptions();
@@ -84,7 +84,7 @@ class _Header extends ConsumerWidget {
           ),
           Expanded(
             child: InkWell(
-              key: const ValueKey('opciones-editar'),
+              key: const ValueKey('options-edit'),
               borderRadius: BorderRadius.circular(12),
               onTap:
                   () =>
@@ -126,7 +126,7 @@ class _Sheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Sheet(
-      key: const ValueKey('opciones-hoja'),
+      key: const ValueKey('options-sheet'),
       padding: EdgeInsets.zero,
       radio: BorderRadius.circular(30),
       child: AnimatedSize(
@@ -161,7 +161,7 @@ class _Loading extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     return Padding(
-      key: const ValueKey('opciones-cargando'),
+      key: const ValueKey('options-loading'),
       padding: const EdgeInsets.fromLTRB(28, 32, 28, 40),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -198,7 +198,7 @@ class _WithoutOptions extends ConsumerWidget {
     final c = BondiColors.of(context);
     final t = Theme.of(context).textTheme;
     return Padding(
-      key: const ValueKey('opciones-vacio'),
+      key: const ValueKey('options-empty'),
       padding: const EdgeInsets.all(24),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -218,7 +218,7 @@ class _WithoutOptions extends ConsumerWidget {
                     SearchField.destination;
               }
             },
-            child: Text(retry ? tx.retry : tx.cambiarDestination),
+            child: Text(retry ? tx.retry : tx.changeDestination),
           ),
         ],
       ),
@@ -235,7 +235,7 @@ class _Carousel extends ConsumerStatefulWidget {
 }
 
 class _CarouselState extends ConsumerState<_Carousel> {
-  late final PageController _pagina;
+  late final PageController _pages;
   int _index = 0;
 
   @override
@@ -246,7 +246,7 @@ class _CarouselState extends ConsumerState<_Carousel> {
     var i = ops.indexWhere((o) => o.id == previous);
     if (i < 0) i = ops.indexWhere((o) => o.recommended);
     _index = i < 0 ? 0 : i;
-    _pagina = PageController(initialPage: _index);
+    _pages = PageController(initialPage: _index);
     WidgetsBinding.instance.addPostFrameCallback((_) => _focus(_index));
   }
 
@@ -259,7 +259,7 @@ class _CarouselState extends ConsumerState<_Carousel> {
     ref.read(appActionsProvider).focusOption(ops[i].id);
   }
 
-  void _ir(int i) => _pagina.animateToPage(
+  void _goTo(int i) => _pages.animateToPage(
     i,
     duration: const Duration(milliseconds: 280),
     curve: Curves.easeOutCubic,
@@ -267,35 +267,35 @@ class _CarouselState extends ConsumerState<_Carousel> {
 
   @override
   void dispose() {
-    _pagina.dispose();
+    _pages.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final ops = widget.phase.options;
-    final actual = ops[_index.clamp(0, ops.length - 1)];
+    final current = ops[_index.clamp(0, ops.length - 1)];
     // The card height grows with the system text size (accessibility).
     final scale = MediaQuery.textScalerOf(context).scale(1);
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Asa(),
+        const SheetHandle(),
         SizedBox(
           height: 172 * scale.clamp(1.0, 1.6),
           child: PageView.builder(
-            key: const ValueKey('opciones-carrusel'),
-            controller: _pagina,
+            key: const ValueKey('options-carousel'),
+            controller: _pages,
             itemCount: ops.length,
             onPageChanged: _focus,
             itemBuilder: (context, i) => _CardOption(ops[i]),
           ),
         ),
-        _Paginador(
+        _Pager(
           total: ops.length,
-          actual: _index,
-          onPrevious: _index > 0 ? () => _ir(_index - 1) : null,
-          onNext: _index < ops.length - 1 ? () => _ir(_index + 1) : null,
+          current: _index,
+          onPrevious: _index > 0 ? () => _goTo(_index - 1) : null,
+          onNext: _index < ops.length - 1 ? () => _goTo(_index + 1) : null,
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
@@ -312,10 +312,10 @@ class _CarouselState extends ConsumerState<_Carousel> {
               ],
             ),
             child: FilledButton.icon(
-              key: const ValueKey('empezar-viaje'),
+              key: const ValueKey('start-trip'),
               onPressed: () {
                 HapticFeedback.mediumImpact();
-                ref.read(appActionsProvider).startTrip(actual.id);
+                ref.read(appActionsProvider).startTrip(current.id);
               },
               icon: const Icon(Icons.navigation_rounded),
               label: Text(tx.startTrip),
@@ -329,14 +329,14 @@ class _CarouselState extends ConsumerState<_Carousel> {
 
 /// "‹ 1 de 6 ›" (1 of 6): where you are in the carousel, with arrows for
 /// those who don't discover the swipe.
-class _Paginador extends StatelessWidget {
+class _Pager extends StatelessWidget {
   final int total;
-  final int actual;
+  final int current;
   final VoidCallback? onPrevious;
   final VoidCallback? onNext;
-  const _Paginador({
+  const _Pager({
     required this.total,
-    required this.actual,
+    required this.current,
     this.onPrevious,
     this.onNext,
   });
@@ -354,25 +354,25 @@ class _Paginador extends StatelessWidget {
       disabledColor: c.textFaint.withValues(alpha: 0.35),
     );
     return Semantics(
-      label: tx.optionNofM(actual + 1, total),
+      label: tx.optionNofM(current + 1, total),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          arrow(Icons.chevron_left_rounded, onPrevious, tx.optionAnterior),
+          arrow(Icons.chevron_left_rounded, onPrevious, tx.previousOption),
           for (var i = 0; i < total; i++)
             AnimatedContainer(
               duration: const Duration(milliseconds: 220),
               curve: Curves.easeOutCubic,
               margin: const EdgeInsets.symmetric(horizontal: 3),
-              width: i == actual ? 18 : 6,
+              width: i == current ? 18 : 6,
               height: 6,
               decoration: BoxDecoration(
                 color:
-                    i == actual ? c.text : c.textFaint.withValues(alpha: 0.35),
+                    i == current ? c.text : c.textFaint.withValues(alpha: 0.35),
                 borderRadius: BorderRadius.circular(3),
               ),
             ),
-          arrow(Icons.chevron_right_rounded, onNext, tx.optionSiguiente),
+          arrow(Icons.chevron_right_rounded, onNext, tx.nextOption),
         ],
       ),
     );
@@ -389,7 +389,7 @@ class _CardOption extends StatelessWidget {
     final t = Theme.of(context).textTheme;
     final boarding = option.firstBus?.boarding;
     return Padding(
-      key: ValueKey('opcion-${option.id}'),
+      key: ValueKey('option-${option.id}'),
       padding: const EdgeInsets.fromLTRB(22, 6, 22, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -399,7 +399,7 @@ class _CardOption extends StatelessWidget {
             children: [
               Text(
                 duration(option.durationSeconds),
-                key: ValueKey('opcion-${option.id}-duracion'),
+                key: ValueKey('option-${option.id}-duration'),
                 style: t.headlineMedium,
               ),
               const SizedBox(width: 12),
@@ -444,7 +444,7 @@ class _StampRecommended extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = BondiColors.of(context);
     return Container(
-      key: const ValueKey('sello-recomendado'),
+      key: const ValueKey('recommended-badge'),
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
       decoration: BoxDecoration(
         color: c.live.withValues(alpha: 0.13),
@@ -634,7 +634,7 @@ class _NextBus extends StatelessWidget {
     if (first == null) {
       return _Line(
         icon: Icons.directions_walk_rounded,
-        text: tx.todoToPie,
+        text: tx.allOnFoot,
         color: c.textSoft,
       );
     }
@@ -643,14 +643,14 @@ class _NextBus extends StatelessWidget {
       return _Line(
         icon: Icons.warning_amber_rounded,
         text: tx.passesMaybeNotArrive(first.line, minutes(arrival.minutes)),
-        color: c.alerta,
+        color: c.alert,
       );
     }
     if (arrival != null && arrival.live) {
       return Row(
-        key: ValueKey('opcion-${option.id}-en-vivo'),
+        key: ValueKey('option-${option.id}-live'),
         children: [
-          PuntoInVivo(color: c.live, size: 8),
+          LiveDot(color: c.live, size: 8),
           const SizedBox(width: 4),
           Flexible(
             child: Text(
@@ -671,7 +671,7 @@ class _NextBus extends StatelessWidget {
       return _Line(
         icon: Icons.schedule_rounded,
         text: tx.wouldPassIn(first.line, minutes(arrival.minutes)),
-        color: c.alerta,
+        color: c.alert,
       );
     }
     return _Line(

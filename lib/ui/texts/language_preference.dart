@@ -32,7 +32,7 @@ class LanguagePreference extends StateNotifier<Language> {
 
   void alternate() {
     state = state == Language.es ? Language.en : Language.es;
-    if (persist) guardarPreference('idioma', state.name);
+    if (persist) savePreference('idioma', state.name);
   }
 
   void pin(Language i) => state = i;

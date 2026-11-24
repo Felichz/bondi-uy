@@ -30,7 +30,7 @@ import 'scene.dart';
 
 /// How the camera follows a framing while the state changes.
 enum Tracking {
-  /// Frames once, when the [Encuadre.clave] changes.
+  /// Frames once, when the [Encuadre.key] changes.
   none,
 
   /// Re-frames only if some point falls out of view (options).
@@ -43,7 +43,7 @@ enum Tracking {
 /// Moving markers a framing may include (their position is known to the
 /// map, which predicts it between readings).
 abstract final class Vehicles {
-  static const user = 'usuario';
+  static const user = 'user';
   static const bus = 'bus';
 }
 
@@ -51,7 +51,7 @@ abstract final class Vehicles {
 class Framing {
   /// Changes when the context changes (phase, option, step): the camera re-frames
   /// even if the user has moved it.
-  final String clave;
+  final String key;
 
   /// Fixed points of the group (stops, routes, destination).
   final List<Coordinate> points;
@@ -78,7 +78,7 @@ class Framing {
   final Duration? resumeAfter;
 
   const Framing({
-    required this.clave,
+    required this.key,
     required this.points,
     this.vehicles = const {},
     this.extras = const {},
@@ -107,13 +107,10 @@ Framing? framingOf(AppState s, MapUiStatus ui) {
     case ExplorePhase():
       final p = s.stopQueried;
       if (p != null) {
-        return Framing(
-          clave: 'parada-${p.stop.id}',
-          points: [p.stop.coordinate],
-        );
+        return Framing(key: 'stop-${p.stop.id}', points: [p.stop.coordinate]);
       }
       if (user != null) {
-        return Framing(clave: 'explorar', points: [user], zoomMax: 16);
+        return Framing(key: 'explore', points: [user], zoomMax: 16);
       }
       return null;
 
@@ -125,7 +122,7 @@ Framing? framingOf(AppState s, MapUiStatus ui) {
         ];
         return pts.isEmpty
             ? null
-            : Framing(clave: 'opciones-${f.status.name}', points: pts);
+            : Framing(key: 'options-${f.status.name}', points: pts);
       }
       final o = f.options.firstWhere(
         (o) => o.id == ui.optionFocused,
@@ -136,12 +133,12 @@ Framing? framingOf(AppState s, MapUiStatus ui) {
             ),
       );
       return Framing(
-        clave: 'opcion-${o.id}',
+        key: 'option-${o.id}',
         // If the live bus appears outside the view, it re-frames.
         tracking: Tracking.ifExiting,
         points: [
           ..._pointsOption(o),
-          if (f.busesInVivo[o.id]?.position case final b?) b,
+          if (f.liveBuses[o.id]?.position case final b?) b,
         ],
       );
 
@@ -149,17 +146,17 @@ Framing? framingOf(AppState s, MapUiStatus ui) {
       final pos = f.user ?? user;
       if (f.status == TripStatus.completed) {
         return Framing(
-          clave: 'llegada',
-          points: [_fin(f.option), if (pos != null) pos],
+          key: 'arrival',
+          points: [_end(f.option), if (pos != null) pos],
           zoomMax: 17,
         );
       }
-      final t = f.legActual;
-      final clave = 'paso-${f.stepActual}';
+      final t = f.currentLeg;
+      final key = 'step-${f.currentStep}';
       if (followingOnBus(f, ui)) {
         final bus = f.busExpected!;
         return Framing(
-          clave: '$clave-bus',
+          key: '$key-bus',
           points: [if (_stopThatComes(f) case final p?) p],
           vehicles: const {Vehicles.bus},
           anchor: Vehicles.bus,
@@ -178,8 +175,8 @@ Framing? framingOf(AppState s, MapUiStatus ui) {
         required double zoomMin,
         required double zoomMax,
       }) => Framing(
-        clave: clave,
-        points: [...points, if (!withUser && points.isEmpty) _fin(f.option)],
+        key: key,
+        points: [...points, if (!withUser && points.isEmpty) _end(f.option)],
         vehicles: {if (withUser) Vehicles.user, ...vehicles},
         extras: extras,
         anchor: withUser ? Vehicles.user : null,
@@ -191,7 +188,7 @@ Framing? framingOf(AppState s, MapUiStatus ui) {
       switch (t) {
         case WalkLeg():
           final bus = f.busExpected;
-          final rest = f.progress.metersRestantes;
+          final rest = f.progress.metersLeft;
           final busNear =
               !t.isAtDestination &&
               rest != null &&
@@ -199,7 +196,7 @@ Framing? framingOf(AppState s, MapUiStatus ui) {
               bus?.position != null &&
               bus!.minutes <= minutesBusNear;
           return trip(
-            [..._muestrear(f.progress.routeRemaining ?? t.geometry), t.fin],
+            [..._sample(f.progress.routeRemaining ?? t.geometry), t.end],
             extras: {if (busNear) Vehicles.bus},
             zoomMin: 15,
             zoomMax: 17.5,
@@ -208,31 +205,31 @@ Framing? framingOf(AppState s, MapUiStatus ui) {
           // Also, the start of the bus route: when the bus arrives and
           // stops "coming", the framing does not collapse onto the stop, and already
           // looks like the next step's (boarding does not produce two jumps).
-          final siguiente =
-              f.stepActual + 1 < f.totalSteps
-                  ? f.option.legs[f.stepActual + 1]
+          final next =
+              f.currentStep + 1 < f.totalSteps
+                  ? f.option.legs[f.currentStep + 1]
                   : null;
           return trip(
             [
               t.stop.coordinate,
-              if (siguiente is BusLeg) ..._firstMeters(siguiente.geometry, 350),
+              if (next is BusLeg) ..._firstMeters(next.geometry, 350),
             ],
             vehicles: {if (f.busExpected?.position != null) Vehicles.bus},
             zoomMin: 14,
             zoomMax: 17,
           );
         case BusLeg():
-          final missing = f.progress.stopsRestantes;
+          final missing = f.progress.stopsLeft;
           final next = f.progress.nextStop ?? t.alighting;
           final i = t.stopsIntermediate.indexWhere((p) => p.id == next.id);
-          final siguiente =
+          final following =
               i >= 0 && i + 1 < t.stopsIntermediate.length
                   ? t.stopsIntermediate[i + 1]
                   : null;
           return trip(
             [
               next.coordinate,
-              if (siguiente != null) siguiente.coordinate,
+              if (following != null) following.coordinate,
               if (missing != null && missing <= 3) t.alighting.coordinate,
             ],
             zoomMin: 14.5,
@@ -246,17 +243,17 @@ Framing? framingOf(AppState s, MapUiStatus ui) {
 /// and there is a bus with a known position on its way.
 bool canSeeBus(TripPhase f) =>
     f.status == TripStatus.inProgress &&
-    f.legActual is! BusLeg &&
+    f.currentLeg is! BusLeg &&
     f.busExpected?.position != null &&
     _stopThatComes(f) != null;
 
 /// The camera follows the bus: it was chosen and it is possible.
-bool followingOnBus(TripPhase f, MapUiStatus ui) => ui.verBus && canSeeBus(f);
+bool followingOnBus(TripPhase f, MapUiStatus ui) => ui.showBus && canSeeBus(f);
 
 /// The stop where the incoming bus is boarded (the current step's stop or the next
 /// one, walking toward it).
 Coordinate? _stopThatComes(TripPhase f) {
-  for (final i in [f.stepActual, f.stepActual + 1]) {
+  for (final i in [f.currentStep, f.currentStep + 1]) {
     if (i >= f.totalSteps) break;
     final t = f.option.legs[i];
     if (t is WaitLeg) return t.stop.coordinate;
@@ -267,8 +264,8 @@ Coordinate? _stopThatComes(TripPhase f) {
 List<Coordinate> _pointsOption(TripOption o) => [
   for (final t in o.legs)
     ...switch (t) {
-      WalkLeg(:final geometry) => _muestrear(geometry),
-      BusLeg(:final geometry) => _muestrear(geometry),
+      WalkLeg(:final geometry) => _sample(geometry),
+      BusLeg(:final geometry) => _sample(geometry),
       WaitLeg(:final stop) => [stop.coordinate],
     },
 ];
@@ -286,14 +283,14 @@ List<Coordinate> _firstMeters(List<Coordinate> g, double meters) {
   return r;
 }
 
-List<Coordinate> _muestrear(List<Coordinate> g) {
+List<Coordinate> _sample(List<Coordinate> g) {
   if (g.length <= 20) return g;
   final step = g.length ~/ 20;
   return [for (var i = 0; i < g.length; i += step) g[i], g.last];
 }
 
-Coordinate _fin(TripOption o) => switch (o.legs.last) {
-  WalkLeg(:final fin) => fin,
+Coordinate _end(TripOption o) => switch (o.legs.last) {
+  WalkLeg(:final end) => end,
   BusLeg(:final alighting) => alighting.coordinate,
   WaitLeg(:final stop) => stop.coordinate,
 };

@@ -12,46 +12,44 @@ import 'package:flutter_test/flutter_test.dart';
 import 'harness.dart';
 
 void main() {
-  testWidgets('dos viajes seguidos desde la tarjeta de la demo', (
-    tester,
-  ) async {
+  testWidgets('two trips in a row from the demo card', (tester) async {
     final a = await Harness.mount(tester, prefix: 'demo', demo: true);
     await a.wait(const Duration(seconds: 2));
-    expect(find.byKey(const ValueKey('demo-tarjeta')), findsOneWidget);
+    expect(find.byKey(const ValueKey('demo-card')), findsOneWidget);
     expect(find.text('Terminal Tres Cruces'), findsOneWidget);
-    await a.capture('inicio');
+    await a.capture('start');
 
     Future<void> trip(String destination) async {
       // The destinations row scrolls: the destination is looked for the way
       // a person would.
       await tester.dragUntilVisible(
-        find.byKey(ValueKey('demo-destino-$destination')),
-        find.byKey(const ValueKey('demo-destinos')),
+        find.byKey(ValueKey('demo-destination-$destination')),
+        find.byKey(const ValueKey('demo-destinations')),
         const Offset(-160, 0),
       );
       await a.wait(const Duration(milliseconds: 300));
-      await a.tocar('demo-destino-$destination');
+      await a.tap('demo-destination-$destination');
       await a.until(
         () =>
             a.phase is OptionsPhase &&
             (a.phase as OptionsPhase).status == OptionsStatus.ready,
-        reason: 'opciones de $destination',
+        reason: 'options for $destination',
       );
       final options = (a.phase as OptionsPhase).options;
       expect(options.where((o) => o.recommended), hasLength(1));
       await a.wait(const Duration(seconds: 1));
-      await a.capture('opciones_$destination');
-      await a.tocar('empezar-viaje');
+      await a.capture('options_$destination');
+      await a.tap('start-trip');
       expect(a.phase, isA<TripPhase>());
       await a.until(
         () => (a.phase as TripPhase).status == TripStatus.completed,
         max: const Duration(minutes: 8),
-        reason: 'llegar a $destination',
+        reason: 'arrive at $destination',
       );
       await a.wait(const Duration(seconds: 1));
       expect(find.text('¡Llegaste!'), findsOneWidget);
-      await a.capture('llegada_$destination');
-      await a.tocar('viaje-listo');
+      await a.capture('arrival_$destination');
+      await a.tap('trip-done');
       expect(a.phase, isA<ExplorePhase>());
     }
 
@@ -65,7 +63,7 @@ void main() {
     await a.close();
   });
 
-  testWidgets('en inglés: los textos y los formatos cambian', (tester) async {
+  testWidgets('in English: texts and formats change', (tester) async {
     final a = await Harness.mount(
       tester,
       prefix: 'demo_en',
@@ -75,8 +73,8 @@ void main() {
     await a.wait(const Duration(seconds: 2));
     expect(find.text('Try a trip'), findsOneWidget);
     expect(find.text('Where to?'), findsOneWidget);
-    await a.capture('inicio');
-    await a.tocar('demo-destino-tres-cruces');
+    await a.capture('start');
+    await a.tap('demo-destination-tres-cruces');
     await a.until(
       () =>
           a.phase is OptionsPhase &&
@@ -85,25 +83,25 @@ void main() {
     await a.wait(const Duration(seconds: 1));
     expect(find.text('Recommended'), findsOneWidget);
     expect(find.text('Start trip'), findsOneWidget);
-    await a.capture('opciones');
-    await a.tocar('empezar-viaje');
+    await a.capture('options');
+    await a.tap('start-trip');
     await a.wait(const Duration(seconds: 2));
     expect(find.textContaining('Step 1 of'), findsOneWidget);
     expect(find.text('Walk to the stop'), findsOneWidget);
-    await a.capture('caminando');
+    await a.capture('walking');
     await a.untilStep(2);
     await a.wait(const Duration(seconds: 2));
     expect(find.textContaining('Ride the'), findsOneWidget);
     // The figure changes with a fade: for a moment both the old and the new
     // one are there.
     expect(find.textContaining('to go'), findsWidgets);
-    await a.capture('en_bus');
+    await a.capture('on_bus');
     await a.close();
   });
-  testWidgets('al subir, el aviso de que el bus llega se va', (tester) async {
+  testWidgets('on boarding, the bus-arriving notice goes away', (tester) async {
     final a = await Harness.mount(
       tester,
-      prefix: 'demo_aviso',
+      prefix: 'demo_notice',
       demo: true,
       velocity: 30,
     );
@@ -111,57 +109,61 @@ void main() {
     // With a transfer: at the second wait, nothing else covers the notice
     // when boarding.
     await tester.dragUntilVisible(
-      find.byKey(const ValueKey('demo-destino-punta-carretas')),
-      find.byKey(const ValueKey('demo-destinos')),
+      find.byKey(const ValueKey('demo-destination-punta-carretas')),
+      find.byKey(const ValueKey('demo-destinations')),
       const Offset(-160, 0),
     );
     await a.wait(const Duration(milliseconds: 300));
-    await a.tocar('demo-destino-punta-carretas');
+    await a.tap('demo-destination-punta-carretas');
     await a.until(
       () =>
           a.phase is OptionsPhase &&
           (a.phase as OptionsPhase).status == OptionsStatus.ready,
     );
-    await a.tocar('empezar-viaje');
-    final notice = find.byKey(const ValueKey('aviso-busArriving'));
+    await a.tap('start-trip');
+    final notice = find.byKey(const ValueKey('notice-busArriving'));
     // Waiting for the second bus, it warns that it is arriving (at 30x, seconds
     // before boarding: the notice lasts longer than that).
     await a.until(
       () =>
           a.phase is TripPhase &&
-          (a.phase as TripPhase).stepActual == 3 &&
+          (a.phase as TripPhase).currentStep == 3 &&
           notice.evaluate().isNotEmpty,
       step: const Duration(milliseconds: 100),
-      reason: 'aviso de que el segundo bus llega',
+      reason: 'notice that the second bus is arriving',
     );
     await a.untilStep(4);
     await a.wait(const Duration(seconds: 1));
-    expect(notice, findsNothing, reason: 'ya subió: el aviso quedó viejo');
+    expect(
+      notice,
+      findsNothing,
+      reason: 'already boarded: the notice is stale',
+    );
     await a.close();
   });
 
   // In English the figures are longer ("Arrives in 1 min" vs "Llega en
   // 1 min"): on a narrow screen the figure cannot break across two lines,
   // because with maxLines: 1 the second one (the number) gets lost.
-  testWidgets('en inglés y en pantalla angosta: la cifra se ve entera', (
+  testWidgets('in English on a narrow screen: the figure shows whole', (
     tester,
   ) async {
     final a = await Harness.mount(
       tester,
-      prefix: 'demo_en_angosta',
+      prefix: 'demo_en_narrow',
       demo: true,
       language: Language.en,
       size: const Size(360, 780),
     );
     await a.wait(const Duration(seconds: 2));
-    await a.tocar('demo-destino-plaza-independencia');
+    await a.tap('demo-destination-plaza-independencia');
     await a.until(
       () =>
           a.phase is OptionsPhase &&
           (a.phase as OptionsPhase).status == OptionsStatus.ready,
     );
     await a.wait(const Duration(seconds: 1));
-    await a.tocar('empezar-viaje');
+    await a.tap('start-trip');
     await a.untilStep(1);
     await a.wait(const Duration(seconds: 1));
 
@@ -172,17 +174,17 @@ void main() {
         expect(
           paragraph.didExceedMaxLines,
           isFalse,
-          reason: '"${paragraph.text.toPlainText()}" no entra en una línea',
+          reason: '"${paragraph.text.toPlainText()}" does not fit on one line',
         );
       }
     }
 
     whole(find.textContaining('Arrives in'));
-    await a.capture('esperando');
+    await a.capture('waiting');
     await a.untilStep(2);
     await a.wait(const Duration(seconds: 2));
     whole(find.textContaining('to go'));
-    await a.capture('en_bus');
+    await a.capture('on_bus');
     await a.close();
   });
 }

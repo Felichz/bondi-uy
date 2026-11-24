@@ -22,58 +22,58 @@ class TripPanel extends ConsumerStatefulWidget {
   const TripPanel({super.key});
 
   @override
-  ConsumerState<TripPanel> createState() => _PanelTripState();
+  ConsumerState<TripPanel> createState() => _TripPanelState();
 }
 
-class _PanelTripState extends ConsumerState<TripPanel> {
+class _TripPanelState extends ConsumerState<TripPanel> {
   /// Brief confirmation of a step advance ("Subiste al D1").
   ({int id, String text, IconData icon})? _advance;
-  Timer? _ocultarAdvance;
+  Timer? _hideAdvance;
   int _ids = 0;
 
   @override
   void dispose() {
-    _ocultarAdvance?.cancel();
+    _hideAdvance?.cancel();
     super.dispose();
   }
 
-  void _onCambiarPhase(Phase? antes, Phase now) {
-    if (antes is! TripPhase || now is! TripPhase) return;
+  void _onPhaseChange(Phase? before, Phase now) {
+    if (before is! TripPhase || now is! TripPhase) return;
     final advanced =
-        now.stepActual > antes.stepActual ||
+        now.currentStep > before.currentStep ||
         (now.status == TripStatus.completed &&
-            antes.status != TripStatus.completed);
+            before.status != TripStatus.completed);
     // A notice from the previous step ("¡Bajate en la próxima!", "Tu bus está
     // llegando") no longer applies: it goes away and does not cover what comes next.
     if (advanced) ScaffoldMessenger.maybeOf(context)?.hideCurrentSnackBar();
     if (now.status == TripStatus.completed &&
-        antes.status != TripStatus.completed) {
+        before.status != TripStatus.completed) {
       HapticFeedback.heavyImpact();
       return;
     }
-    if (now.stepActual <= antes.stepActual) return;
-    final (text, icon) = switch (antes.legActual) {
+    if (now.currentStep <= before.currentStep) return;
+    final (text, icon) = switch (before.currentLeg) {
       WalkLeg() => (tx.arrivedToStop, Icons.hail_rounded),
       WaitLeg(:final line) => (
         tx.boardedOn(line),
         Icons.directions_bus_rounded,
       ),
       BusLeg(:final line) => (
-        tx.tebajasteDel(line),
+        tx.gotOffLine(line),
         Icons.directions_walk_rounded,
       ),
     };
     HapticFeedback.mediumImpact();
-    _ocultarAdvance?.cancel();
+    _hideAdvance?.cancel();
     setState(() => _advance = (id: ++_ids, text: text, icon: icon));
-    _ocultarAdvance = Timer(const Duration(milliseconds: 3200), () {
+    _hideAdvance = Timer(const Duration(milliseconds: 3200), () {
       if (mounted) setState(() => _advance = null);
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    ref.listen<Phase>(appStateProvider.select((s) => s.phase), _onCambiarPhase);
+    ref.listen<Phase>(appStateProvider.select((s) => s.phase), _onPhaseChange);
     final status = ref.watch(appStateProvider);
     final phase = status.phase;
     if (phase is! TripPhase) return const SizedBox.shrink();
@@ -100,9 +100,9 @@ class _PanelTripState extends ConsumerState<TripPanel> {
                   duration: const Duration(milliseconds: 280),
                   switchInCurve: Curves.easeOutCubic,
                   layoutBuilder:
-                      (actual, previous) => Stack(
+                      (current, previous) => Stack(
                         alignment: Alignment.topCenter,
-                        children: [...previous, if (actual != null) actual],
+                        children: [...previous, if (current != null) current],
                       ),
                   transitionBuilder:
                       (c, a) => FadeTransition(
@@ -118,7 +118,7 @@ class _PanelTripState extends ConsumerState<TripPanel> {
                   child: _CardStep(
                     phase,
                     destination,
-                    key: ValueKey('paso-${phase.stepActual}'),
+                    key: ValueKey('step-${phase.currentStep}'),
                   ),
                 ),
               ),
@@ -155,10 +155,10 @@ class _PanelTripState extends ConsumerState<TripPanel> {
                   child:
                       advance == null
                           ? const SizedBox.shrink()
-                          : _PildoraAvance(
+                          : _AdvancePill(
                             advance.text,
                             advance.icon,
-                            key: ValueKey('avance-${advance.id}'),
+                            key: ValueKey('advance-${advance.id}'),
                           ),
                 ),
               ),
@@ -168,7 +168,7 @@ class _PanelTripState extends ConsumerState<TripPanel> {
               left: 12,
               right: 12,
               bottom: 12,
-              child: _BarInferior(phase, destination),
+              child: _BottomBar(phase, destination),
             ),
           if (completed)
             Positioned(
@@ -184,10 +184,10 @@ class _PanelTripState extends ConsumerState<TripPanel> {
 }
 
 /// "✓ Subiste al D1": confirms that the trip advanced on its own.
-class _PildoraAvance extends StatelessWidget {
+class _AdvancePill extends StatelessWidget {
   final String text;
   final IconData icon;
-  const _PildoraAvance(this.text, this.icon, {super.key});
+  const _AdvancePill(this.text, this.icon, {super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -226,7 +226,7 @@ class _PildoraAvance extends StatelessWidget {
             Flexible(
               child: Text(
                 text,
-                key: const ValueKey('viaje-avance'),
+                key: const ValueKey('trip-advance'),
                 style: TextStyle(
                   color: c.overAction,
                   fontSize: 15,
@@ -252,18 +252,18 @@ class _CardStep extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = f.legActual;
-    final urgent = t is BusLeg && f.progress.stopsRestantes == 0;
-    return _Resaltado(
+    final t = f.currentLeg;
+    final urgent = t is BusLeg && f.progress.stopsLeft == 0;
+    return _Highlight(
       active: urgent,
       child: Sheet(
-        key: const ValueKey('viaje-tarjeta'),
+        key: const ValueKey('trip-card'),
         radio: BorderRadius.circular(28),
         padding: const EdgeInsets.fromLTRB(20, 14, 20, 18),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            _Cabecera(f),
+            _Header(f),
             const SizedBox(height: 10),
             _StripSteps(f),
             const SizedBox(height: 16),
@@ -280,16 +280,16 @@ class _CardStep extends StatelessWidget {
 }
 
 /// Border that pulses around the card: "bajate en la próxima".
-class _Resaltado extends StatefulWidget {
+class _Highlight extends StatefulWidget {
   final bool active;
   final Widget child;
-  const _Resaltado({required this.active, required this.child});
+  const _Highlight({required this.active, required this.child});
 
   @override
-  State<_Resaltado> createState() => _ResaltadoState();
+  State<_Highlight> createState() => _HighlightState();
 }
 
-class _ResaltadoState extends State<_Resaltado>
+class _HighlightState extends State<_Highlight>
     with SingleTickerProviderStateMixin {
   late final AnimationController _c;
 
@@ -309,7 +309,7 @@ class _ResaltadoState extends State<_Resaltado>
   }
 
   @override
-  void didUpdateWidget(_Resaltado old) {
+  void didUpdateWidget(_Highlight old) {
     super.didUpdateWidget(old);
     _synchronize();
   }
@@ -354,9 +354,9 @@ class _ResaltadoState extends State<_Resaltado>
   }
 }
 
-class _Cabecera extends StatelessWidget {
+class _Header extends StatelessWidget {
   final TripPhase f;
-  const _Cabecera(this.f);
+  const _Header(this.f);
 
   @override
   Widget build(BuildContext context) {
@@ -370,8 +370,8 @@ class _Cabecera extends StatelessWidget {
     return Row(
       children: [
         Text(
-          tx.stepNofM(f.stepActual + 1, f.totalSteps),
-          key: const ValueKey('viaje-paso'),
+          tx.stepNofM(f.currentStep + 1, f.totalSteps),
+          key: const ValueKey('trip-step'),
           style: style,
         ),
         const Spacer(),
@@ -379,7 +379,7 @@ class _Cabecera extends StatelessWidget {
         const SizedBox(width: 4),
         Text(
           tx.arrive(time(f.option.arrival)),
-          key: const ValueKey('viaje-llegas'),
+          key: const ValueKey('trip-arrive'),
           style: style,
         ),
       ],
@@ -415,14 +415,14 @@ class _StripSteps extends StatelessWidget {
                   children: [
                     ColoredBox(
                       color:
-                          i < f.stepActual
+                          i < f.currentStep
                               ? c.text.withValues(alpha: 0.55)
-                              : i == f.stepActual
+                              : i == f.currentStep
                               ? color(f.option.legs[i]).withValues(alpha: 0.25)
-                              : c.separador,
+                              : c.separator,
                     ),
                     // The current step fills with its progress.
-                    if (i == f.stepActual)
+                    if (i == f.currentStep)
                       FractionallySizedBox(
                         alignment: Alignment.centerLeft,
                         widthFactor:
@@ -459,14 +459,14 @@ class _Title extends StatelessWidget {
             children: [
               Text(
                 title,
-                key: const ValueKey('viaje-instruccion'),
+                key: const ValueKey('trip-instruction'),
                 style: t.headlineSmall,
               ),
               if (detail != null) ...[
                 const SizedBox(height: 2),
                 Text(
                   detail!,
-                  key: const ValueKey('viaje-detalle'),
+                  key: const ValueKey('trip-detail'),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: t.bodyMedium,
@@ -481,22 +481,22 @@ class _Title extends StatelessWidget {
 }
 
 class _Figure extends StatelessWidget {
-  final String grande;
+  final String large;
   final String? small;
   final Color? color;
-  const _Figure(this.grande, {this.small, this.color});
+  const _Figure(this.large, {this.small, this.color});
 
   @override
   Widget build(BuildContext context) {
     final c = BondiColors.of(context);
     // Always on one line: if it does not fit (English on a narrow phone) it
     // shrinks. Split across two lines, maxLines: 1 would cut off the number.
-    final numero = FittedBox(
-      key: ValueKey(grande),
+    final number = FittedBox(
+      key: ValueKey(large),
       fit: BoxFit.scaleDown,
       alignment: Alignment.centerLeft,
       child: Text(
-        grande,
+        large,
         maxLines: 1,
         softWrap: false,
         style: TextStyle(
@@ -510,7 +510,7 @@ class _Figure extends StatelessWidget {
       ),
     );
     return Row(
-      key: const ValueKey('viaje-cifra'),
+      key: const ValueKey('trip-figure'),
       crossAxisAlignment: CrossAxisAlignment.baseline,
       textBaseline: TextBaseline.alphabetic,
       children: [
@@ -524,9 +524,9 @@ class _Figure extends StatelessWidget {
             switchInCurve: Curves.easeOutCubic,
             switchOutCurve: Curves.easeInCubic,
             layoutBuilder:
-                (actual, previous) => Stack(
+                (current, previous) => Stack(
                   alignment: Alignment.centerLeft,
-                  children: [...previous, if (actual != null) actual],
+                  children: [...previous, if (current != null) current],
                 ),
             transitionBuilder:
                 (child, a) => ClipRect(
@@ -541,7 +541,7 @@ class _Figure extends StatelessWidget {
                     ),
                   ),
                 ),
-            child: numero,
+            child: number,
           ),
         ),
         if (small != null) ...[
@@ -596,11 +596,11 @@ class _IconRound extends StatelessWidget {
                 curve: Curves.easeOutCubic,
                 builder:
                     (_, v, __) => CircularProgressIndicator(
-                      key: const ValueKey('viaje-progreso'),
+                      key: const ValueKey('trip-progress'),
                       value: v,
                       strokeWidth: 3.5,
                       strokeCap: StrokeCap.round,
-                      backgroundColor: c.separador,
+                      backgroundColor: c.separator,
                       color: color,
                     ),
               ),
@@ -625,10 +625,10 @@ class _StepWalk extends StatelessWidget {
         t.towardStop != null
             ? tx.stop(stopName(t.towardStop!.name))
             : destinationName;
-    final rest = f.progress.metersRestantes ?? t.distanceMeters;
-    final siguiente =
-        f.stepActual + 1 < f.totalSteps
-            ? f.option.legs[f.stepActual + 1]
+    final rest = f.progress.metersLeft ?? t.distanceMeters;
+    final next =
+        f.currentStep + 1 < f.totalSteps
+            ? f.option.legs[f.currentStep + 1]
             : null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -650,9 +650,9 @@ class _StepWalk extends StatelessWidget {
         if (!t.isAtDestination && f.busExpected != null) ...[
           const SizedBox(height: 12),
           _BusThatComes(f.busExpected!, secondsWalking(rest)),
-        ] else if (siguiente is WaitLeg) ...[
+        ] else if (next is WaitLeg) ...[
           const SizedBox(height: 10),
-          _After(tx.afterWait(siguiente.line)),
+          _After(tx.afterWait(next.line)),
         ],
       ],
     );
@@ -698,15 +698,15 @@ class _BusThatComes extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = BondiColors.of(context);
     final just = bus.minutes * 60 < secondsUntilStop;
-    final color = !bus.live || just ? c.alerta : c.live;
+    final color = !bus.live || just ? c.alert : c.live;
     return Layer(
-      key: const ValueKey('viaje-bus-que-viene'),
+      key: const ValueKey('trip-incoming-bus'),
       padding: const EdgeInsets.fromLTRB(10, 10, 14, 10),
       child: Row(
         children: [
           BadgeLine(bus.line),
           const SizedBox(width: 10),
-          if (bus.live) PuntoInVivo(color: color),
+          if (bus.live) LiveDot(color: color),
           if (bus.live) const SizedBox(width: 4),
           Expanded(
             child: Text(
@@ -737,7 +737,7 @@ class _StepWait extends StatefulWidget {
 
 class _StepWaitState extends State<_StepWait> {
   /// The greatest distance at which we saw the bus in this step: the 0% of the track.
-  int? _metersInicio;
+  int? _startMeters;
 
   /// The live bus was about to arrive. Once it reaches the stop it stops
   /// "coming" (the source no longer reports it): it is not "no data", it arrived.
@@ -749,20 +749,20 @@ class _StepWaitState extends State<_StepWait> {
     final f = widget.f, t = widget.t;
     final bus = f.busExpected;
     final meters = bus != null && bus.live ? bus.metersUntilStop : null;
-    if (meters != null && meters > (_metersInicio ?? 0)) {
-      _metersInicio = meters;
+    if (meters != null && meters > (_startMeters ?? 0)) {
+      _startMeters = meters;
     }
     if (bus != null && bus.live) {
       _wasArriving = bus.minutes <= 1 || (meters != null && meters <= 300);
     }
     final arrived = bus == null && _wasArriving;
-    final inicio = _metersInicio;
+    final start = _startMeters;
     final Widget figure;
     if (arrived) {
       figure = Row(
-        key: const ValueKey('viaje-llego-bus'),
+        key: const ValueKey('trip-bus-arrived'),
         children: [
-          PuntoInVivo(size: 11, color: c.live),
+          LiveDot(size: 11, color: c.live),
           const SizedBox(width: 6),
           Expanded(child: _Figure(tx.arrivedYourBus, color: c.live)),
         ],
@@ -770,7 +770,7 @@ class _StepWaitState extends State<_StepWait> {
     } else if (bus != null && bus.live) {
       figure = Row(
         children: [
-          PuntoInVivo(size: 11, color: c.live),
+          LiveDot(size: 11, color: c.live),
           const SizedBox(width: 6),
           Expanded(
             child: _Figure(
@@ -787,12 +787,12 @@ class _StepWaitState extends State<_StepWait> {
       figure = _Figure(
         tx.inApprox(minutes(bus.minutes)),
         small: tx.perSchedule,
-        color: c.alerta,
+        color: c.alert,
       );
     } else {
       figure = Text(
         tx.withoutDataBus,
-        key: const ValueKey('viaje-sin-datos'),
+        key: const ValueKey('trip-no-data'),
         style: TextStyle(fontSize: 16, color: c.textSoft),
       );
     }
@@ -800,7 +800,7 @@ class _StepWaitState extends State<_StepWait> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _Title(
-          icon: BadgeLine(t.line, grande: true),
+          icon: BadgeLine(t.line, large: true),
           title: tx.wait(t.line),
           detail: [
             if (t.destinationLine != null)
@@ -810,14 +810,14 @@ class _StepWaitState extends State<_StepWait> {
         ),
         const SizedBox(height: 12),
         figure,
-        if ((meters != null || arrived) && inicio != null) ...[
+        if ((meters != null || arrived) && start != null) ...[
           const SizedBox(height: 14),
-          _TrackBus(meters: meters ?? 0, metersStart: inicio),
+          _TrackBus(meters: meters ?? 0, metersStart: start),
         ],
         if (arrived) ...[
           const SizedBox(height: 12),
           Text(
-            tx.makeSignSubi,
+            tx.waveAndBoard,
             style: TextStyle(fontSize: 15, color: c.textSoft),
           ),
         ] else if (bus != null) ...[
@@ -826,7 +826,7 @@ class _StepWaitState extends State<_StepWait> {
             children: [
               _Label(
                 bus.live ? tx.liveUpper : tx.scheduleUpper,
-                color: bus.live ? c.live : c.alerta,
+                color: bus.live ? c.live : c.alert,
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -885,7 +885,7 @@ class _TrackBus extends StatelessWidget {
       label: tx.busToDistance(distance(meters)),
       excludeSemantics: true,
       child: SizedBox(
-        key: const ValueKey('viaje-pista-bus'),
+        key: const ValueKey('trip-bus-track'),
         height: icon,
         child: LayoutBuilder(
           builder: (context, box) {
@@ -905,7 +905,7 @@ class _TrackBus extends StatelessWidget {
                         child: Container(
                           height: 4,
                           decoration: BoxDecoration(
-                            color: c.separador,
+                            color: c.separator,
                             borderRadius: BorderRadius.circular(2),
                           ),
                         ),
@@ -974,21 +974,21 @@ class _StepBus extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = BondiColors.of(context);
-    final missing = f.progress.stopsRestantes;
+    final missing = f.progress.stopsLeft;
     final last = missing == 0;
     final next = f.progress.nextStop;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _Title(
-          icon: BadgeLine(t.line, grande: true),
+          icon: BadgeLine(t.line, large: true),
           title: last ? tx.getOffAtNext : tx.travelsIn(t.line),
           detail: tx.getOffAt(stopName(t.alighting.name)),
         ),
         const SizedBox(height: 12),
         if (last)
           Container(
-            key: const ValueKey('viaje-bajate'),
+            key: const ValueKey('trip-get-off'),
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             decoration: BoxDecoration(
               color: c.bus,
@@ -1020,8 +1020,8 @@ class _StepBus extends StatelessWidget {
                 ? distance(t.distanceMeters)
                 : tx.missing(stops(missing + 1)),
             small:
-                f.progress.metersRestantes != null
-                    ? distance(f.progress.metersRestantes!)
+                f.progress.metersLeft != null
+                    ? distance(f.progress.metersLeft!)
                     : null,
           ),
           if (missing != null) ...[
@@ -1034,7 +1034,7 @@ class _StepBus extends StatelessWidget {
           if (next != null && next.id != t.alighting.id) ...[
             const SizedBox(height: 8),
             Row(
-              key: const ValueKey('viaje-proxima'),
+              key: const ValueKey('trip-next'),
               children: [
                 _Label(tx.nextUpper, color: c.bus),
                 const SizedBox(width: 8),
@@ -1073,7 +1073,7 @@ class _StripStops extends StatelessWidget {
       label: tx.missingToGetOff(stops(missing + 1)),
       excludeSemantics: true,
       child: SizedBox(
-        key: const ValueKey('viaje-tira-paradas'),
+        key: const ValueKey('trip-stop-strip'),
         height: 24,
         width: double.infinity,
         child: CustomPaint(
@@ -1127,8 +1127,8 @@ class _PainterStripStops extends CustomPainter {
     for (var i = 1; i < total; i += jump) {
       final p = Offset(x(i), y);
       final past = i <= doneCount;
-      final siguiente = i == doneCount + 1;
-      final r = siguiente ? 5.5 : 3.2;
+      final next = i == doneCount + 1;
+      final r = next ? 5.5 : 3.2;
       c.drawCircle(p, r, Paint()..color = background);
       c.drawCircle(
         p,
@@ -1136,13 +1136,13 @@ class _PainterStripStops extends CustomPainter {
         Paint()
           ..color = past ? done : bus
           ..style = PaintingStyle.stroke
-          ..strokeWidth = siguiente ? 2.6 : 1.8,
+          ..strokeWidth = next ? 2.6 : 1.8,
       );
     }
     // Your stop.
-    final fin = Offset(x(total), y);
-    c.drawCircle(fin, 9, Paint()..color = ink);
-    c.drawCircle(fin, 3.8, Paint()..color = background);
+    final end = Offset(x(total), y);
+    c.drawCircle(end, 9, Paint()..color = ink);
+    c.drawCircle(end, 3.8, Paint()..color = background);
     // You, on the bus.
     c.drawCircle(Offset(you, y), 7.5, Paint()..color = background);
     c.drawCircle(Offset(you, y), 5, Paint()..color = bus);
@@ -1160,16 +1160,16 @@ class _PainterStripStops extends CustomPainter {
 // Bottom bar: finish, itinerary and manual fallback
 // ---------------------------------------------------------------------------
 
-class _BarInferior extends ConsumerWidget {
+class _BottomBar extends ConsumerWidget {
   final TripPhase f;
   final String destination;
-  const _BarInferior(this.f, this.destination);
+  const _BottomBar(this.f, this.destination);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = BondiColors.of(context);
-    final t = f.legActual;
-    final isLast = f.stepActual == f.totalSteps - 1;
+    final t = f.currentLeg;
+    final isLast = f.currentStep == f.totalSteps - 1;
     final text = switch (t) {
       WalkLeg() when isLast => tx.alreadyArrived,
       WalkLeg() => tx.alreadyAtTheStop,
@@ -1179,17 +1179,17 @@ class _BarInferior extends ConsumerWidget {
     return Row(
       children: [
         SheetButton(
-          key: const ValueKey('viaje-terminar'),
+          key: const ValueKey('trip-finish'),
           icon: Icons.close_rounded,
           label: tx.finishTrip,
           onTap: () => _confirmFinish(context, ref),
         ),
         const SizedBox(width: 10),
         SheetButton(
-          key: const ValueKey('viaje-itinerario'),
+          key: const ValueKey('trip-itinerary'),
           icon: Icons.format_list_bulleted_rounded,
           label: tx.seeWholeTrip,
-          onTap: () => mostrarItinerary(context, f, destination),
+          onTap: () => showItinerary(context, f, destination),
         ),
         const SizedBox(width: 10),
         Expanded(
@@ -1201,10 +1201,10 @@ class _BarInferior extends ConsumerWidget {
               child: Material(
                 type: MaterialType.transparency,
                 child: InkWell(
-                  key: const ValueKey('viaje-confirmar-paso'),
+                  key: const ValueKey('trip-confirm-step'),
                   onTap: () {
                     HapticFeedback.selectionClick();
-                    ref.read(appActionsProvider).confirmStepActual();
+                    ref.read(appActionsProvider).confirmCurrentStep();
                   },
                   child: SizedBox(
                     height: 52,
@@ -1257,7 +1257,7 @@ class _BarInferior extends ConsumerWidget {
                 child: Text(tx.follow),
               ),
               TextButton(
-                key: const ValueKey('viaje-terminar-confirmar'),
+                key: const ValueKey('trip-finish-confirm'),
                 onPressed: () => Navigator.pop(ctx, true),
                 style: TextButton.styleFrom(
                   foregroundColor: BondiColors.of(ctx).danger,
@@ -1306,7 +1306,7 @@ class _ArrivalState extends ConsumerState<_Arrival> {
     final c = BondiColors.of(context);
     final t = Theme.of(context).textTheme;
     final f = widget.f;
-    final seconds = f.fin?.difference(f.inicio).inSeconds;
+    final seconds = f.end?.difference(f.start).inSeconds;
     final check = Container(
       width: 72,
       height: 72,
@@ -1317,7 +1317,7 @@ class _ArrivalState extends ConsumerState<_Arrival> {
       child: Icon(Icons.check_rounded, color: c.live, size: 42),
     );
     return Sheet(
-      key: const ValueKey('viaje-llegada'),
+      key: const ValueKey('trip-arrival'),
       radio: BorderRadius.circular(28),
       padding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
       child: Column(
@@ -1347,7 +1347,7 @@ class _ArrivalState extends ConsumerState<_Arrival> {
           const SizedBox(height: 4),
           Text(
             widget.destination,
-            key: const ValueKey('viaje-llegada-destino'),
+            key: const ValueKey('trip-arrival-destination'),
             textAlign: TextAlign.center,
             style: t.titleMedium,
           ),
@@ -1358,9 +1358,9 @@ class _ArrivalState extends ConsumerState<_Arrival> {
             runSpacing: 8,
             children: [
               if (seconds != null)
-                _Dato(Icons.schedule_rounded, duration(seconds)),
+                _Fact(Icons.schedule_rounded, duration(seconds)),
               if (f.option.walkMeters > 0)
-                _Dato(
+                _Fact(
                   Icons.directions_walk_rounded,
                   distance(f.option.walkMeters),
                 ),
@@ -1369,7 +1369,7 @@ class _ArrivalState extends ConsumerState<_Arrival> {
           ),
           const SizedBox(height: 22),
           FilledButton(
-            key: const ValueKey('viaje-listo'),
+            key: const ValueKey('trip-done'),
             onPressed: () => ref.read(appActionsProvider).closeArrival(),
             child: Text(tx.ready),
           ),
@@ -1379,10 +1379,10 @@ class _ArrivalState extends ConsumerState<_Arrival> {
   }
 }
 
-class _Dato extends StatelessWidget {
+class _Fact extends StatelessWidget {
   final IconData icon;
   final String text;
-  const _Dato(this.icon, this.text);
+  const _Fact(this.icon, this.text);
 
   @override
   Widget build(BuildContext context) {

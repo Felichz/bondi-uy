@@ -7,13 +7,13 @@ import '../../contract/traces.dart';
 
 enum Language { es, en }
 
-Texts _actual = const TextosEs();
+Texts _current = const SpanishTexts();
 
 /// The texts for the current language.
-Texts get tx => _actual;
+Texts get tx => _current;
 
 void pinLanguage(Language i) =>
-    _actual = i == Language.en ? const TextosEn() : const TextosEs();
+    _current = i == Language.en ? const EnglishTexts() : const SpanishTexts();
 
 const _nb = ' ';
 
@@ -23,7 +23,7 @@ abstract class Texts {
 
   // --- formats -------------------------------------------------------------
   String get underOneMin;
-  String get ya;
+  String get now;
   String stops(int n);
 
   // --- notices ---------------------------------------------------------------
@@ -33,7 +33,7 @@ abstract class Texts {
   String get noticeErrorSuggestions;
   String get noticeErrorStop;
   String get noticeMissingDestination;
-  String get noticegetOff;
+  String get noticeGetOff;
   String get noticeBusArriving;
 
   // --- common --------------------------------------------------------------
@@ -45,7 +45,7 @@ abstract class Texts {
   String get yourDestination;
   String line(String l);
   String get close;
-  String get returnValue;
+  String get back;
   String from(String origin);
 
   // --- home ---------------------------------------------------------------
@@ -73,7 +73,7 @@ abstract class Texts {
   // --- search -------------------------------------------------------------
   String get fromField;
   String get swap;
-  String get borrar;
+  String get clear;
   String get placeNotFound;
   String get errorSearchPlaces;
   String get helpSearch;
@@ -85,17 +85,17 @@ abstract class Texts {
   String get withoutTripsText;
   String get searchingTrip;
   String get retry;
-  String get cambiarDestination;
+  String get changeDestination;
   String get startTrip;
   String optionNofM(int n, int m);
-  String get optionAnterior;
-  String get optionSiguiente;
+  String get previousOption;
+  String get nextOption;
   String boardIn(String stop);
   String walk(String dist);
   String transfers(int n);
   String get recommended;
   String barLegs(List<String> lines);
-  String get todoToPie;
+  String get allOnFoot;
   String passesMaybeNotArrive(String line, String min);
   String passesIn(String line, String min);
   String wouldPassIn(String line, String min);
@@ -104,7 +104,7 @@ abstract class Texts {
   // --- trip ----------------------------------------------------------------
   String get arrivedToStop;
   String boardedOn(String line);
-  String tebajasteDel(String line);
+  String gotOffLine(String line);
   String stepNofM(int n, int m);
   String arrive(String time);
   String stop(String name);
@@ -123,7 +123,7 @@ abstract class Texts {
   String get withoutDataBus;
   String wait(String line);
   String toward(String destination);
-  String get makeSignSubi;
+  String get waveAndBoard;
   String get liveUpper;
   String get scheduleUpper;
   String get makeSign;
@@ -169,7 +169,7 @@ abstract class Texts {
   String get ringsTheBellUpper;
   String inStops(String stops);
   String get yourDestinationUpper;
-  String get arrivingMinus;
+  String get arrivingLower;
 
   // --- web ------------------------------------------------------------------
   String get webMotto;
@@ -177,24 +177,24 @@ abstract class Texts {
   String get webDownload;
   String get webCode;
   String get webViewPresentation;
-  String get webViewByInside;
+  String get webViewInside;
   String get coreTitle;
   String get coreLayerUi;
   String get coreLayerLogic;
-  String get coreAlighting;
+  String get coreLede;
   String get coreNoteDemo;
   String get coreConsole;
-  String get coreClaveActions;
-  String get coreClaveStatus;
-  String get coreClaveLocation;
-  String get coreClaveBuses;
-  String get coreClavePlan;
+  String get coreKeyActions;
+  String get coreKeyStatus;
+  String get coreKeyLocation;
+  String get coreKeyBuses;
+  String get coreKeyPlan;
   String get coreController;
   String get coreNavigator;
   String get coreTracker;
   String get coreRecommender;
   String coreDetail(Piece p);
-  String get coreVerCode;
+  String get coreSeeCode;
   String get noticeApp;
   String get noticeAppDetail;
   String get noticeAppDownload;
@@ -205,15 +205,15 @@ abstract class Texts {
   String get demoExplanation;
 }
 
-class TextosEs extends Texts {
-  const TextosEs();
+class SpanishTexts extends Texts {
+  const SpanishTexts();
   @override
   Language get language => Language.es;
 
   @override
   String get underOneMin => 'menos de 1${_nb}min';
   @override
-  String get ya => 'ya';
+  String get now => 'ya';
   @override
   String stops(int n) => n == 1 ? '1${_nb}parada' : '$n${_nb}paradas';
 
@@ -235,7 +235,7 @@ class TextosEs extends Texts {
   @override
   String get noticeMissingDestination => 'Elegí a dónde querés ir.';
   @override
-  String get noticegetOff => '¡Bajate en la próxima parada!';
+  String get noticeGetOff => '¡Bajate en la próxima parada!';
   @override
   String get noticeBusArriving =>
       '¡Tu bus está llegando! Preparate para subir.';
@@ -257,7 +257,7 @@ class TextosEs extends Texts {
   @override
   String get close => 'Cerrar';
   @override
-  String get returnValue => 'Volver';
+  String get back => 'Volver';
   @override
   String from(String origin) => 'Desde $origin';
 
@@ -311,7 +311,7 @@ class TextosEs extends Texts {
   @override
   String get swap => 'Intercambiar origen y destino';
   @override
-  String get borrar => 'Borrar';
+  String get clear => 'Borrar';
   @override
   String get placeNotFound =>
       'No encontramos ese lugar en Montevideo. Probá con una calle y número, o un lugar conocido.';
@@ -335,15 +335,15 @@ class TextosEs extends Texts {
   @override
   String get retry => 'Reintentar';
   @override
-  String get cambiarDestination => 'Cambiar destino';
+  String get changeDestination => 'Cambiar destino';
   @override
   String get startTrip => 'Empezar viaje';
   @override
   String optionNofM(int n, int m) => 'Opción $n de $m';
   @override
-  String get optionAnterior => 'Opción anterior';
+  String get previousOption => 'Opción anterior';
   @override
-  String get optionSiguiente => 'Opción siguiente';
+  String get nextOption => 'Opción siguiente';
   @override
   String boardIn(String stop) => 'Subís en $stop';
   @override
@@ -356,7 +356,7 @@ class TextosEs extends Texts {
   String barLegs(List<String> lines) =>
       'Caminás, tomás ${lines.length == 1 ? 'el' : 'los'} ${lines.join(', ')} y caminás hasta el destino';
   @override
-  String get todoToPie => 'Todo el viaje a pie';
+  String get allOnFoot => 'Todo el viaje a pie';
   @override
   String passesMaybeNotArrive(String line, String min) =>
       'El $line pasa en $min: quizás no llegues';
@@ -373,7 +373,7 @@ class TextosEs extends Texts {
   @override
   String boardedOn(String line) => 'Subiste al $line. ¡Buen viaje!';
   @override
-  String tebajasteDel(String line) => 'Te bajaste del $line';
+  String gotOffLine(String line) => 'Te bajaste del $line';
   @override
   String stepNofM(int n, int m) => 'Paso $n de $m';
   @override
@@ -413,7 +413,7 @@ class TextosEs extends Texts {
   @override
   String toward(String destination) => 'Hacia $destination';
   @override
-  String get makeSignSubi => 'Hacele seña y subí cuando pare.';
+  String get waveAndBoard => 'Hacele seña y subí cuando pare.';
   @override
   String get liveUpper => 'EN VIVO';
   @override
@@ -502,7 +502,7 @@ class TextosEs extends Texts {
   @override
   String get yourDestinationUpper => 'TU DESTINO';
   @override
-  String get arrivingMinus => 'llegando';
+  String get arrivingLower => 'llegando';
 
   @override
   String get webMotto => 'Tu viaje en bondi por Montevideo, paso a paso.';
@@ -518,7 +518,7 @@ class TextosEs extends Texts {
   @override
   String get webViewPresentation => 'Presentación';
   @override
-  String get webViewByInside => 'Por dentro';
+  String get webViewInside => 'Por dentro';
   @override
   String get coreTitle => 'Por dentro';
   @override
@@ -526,7 +526,7 @@ class TextosEs extends Texts {
   @override
   String get coreLayerLogic => 'CAPA DE LÓGICA';
   @override
-  String get coreAlighting =>
+  String get coreLede =>
       'Dos capas unidas por una API, la App API. La UI solo lee el estado y le '
       'pide cosas a la lógica; la lógica decide sin saber de pantallas y habla '
       'con el mundo por puertos. Cada pulso es una llamada que la app está '
@@ -539,15 +539,15 @@ class TextosEs extends Texts {
   @override
   String get coreConsole => 'LLAMADAS EN VIVO';
   @override
-  String get coreClaveActions => 'Acciones';
+  String get coreKeyActions => 'Acciones';
   @override
-  String get coreClaveStatus => 'Estado';
+  String get coreKeyStatus => 'Estado';
   @override
-  String get coreClaveLocation => 'Ubicación';
+  String get coreKeyLocation => 'Ubicación';
   @override
-  String get coreClaveBuses => 'Buses';
+  String get coreKeyBuses => 'Buses';
   @override
-  String get coreClavePlan => 'Planificación';
+  String get coreKeyPlan => 'Planificación';
   @override
   String get coreController => 'decide y publica el estado';
   @override
@@ -586,7 +586,7 @@ class TextosEs extends Texts {
     Piece.places => 'Puerto de búsqueda: sugiere lugares mientras escribís.',
   };
   @override
-  String get coreVerCode => 'Clic para ver el código';
+  String get coreSeeCode => 'Clic para ver el código';
   @override
   String get noticeApp => 'BondiUY para Android';
   @override
@@ -603,15 +603,15 @@ class TextosEs extends Texts {
       'Viajes reales en bus por Montevideo, grabados. Vos y los buses se mueven solos.';
 }
 
-class TextosEn extends Texts {
-  const TextosEn();
+class EnglishTexts extends Texts {
+  const EnglishTexts();
   @override
   Language get language => Language.en;
 
   @override
   String get underOneMin => 'under 1${_nb}min';
   @override
-  String get ya => 'now';
+  String get now => 'now';
   @override
   String stops(int n) => n == 1 ? '1${_nb}stop' : '$n${_nb}stops';
 
@@ -632,7 +632,7 @@ class TextosEn extends Texts {
   @override
   String get noticeMissingDestination => 'Choose where you want to go.';
   @override
-  String get noticegetOff => 'Get off at the next stop!';
+  String get noticeGetOff => 'Get off at the next stop!';
   @override
   String get noticeBusArriving => 'Your bus is coming! Get ready to board.';
 
@@ -653,7 +653,7 @@ class TextosEn extends Texts {
   @override
   String get close => 'Close';
   @override
-  String get returnValue => 'Back';
+  String get back => 'Back';
   @override
   String from(String origin) => 'From $origin';
 
@@ -707,7 +707,7 @@ class TextosEn extends Texts {
   @override
   String get swap => 'Swap origin and destination';
   @override
-  String get borrar => 'Clear';
+  String get clear => 'Clear';
   @override
   String get placeNotFound =>
       'We couldn’t find that place in Montevideo. Try a street and number, or a well-known place.';
@@ -731,15 +731,15 @@ class TextosEn extends Texts {
   @override
   String get retry => 'Try again';
   @override
-  String get cambiarDestination => 'Change destination';
+  String get changeDestination => 'Change destination';
   @override
   String get startTrip => 'Start trip';
   @override
   String optionNofM(int n, int m) => 'Option $n of $m';
   @override
-  String get optionAnterior => 'Previous option';
+  String get previousOption => 'Previous option';
   @override
-  String get optionSiguiente => 'Next option';
+  String get nextOption => 'Next option';
   @override
   String boardIn(String stop) => 'Board at $stop';
   @override
@@ -752,7 +752,7 @@ class TextosEn extends Texts {
   String barLegs(List<String> lines) =>
       'Walk, take ${lines.join(', ')} and walk to your destination';
   @override
-  String get todoToPie => 'Walk the whole way';
+  String get allOnFoot => 'Walk the whole way';
   @override
   String passesMaybeNotArrive(String line, String min) =>
       'The $line comes in $min: you may not make it';
@@ -769,7 +769,7 @@ class TextosEn extends Texts {
   @override
   String boardedOn(String line) => 'You’re on the $line. Enjoy the ride!';
   @override
-  String tebajasteDel(String line) => 'You got off the $line';
+  String gotOffLine(String line) => 'You got off the $line';
   @override
   String stepNofM(int n, int m) => 'Step $n of $m';
   @override
@@ -809,7 +809,7 @@ class TextosEn extends Texts {
   @override
   String toward(String destination) => 'To $destination';
   @override
-  String get makeSignSubi => 'Wave it down and board when it stops.';
+  String get waveAndBoard => 'Wave it down and board when it stops.';
   @override
   String get liveUpper => 'LIVE';
   @override
@@ -898,7 +898,7 @@ class TextosEn extends Texts {
   @override
   String get yourDestinationUpper => 'YOUR DESTINATION';
   @override
-  String get arrivingMinus => 'arriving';
+  String get arrivingLower => 'arriving';
 
   @override
   String get webMotto => 'Your bus trip across Montevideo, step by step.';
@@ -914,7 +914,7 @@ class TextosEn extends Texts {
   @override
   String get webViewPresentation => 'Overview';
   @override
-  String get webViewByInside => 'Inside';
+  String get webViewInside => 'Inside';
   @override
   String get coreTitle => 'Inside';
   @override
@@ -922,7 +922,7 @@ class TextosEn extends Texts {
   @override
   String get coreLayerLogic => 'LOGIC LAYER';
   @override
-  String get coreAlighting =>
+  String get coreLede =>
       'Two layers joined by an API, the App API. The UI only reads the state and '
       'asks the logic for things; the logic decides without knowing about '
       'screens and talks to the world through ports. Each pulse is a call the '
@@ -934,15 +934,15 @@ class TextosEn extends Texts {
   @override
   String get coreConsole => 'LIVE CALLS';
   @override
-  String get coreClaveActions => 'Actions';
+  String get coreKeyActions => 'Actions';
   @override
-  String get coreClaveStatus => 'State';
+  String get coreKeyStatus => 'State';
   @override
-  String get coreClaveLocation => 'Location';
+  String get coreKeyLocation => 'Location';
   @override
-  String get coreClaveBuses => 'Buses';
+  String get coreKeyBuses => 'Buses';
   @override
-  String get coreClavePlan => 'Planning';
+  String get coreKeyPlan => 'Planning';
   @override
   String get coreController => 'decides and publishes the state';
   @override
@@ -979,7 +979,7 @@ class TextosEn extends Texts {
     Piece.places => 'Search port: suggests places as you type.',
   };
   @override
-  String get coreVerCode => 'Click to see the code';
+  String get coreSeeCode => 'Click to see the code';
   @override
   String get noticeApp => 'BondiUY for Android';
   @override

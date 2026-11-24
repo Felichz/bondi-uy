@@ -31,7 +31,7 @@ const _backgroundBorder = Color(0xFF06080B);
 const _track = Color(0xFF232A35);
 const _trackLight = Color(0xFF2E3744);
 const _chip = Color(0xFF151A21);
-const _chipArriba = Color(0xFF1D232C);
+const _chipTop = Color(0xFF1D232C);
 const _chipEdge = Color(0xFF323B48);
 const _pin = Color(0xFF8F7A52);
 const _text = Color(0xFFF2F4F7);
@@ -43,7 +43,7 @@ const _status = Color(0xFF36D08F);
 const _location = Color(0xFF6B9BFF);
 const _bus = Color(0xFFFF6A55);
 const _plan = Color(0xFFF2A93B);
-const _red = Color(0xFF8FA6C4);
+const _network = Color(0xFF8FA6C4);
 
 /// Color of a call according to its domain.
 Color _colorOf(Trace t) {
@@ -54,7 +54,7 @@ Color _colorOf(Trace t) {
     Piece.location || Piece.navigator => _location,
     Piece.arrivals || Piece.tracker => _bus,
     Piece.planner || Piece.recommender => _plan,
-    Piece.catalog || Piece.places => _red,
+    Piece.catalog || Piece.places => _network,
     _ => _action,
   };
 }
@@ -66,7 +66,7 @@ Color _colorPiece(Piece p) => switch (p) {
   Piece.navigator || Piece.location => _location,
   Piece.tracker || Piece.arrivals => _bus,
   Piece.recommender || Piece.planner => _plan,
-  Piece.catalog || Piece.places => _red,
+  Piece.catalog || Piece.places => _network,
 };
 
 IconData _iconPiece(Piece p) => switch (p) {
@@ -144,16 +144,16 @@ class _Chip {
   final Piece piece;
   final Rect rect;
   final String name;
-  final String papel;
+  final String role;
 
   /// Edge connector (a port to the outside world) or a core chip.
-  final bool puerto;
+  final bool isPort;
   const _Chip(
     this.piece,
     this.rect,
     this.name,
-    this.papel, {
-    this.puerto = false,
+    this.role, {
+    this.isPort = false,
   });
 }
 
@@ -259,9 +259,9 @@ class _Plane {
   // whatever width is left over is shared among the gaps.
   static const _widthContract = 150.0;
   static const _widthControl = 214.0;
-  static const _anchoNucleo = 196.0;
-  static const _altoNucleo = 120.0;
-  static const _widthPuerto = 220.0;
+  static const _coreWidth = 196.0;
+  static const _coreHeight = 120.0;
+  static const _portWidth = 220.0;
   static const _gapConnector = 40.0;
   static const _gapContract = 48.0;
 
@@ -276,7 +276,7 @@ class _Plane {
       _gapContract +
       _widthControl +
       _gapPorts +
-      _widthPuerto +
+      _portWidth +
       _margin;
 
   factory _Plane(Size size, Rect phone) {
@@ -306,28 +306,28 @@ class _Plane {
     // down below, the tracker.
     const marginV = 28.0;
     final dy = math.min(height * 0.31, 300.0);
-    final yArriba = (cy - dy).clamp(
-      marginV + _altoNucleo / 2,
-      control.top - 36 - _altoNucleo / 2,
+    final yTop = (cy - dy).clamp(
+      marginV + _coreHeight / 2,
+      control.top - 36 - _coreHeight / 2,
     );
-    final yAbajo = (cy + dy).clamp(
-      control.bottom + 36 + _altoNucleo / 2,
-      height - marginV - _altoNucleo / 2,
+    final yBottom = (cy + dy).clamp(
+      control.bottom + 36 + _coreHeight / 2,
+      height - marginV - _coreHeight / 2,
     );
     final recommender = Rect.fromLTWH(
-      control.right - _anchoNucleo,
-      yArriba - _altoNucleo / 2,
-      _anchoNucleo,
-      _altoNucleo,
+      control.right - _coreWidth,
+      yTop - _coreHeight / 2,
+      _coreWidth,
+      _coreHeight,
     );
-    final nucleo = <Piece, Rect>{
+    final core = <Piece, Rect>{
       Piece.recommender: recommender,
-      Piece.navigator: recommender.shift(const Offset(-_anchoNucleo - 24, 0)),
+      Piece.navigator: recommender.shift(const Offset(-_coreWidth - 24, 0)),
       Piece.tracker: centered(
         control.center.dx,
-        yAbajo,
-        _anchoNucleo,
-        _altoNucleo,
+        yBottom,
+        _coreWidth,
+        _coreHeight,
       ),
     };
     const ports = [
@@ -341,8 +341,7 @@ class _Plane {
       (height - 2 * marginV - 84) / (ports.length - 1),
       150.0,
     );
-    final xPuerto =
-        control.right + _gapPorts + surplus * 0.45 + _widthPuerto / 2;
+    final xPort = control.right + _gapPorts + surplus * 0.45 + _portWidth / 2;
     final chips = <Piece, _Chip>{
       Piece.controller: _Chip(
         Piece.controller,
@@ -352,55 +351,55 @@ class _Plane {
       ),
       Piece.navigator: _Chip(
         Piece.navigator,
-        nucleo[Piece.navigator]!,
-        'Navegador',
+        core[Piece.navigator]!,
+        'TripNavigator',
         tx.coreNavigator,
       ),
       Piece.recommender: _Chip(
         Piece.recommender,
-        nucleo[Piece.recommender]!,
-        'Recomendador',
+        core[Piece.recommender]!,
+        'Recommender',
         tx.coreRecommender,
       ),
       Piece.tracker: _Chip(
         Piece.tracker,
-        nucleo[Piece.tracker]!,
-        'SeguidorBus',
+        core[Piece.tracker]!,
+        'BusTracker',
         tx.coreTracker,
       ),
       for (var i = 0; i < ports.length; i++)
         ports[i]: _Chip(
           ports[i],
           centered(
-            xPuerto,
+            xPort,
             cy + (i - (ports.length - 1) / 2) * step,
-            _widthPuerto,
+            _portWidth,
             84,
           ),
           switch (ports[i]) {
             Piece.location => 'GPS',
-            Piece.arrivals => 'API Intendencia',
+            Piece.arrivals => 'Montevideo API',
             Piece.planner => 'OpenTripPlanner',
             Piece.catalog => 'GTFS',
-            _ => 'Lugares',
+            _ => 'Places',
           },
           switch (ports[i]) {
-            Piece.location => 'seguir() · actual()',
-            Piece.arrivals => 'llegadas(parada)',
-            Piece.planner => 'planificar(a, b)',
-            Piece.catalog => 'paradas() · shape(id)',
-            _ => 'sugerencias(texto)',
+            Piece.location => 'follow() · current()',
+            Piece.arrivals => 'arrivals(stop)',
+            Piece.planner => 'plan(a, b)',
+            Piece.catalog => 'stops() · shape(id)',
+            _ => 'suggestions(text)',
           },
-          puerto: true,
+          isPort: true,
         ),
     };
 
     // Tracks from the controller to each piece: they leave from the side that faces it.
     // The ones to the ports bend to the right of the whole core.
     final tracks = <(Piece, Piece), List<Offset>>{};
-    final finNucleo = [
+    final coreRight = [
       control,
-      ...nucleo.values,
+      ...core.values,
     ].map((r) => r.right).reduce(math.max);
     final byRight = [for (final p in ports) chips[p]!];
     for (var i = 0; i < byRight.length; i++) {
@@ -412,7 +411,7 @@ class _Plane {
       tracks[(Piece.controller, c.piece)] = _route(
         exit,
         Offset(c.rect.left, c.rect.center.dy),
-        breakValue: finNucleo + 28 + i * 14,
+        breakValue: coreRight + 28 + i * 14,
       );
     }
     for (final p in [Piece.navigator, Piece.recommender]) {
@@ -453,8 +452,8 @@ class _Plane {
   List<Offset>? route(Trace t) {
     if (t.from == Piece.interfaceValue) return actions;
     if (t.toward == Piece.interfaceValue) return status.reversed.toList();
-    final ida = tracks[(t.from, t.toward)];
-    if (ida != null) return ida;
+    final forward = tracks[(t.from, t.toward)];
+    if (forward != null) return forward;
     return tracks[(t.toward, t.from)]?.reversed.toList();
   }
 }
@@ -498,9 +497,9 @@ List<Offset> _routeVertical(Offset a, Offset b) {
 
 class _Pulse {
   final List<Offset> points;
-  final List<double> acum;
+  final List<double> cum;
   final Color color;
-  final double inicio;
+  final double start;
   final double duration;
 
   /// The pins it crosses, with their distance along the route.
@@ -509,22 +508,22 @@ class _Pulse {
   /// How many pins the head has already crossed.
   int crossed = 0;
 
-  _Pulse(this.points, this.color, this.inicio, Map<Offset, Rect> pinsOfPlane)
-    : acum = _acumular(points),
-      duration = (_acumular(points).last / 900).clamp(0.35, 1.1),
+  _Pulse(this.points, this.color, this.start, Map<Offset, Rect> pinsOfPlane)
+    : cum = _accumulate(points),
+      duration = (_accumulate(points).last / 900).clamp(0.35, 1.1),
       pins = [
-        for (final (i, a) in _acumular(points).indexed)
+        for (final (i, a) in _accumulate(points).indexed)
           if (pinsOfPlane[points[i]] case final r?) (a, r),
       ];
 
   /// Where the head is at [now] (distance along the route).
   double head(double now) =>
       Curves.easeInOutCubic.transform(
-        ((now - inicio) / duration).clamp(0.0, 1.0),
+        ((now - start) / duration).clamp(0.0, 1.0),
       ) *
       long;
 
-  static List<double> _acumular(List<Offset> p) {
+  static List<double> _accumulate(List<Offset> p) {
     final a = List<double>.filled(p.length, 0);
     for (var i = 1; i < p.length; i++) {
       a[i] = a[i - 1] + (p[i] - p[i - 1]).distance;
@@ -532,30 +531,30 @@ class _Pulse {
     return a;
   }
 
-  double get long => acum.last;
+  double get long => cum.last;
 
-  Offset en(double s) {
+  Offset at(double s) {
     if (s <= 0) return points.first;
     if (s >= long) return points.last;
     var i = 1;
-    while (acum[i] < s) {
+    while (cum[i] < s) {
       i++;
     }
-    final l = acum[i] - acum[i - 1];
+    final l = cum[i] - cum[i - 1];
     return Offset.lerp(
       points[i - 1],
       points[i],
-      l == 0 ? 0 : (s - acum[i - 1]) / l,
+      l == 0 ? 0 : (s - cum[i - 1]) / l,
     )!;
   }
 
   /// The part of the route between [from] and [until] (meters along it).
   List<Offset> leg(double from, double until) {
-    final r = <Offset>[en(from)];
+    final r = <Offset>[at(from)];
     for (var i = 0; i < points.length; i++) {
-      if (acum[i] > from && acum[i] < until) r.add(points[i]);
+      if (cum[i] > from && cum[i] < until) r.add(points[i]);
     }
-    r.add(en(until));
+    r.add(at(until));
     return r;
   }
 }
@@ -566,7 +565,7 @@ class _Reading {
   String? result;
   Color color = _textSoft;
   double moment = -10;
-  int cuenta = 0;
+  int count = 0;
 }
 
 /// A line of the console.
@@ -574,11 +573,11 @@ class _Line {
   final DateTime moment;
   final Trace trace;
   final Color color;
-  int veces = 1;
+  int repeats = 1;
   _Line(this.moment, this.trace, this.color);
 }
 
-class _Vivo extends ChangeNotifier {
+class _Live extends ChangeNotifier {
   final List<_Pulse> pulses = [];
   final Map<Piece, _Reading> readings = {
     for (final p in Piece.values) p: _Reading(),
@@ -596,9 +595,9 @@ class _Vivo extends ChangeNotifier {
   final ValueNotifier<List<_Line>> console = ValueNotifier(const []);
   double now = 0;
 
-  void tic(double t) {
+  void tick(double t) {
     now = t;
-    pulses.removeWhere((p) => t - p.inicio > p.duration + 0.4);
+    pulses.removeWhere((p) => t - p.start > p.duration + 0.4);
     // The pin lights up when the head of the pulse passes through it.
     for (final pu in pulses) {
       final s = pu.head(t);
@@ -631,7 +630,7 @@ class _Vivo extends ChangeNotifier {
         ..result = t.result
         ..color = color
         ..moment = now
-        ..cuenta += 1;
+        ..count += 1;
     }
     if (t.from == Piece.interfaceValue || t.toward == Piece.interfaceValue) {
       (t.from == Piece.interfaceValue ? action : status)
@@ -639,17 +638,17 @@ class _Vivo extends ChangeNotifier {
         ..result = t.result
         ..color = color
         ..moment = now
-        ..cuenta += 1;
+        ..count += 1;
     }
     final lines = console.value;
     final last = lines.isEmpty ? null : lines.first;
     if (last != null &&
         last.trace.from == t.from &&
         last.trace.toward == t.toward &&
-        _sinArgumentos(last.trace.call) == _sinArgumentos(t.call)) {
-      last.veces++;
+        _withoutArgs(last.trace.call) == _withoutArgs(t.call)) {
+      last.repeats++;
       console.value = [
-        _Line(t.moment, t, color)..veces = last.veces,
+        _Line(t.moment, t, color)..repeats = last.repeats,
         ...lines.skip(1),
       ];
     } else {
@@ -657,7 +656,7 @@ class _Vivo extends ChangeNotifier {
     }
   }
 
-  static String _sinArgumentos(String s) {
+  static String _withoutArgs(String s) {
     final i = s.indexOf('(');
     return i < 0 ? s : s.substring(0, i);
   }
@@ -671,23 +670,24 @@ class _Vivo extends ChangeNotifier {
 
 // --- Widget ----------------------------------------------------------------------
 
-const _margenIzquierdo = 56.0;
+const _leftMargin = 56.0;
 const _columnMin = 340.0;
 const _gapMin = 32.0;
 
-/// Where the phone [tel] goes in a window of size [size]: after the narrative,
+/// Where the phone [phoneSize] goes in a window of size [size]: after the narrative,
 /// centered vertically. The narrative column and the gap up to the phone grow
 /// with the window, but they give way first so the plate fits whole.
-Rect phoneByInside(Size size, Size tel) => _locate(size, tel).phone;
+Rect phoneUnderTheHood(Size size, Size phoneSize) =>
+    _locate(size, phoneSize).phone;
 
-({Rect phone, double column}) _locate(Size size, Size tel) {
+({Rect phone, double column}) _locate(Size size, Size phoneSize) {
   var column = (size.width * 0.22).clamp(_columnMin, 420.0);
   var gap = (size.width * 0.03).clamp(_gapMin, 64.0);
   final excess =
-      _margenIzquierdo +
+      _leftMargin +
       column +
       gap +
-      tel.width +
+      phoneSize.width +
       _Plane.widthMin -
       size.width;
   if (excess > 0) {
@@ -697,10 +697,10 @@ Rect phoneByInside(Size size, Size tel) => _locate(size, tel).phone;
   }
   return (
     phone: Rect.fromLTWH(
-      _margenIzquierdo + column + gap,
-      (size.height - tel.height) / 2,
-      tel.width,
-      tel.height,
+      _leftMargin + column + gap,
+      (size.height - phoneSize.height) / 2,
+      phoneSize.width,
+      phoneSize.height,
     ),
     column: column,
   );
@@ -709,18 +709,18 @@ Rect phoneByInside(Size size, Size tel) => _locate(size, tel).phone;
 /// The boxes of the plate (the chips and the contract) for a window of size [size]
 /// with the phone at [phone]. To check that they do not overlap.
 @visibleForTesting
-Map<String, Rect> boxesOfThePlate(Size size, Rect phone) {
+Map<String, Rect> plateBoxes(Size size, Rect phone) {
   final p = _Plane(size, phone);
   return {
     for (final e in p.chips.entries) e.key.name: e.value.rect,
-    'contrato': p.contract,
+    'contract': p.contract,
   };
 }
 
 /// Window width needed by the "under the hood" view with a phone of
 /// [widthPhone]: the narrative, the phone and the whole plate.
-double widthMinByInside(double widthPhone) =>
-    _margenIzquierdo + _columnMin + _gapMin + widthPhone + _Plane.widthMin;
+double widthMinUnderTheHood(double widthPhone) =>
+    _leftMargin + _columnMin + _gapMin + widthPhone + _Plane.widthMin;
 
 class UnderTheHood extends ConsumerStatefulWidget {
   /// The phone with the app, already scaled.
@@ -738,12 +738,12 @@ class UnderTheHood extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<UnderTheHood> createState() => _ByInsideState();
+  ConsumerState<UnderTheHood> createState() => _UnderTheHoodState();
 }
 
-class _ByInsideState extends ConsumerState<UnderTheHood>
+class _UnderTheHoodState extends ConsumerState<UnderTheHood>
     with SingleTickerProviderStateMixin {
-  final _vivo = _Vivo();
+  final _live = _Live();
   late final Ticker _clock;
   StreamSubscription<Trace>? _traces;
   _Plane? _plane;
@@ -758,32 +758,32 @@ class _ByInsideState extends ConsumerState<UnderTheHood>
   @override
   void initState() {
     super.initState();
-    _clock = createTicker((d) => _vivo.tic(d.inMicroseconds / 1e6))..start();
+    _clock = createTicker((d) => _live.tick(d.inMicroseconds / 1e6))..start();
     _traces = ref
         .read(tracesProvider)
         ?.stream
-        .listen((t) => _vivo.call(t, _plane));
+        .listen((t) => _live.call(t, _plane));
   }
 
   @override
   void dispose() {
     _traces?.cancel();
     _clock.dispose();
-    _vivo.dispose();
+    _live.dispose();
     _fixed?.dispose();
     super.dispose();
   }
 
   /// The state the logic publishes, as a call toward the interface
   /// (only when something really changed, at most a few times per second).
-  void _alPublicar(AppState s) {
+  void _onPublish(AppState s) {
     final r = _summary(s);
-    final now = _vivo.now;
+    final now = _live.now;
     if (r == _summaryStatus && now - _lastStatus < 0.4) return;
     if (now - _lastStatus < 0.12) return;
     _summaryStatus = r;
     _lastStatus = now;
-    _vivo.call(
+    _live.call(
       Trace(
         Piece.controller,
         Piece.interfaceValue,
@@ -796,16 +796,16 @@ class _ByInsideState extends ConsumerState<UnderTheHood>
   }
 
   static String _summary(AppState s) => switch (s.phase) {
-    ExplorePhase() => 'explorar',
+    ExplorePhase() => 'explore',
     final OptionsPhase f =>
       f.status == OptionsStatus.ready
-          ? 'opciones (${f.options.length})'
-          : 'opciones, ${f.status.name}',
+          ? 'options (${f.options.length})'
+          : 'options, ${f.status.name}',
     final TripPhase f =>
       f.status == TripStatus.completed
-          ? 'viaje, llegó'
-          : 'viaje, paso ${f.stepActual + 1} de ${f.totalSteps}'
-              '${f.progress.metersRestantes == null ? '' : ', ${f.progress.metersRestantes} m'}',
+          ? 'trip, arrived'
+          : 'trip, step ${f.currentStep + 1} of ${f.totalSteps}'
+              '${f.progress.metersLeft == null ? '' : ', ${f.progress.metersLeft} m'}',
   };
 
   /// The fixed part, rasterized once: each frame only copies the image (a
@@ -825,7 +825,7 @@ class _ByInsideState extends ConsumerState<UnderTheHood>
 
   @override
   Widget build(BuildContext context) {
-    ref.listen<AppState>(appStateProvider, (_, s) => _alPublicar(s));
+    ref.listen<AppState>(appStateProvider, (_, s) => _onPublish(s));
     return LayoutBuilder(
       builder: (context, box) {
         final size = box.biggest;
@@ -860,11 +860,11 @@ class _ByInsideState extends ConsumerState<UnderTheHood>
                   child: GestureDetector(
                     onTapUp: (e) {
                       final p = plane.pieceIn(e.localPosition);
-                      if (p != null) abrirLink(_linkPiece(p));
+                      if (p != null) openLink(_linkPiece(p));
                     },
                     child: RepaintBoundary(
                       child: CustomPaint(
-                        painter: _PainterPlate(plane, _fixed!, _vivo),
+                        painter: _PainterPlate(plane, _fixed!, _live),
                       ),
                     ),
                   ),
@@ -873,7 +873,7 @@ class _ByInsideState extends ConsumerState<UnderTheHood>
               // The narrative flows from top to bottom; the console takes what is
               // left (and does not appear if it does not fit): nothing overlaps.
               Positioned(
-                left: _margenIzquierdo,
+                left: _leftMargin,
                 top: 36,
                 bottom: 36,
                 width: column,
@@ -895,7 +895,7 @@ class _ByInsideState extends ConsumerState<UnderTheHood>
                                       alignment: Alignment.topLeft,
                                       child: SizedBox(
                                         height: math.min(b.maxHeight, 340),
-                                        child: _Console(_vivo.console),
+                                        child: _Console(_live.console),
                                       ),
                                     ),
                       ),
@@ -927,16 +927,16 @@ class _Card extends StatelessWidget {
 
   /// The card below the box (or above, if it does not fit below), without covering
   /// the phone.
-  static Widget together(Piece p, String name, Rect caja, _Plane plane) {
-    final abajo = caja.bottom + 12 + heightEstimated < plane.size.height;
-    final double left = caja.left.clamp(
+  static Widget together(Piece p, String name, Rect box, _Plane plane) {
+    final below = box.bottom + 12 + heightEstimated < plane.size.height;
+    final double left = box.left.clamp(
       plane.phone.right + 16,
       math.max(plane.phone.right + 16, plane.size.width - width - 16),
     );
     return Positioned(
       left: left,
-      top: abajo ? caja.bottom + 12 : null,
-      bottom: abajo ? null : plane.size.height - caja.top + 12,
+      top: below ? box.bottom + 12 : null,
+      bottom: below ? null : plane.size.height - box.top + 12,
       width: width,
       child: IgnorePointer(child: _Card(p, name)),
     );
@@ -946,7 +946,7 @@ class _Card extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = _colorPiece(piece);
     return DecoratedBox(
-      key: const ValueKey('tarjeta-pieza'),
+      key: const ValueKey('piece-card'),
       decoration: BoxDecoration(
         color: const Color(0xF50F1318),
         borderRadius: BorderRadius.circular(14),
@@ -993,7 +993,7 @@ class _Card extends StatelessWidget {
                 const Icon(Icons.open_in_new, size: 13, color: _textFaint),
                 const SizedBox(width: 6),
                 Text(
-                  tx.coreVerCode,
+                  tx.coreSeeCode,
                   style: _style(12, _textFaint, weight: FontWeight.w600),
                 ),
               ],
@@ -1010,7 +1010,7 @@ class _Narrative extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Widget clave(Color c, String s) => Padding(
+    Widget legendItem(Color c, String s) => Padding(
       padding: const EdgeInsets.only(right: 16, bottom: 8),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1043,18 +1043,15 @@ class _Narrative extends StatelessWidget {
           ).copyWith(letterSpacing: -1.2, height: 1.05),
         ),
         const SizedBox(height: 16),
-        Text(
-          tx.coreAlighting,
-          style: _style(16, _textSoft).copyWith(height: 1.55),
-        ),
+        Text(tx.coreLede, style: _style(16, _textSoft).copyWith(height: 1.55)),
         const SizedBox(height: 18),
         Wrap(
           children: [
-            clave(_action, tx.coreClaveActions),
-            clave(_status, tx.coreClaveStatus),
-            clave(_location, tx.coreClaveLocation),
-            clave(_bus, tx.coreClaveBuses),
-            clave(_plan, tx.coreClavePlan),
+            legendItem(_action, tx.coreKeyActions),
+            legendItem(_status, tx.coreKeyStatus),
+            legendItem(_location, tx.coreKeyLocation),
+            legendItem(_bus, tx.coreKeyBuses),
+            legendItem(_plan, tx.coreKeyPlan),
           ],
         ),
         const SizedBox(height: 6),
@@ -1077,14 +1074,14 @@ class _Console extends StatelessWidget {
   static String _name(Piece p) => switch (p) {
     Piece.interfaceValue => 'UI',
     Piece.controller => 'AppController',
-    Piece.navigator => 'Navegador',
-    Piece.tracker => 'SeguidorBus',
-    Piece.recommender => 'Recomendador',
+    Piece.navigator => 'TripNavigator',
+    Piece.tracker => 'BusTracker',
+    Piece.recommender => 'Recommender',
     Piece.planner => 'OTP',
-    Piece.arrivals => 'API IM',
+    Piece.arrivals => 'Montevideo API',
     Piece.location => 'GPS',
     Piece.catalog => 'GTFS',
-    Piece.places => 'Lugares',
+    Piece.places => 'Places',
   };
 
   @override
@@ -1165,9 +1162,9 @@ class _Console extends StatelessWidget {
                                           text: '  ${ls[i].trace.result}',
                                           style: _style(12, _textFaint),
                                         ),
-                                      if (ls[i].veces > 1)
+                                      if (ls[i].repeats > 1)
                                         TextSpan(
-                                          text: '  ×${ls[i].veces}',
+                                          text: '  ×${ls[i].repeats}',
                                           style: _style(
                                             12,
                                             _textSoft,
@@ -1410,25 +1407,25 @@ void _paintFixed(Canvas c, _Plane p) {
   track(p.status);
 
   // The connector where the phone plugs in.
-  final having = p.connector;
+  final conn = p.connector;
   c.drawRRect(
-    RRect.fromRectAndRadius(having, const Radius.circular(5)),
+    RRect.fromRectAndRadius(conn, const Radius.circular(5)),
     Paint()
-      ..shader = ui.Gradient.linear(having.topLeft, having.topRight, const [
+      ..shader = ui.Gradient.linear(conn.topLeft, conn.topRight, const [
         Color(0xFF2A313C),
         Color(0xFF181C23),
       ]),
   );
   for (var i = 0; i < 9; i++) {
     c.drawRect(
-      Rect.fromLTWH(having.right - 9, having.top + 12 + i * 12.5, 6, 4),
+      Rect.fromLTWH(conn.right - 9, conn.top + 12 + i * 12.5, 6, 4),
       Paint()..color = _pin.withValues(alpha: 0.85),
     );
   }
 
   // Chip bodies, the contract included.
   bool free(Offset o) => !p.pins.values.any((q) => (q.center - o).distance < 8);
-  void body(Rect rect, {required bool puerto, Color? accent}) {
+  void body(Rect rect, {required bool isPort, Color? accent}) {
     final rr = RRect.fromRectAndRadius(rect, const Radius.circular(12));
     c.drawRRect(
       rr.shift(const Offset(0, 14)),
@@ -1437,14 +1434,14 @@ void _paintFixed(Canvas c, _Plane p) {
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 18),
     );
     // Pins.
-    final pin = Paint()..color = _pin.withValues(alpha: puerto ? 0.5 : 0.75);
+    final pin = Paint()..color = _pin.withValues(alpha: isPort ? 0.5 : 0.75);
     final n = (rect.height / 16).floor();
     for (var i = 0; i < n; i++) {
       final y = rect.top + 12 + i * (rect.height - 24) / math.max(1, n - 1);
       if (free(Offset(rect.left - 3, y))) {
         c.drawRect(Rect.fromLTWH(rect.left - 5, y - 1.5, 5, 3), pin);
       }
-      if (!puerto && free(Offset(rect.right + 3, y))) {
+      if (!isPort && free(Offset(rect.right + 3, y))) {
         c.drawRect(Rect.fromLTWH(rect.right, y - 1.5, 5, 3), pin);
       }
     }
@@ -1452,7 +1449,7 @@ void _paintFixed(Canvas c, _Plane p) {
       rr,
       Paint()
         ..shader = ui.Gradient.linear(rect.topCenter, rect.bottomCenter, const [
-          _chipArriba,
+          _chipTop,
           _chip,
         ]),
     );
@@ -1480,12 +1477,12 @@ void _paintFixed(Canvas c, _Plane p) {
     }
   }
 
-  body(p.contract, puerto: false);
+  body(p.contract, isPort: false);
   for (final ch in p.chips.values) {
     body(
       ch.rect,
-      puerto: ch.puerto,
-      accent: ch.puerto ? _colorPiece(ch.piece) : null,
+      isPort: ch.isPort,
+      accent: ch.isPort ? _colorPiece(ch.piece) : null,
     );
   }
   // The pins where the tracks enter.
@@ -1497,8 +1494,8 @@ void _paintFixed(Canvas c, _Plane p) {
 class _PainterPlate extends CustomPainter {
   final _Plane p;
   final ui.Image fixed;
-  final _Vivo vivo;
-  _PainterPlate(this.p, this.fixed, this.vivo) : super(repaint: vivo);
+  final _Live live;
+  _PainterPlate(this.p, this.fixed, this.live) : super(repaint: live);
 
   static final Map<String, TextPainter> _texts = {};
 
@@ -1523,11 +1520,11 @@ class _PainterPlate extends CustomPainter {
       Offset.zero & size,
       Paint()..filterQuality = FilterQuality.medium,
     );
-    final now = vivo.now;
+    final now = live.now;
 
     c.save();
     // Tracks that carried something recently: they stay lit and fade out.
-    for (final e in vivo.lit.entries) {
+    for (final e in live.lit.entries) {
       final k = (1 - (now - e.value.$1) / 1.2).clamp(0.0, 1.0);
       if (k <= 0) continue;
       final path = Path()..addPolygon(e.key, false);
@@ -1553,13 +1550,13 @@ class _PainterPlate extends CustomPainter {
     }
 
     // Pulses: a bright head with its trail, along the track.
-    for (final pu in vivo.pulses) {
-      final f = ((now - pu.inicio) / pu.duration).clamp(0.0, 1.0);
+    for (final pu in live.pulses) {
+      final f = ((now - pu.start) / pu.duration).clamp(0.0, 1.0);
       final s = pu.head(now);
       final queue = math.max(0.0, s - 90);
       final fade =
           f >= 1
-              ? (1 - (now - pu.inicio - pu.duration) / 0.4).clamp(0.0, 1.0)
+              ? (1 - (now - pu.start - pu.duration) / 0.4).clamp(0.0, 1.0)
               : 1.0;
       if (s - queue > 1) {
         final leg = pu.leg(queue, s);
@@ -1577,7 +1574,7 @@ class _PainterPlate extends CustomPainter {
             ..strokeJoin = StrokeJoin.round,
         );
       }
-      final head = pu.en(s);
+      final head = pu.at(s);
       _glow(c, head, 13, pu.color, 0.55 * fade);
       c.drawCircle(
         head,
@@ -1616,7 +1613,7 @@ class _PainterPlate extends CustomPainter {
     }
 
     // The lit pins: something just came in (or out) through there.
-    for (final e in vivo.pins.entries) {
+    for (final e in live.pins.entries) {
       final k = (1 - (now - e.value.$1) / 0.9).clamp(0.0, 1.0);
       if (k <= 0) continue;
       _glow(c, e.key.center, 11, e.value.$2, 0.6 * k);
@@ -1630,12 +1627,12 @@ class _PainterPlate extends CustomPainter {
 
     _api(c, p.contract, now);
     for (final ch in p.chips.values) {
-      _labels(c, ch, vivo.readings[ch.piece]!, now);
+      _labels(c, ch, live.readings[ch.piece]!, now);
     }
   }
 
   /// The activity light and the call count, top right.
-  void _light(Canvas c, Rect r, _Reading l, int cuenta, double now) {
+  void _light(Canvas c, Rect r, _Reading l, int count, double now) {
     final active = (1 - (now - l.moment) / 0.9).clamp(0.0, 1.0);
     final light = r.topRight + const Offset(-16, 16);
     if (active > 0) _glow(c, light, 14, l.color, 0.6 * active);
@@ -1644,8 +1641,8 @@ class _PainterPlate extends CustomPainter {
       3.2,
       Paint()..color = Color.lerp(const Color(0xFF2A313B), l.color, active)!,
     );
-    if (cuenta == 0) return;
-    final t = _t('$cuenta', _style(10.5, _textFaint, weight: FontWeight.w600));
+    if (count == 0) return;
+    final t = _t('$count', _style(10.5, _textFaint, weight: FontWeight.w600));
     t.paint(c, Offset(r.right - 26 - t.width, r.top + 10));
   }
 
@@ -1668,9 +1665,9 @@ class _PainterPlate extends CustomPainter {
   /// the UI), the state lane below (it leaves toward the UI), level with its
   /// tracks.
   void _api(Canvas c, Rect r, double now) {
-    final a = vivo.action, e = vivo.status;
+    final a = live.action, e = live.status;
     final last = a.moment >= e.moment ? a : e;
-    _light(c, r, last, a.cuenta + e.cuenta, now);
+    _light(c, r, last, a.count + e.count, now);
     final active = (1 - (now - last.moment) / 0.9).clamp(0.0, 1.0);
     _icon(c, Piece.interfaceValue, Offset(r.left + 14, r.top + 18.5), active);
     final x = r.left + 36;
@@ -1708,7 +1705,7 @@ class _PainterPlate extends CustomPainter {
         _style(11.5, _textFaint),
         width: width,
       ).paint(c, Offset(x, y - 7.5));
-      if (l.cuenta == 0) return;
+      if (l.count == 0) return;
       _t(
         enters ? l.call : (l.result ?? l.call),
         _style(11.5, l.color, weight: FontWeight.w600),
@@ -1722,35 +1719,35 @@ class _PainterPlate extends CustomPainter {
 
   void _labels(Canvas c, _Chip ch, _Reading l, double now) {
     final r = ch.rect;
-    final puerto = ch.puerto;
-    _light(c, r, l, l.cuenta, now);
+    final isPort = ch.isPort;
+    _light(c, r, l, l.count, now);
     final active = (1 - (now - l.moment) / 0.9).clamp(0.0, 1.0);
-    final x = r.left + (puerto ? 38 : 36);
+    final x = r.left + (isPort ? 38 : 36);
     final width = r.right - x - 30;
-    var y = r.top + (puerto ? 14 : 16);
+    var y = r.top + (isPort ? 14 : 16);
     final tName = _t(
       ch.name,
-      _style(puerto ? 15 : 16, _text, weight: FontWeight.w700),
+      _style(isPort ? 15 : 16, _text, weight: FontWeight.w700),
       width: width,
     );
     _icon(
       c,
       ch.piece,
-      Offset(r.left + (puerto ? 17 : 14), y + (tName.height - 15) / 2),
+      Offset(r.left + (isPort ? 17 : 14), y + (tName.height - 15) / 2),
       active,
     );
     tName.paint(c, Offset(x, y));
     y += tName.height + 3;
     // The role, in two lines if needed (it is not cut off).
-    final tPapel = _t(
-      ch.papel,
+    final tRole = _t(
+      ch.role,
       _style(11.5, _textFaint),
       width: r.right - x - 14,
-      lines: puerto ? 1 : 2,
+      lines: isPort ? 1 : 2,
     );
-    tPapel.paint(c, Offset(x, y));
-    y += tPapel.height + 8;
-    if (l.cuenta == 0 || y + 14 > r.bottom) return;
+    tRole.paint(c, Offset(x, y));
+    y += tRole.height + 8;
+    if (l.count == 0 || y + 14 > r.bottom) return;
     final tCall = _t(
       l.call,
       _style(11.5, l.color, weight: FontWeight.w600),
@@ -1784,5 +1781,5 @@ class _PainterPlate extends CustomPainter {
 
   @override
   bool shouldRepaint(_PainterPlate old) =>
-      old.p != p || old.fixed != fixed || old.vivo != vivo;
+      old.p != p || old.fixed != fixed || old.live != live;
 }

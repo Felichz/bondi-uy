@@ -21,10 +21,10 @@ class NavigationRules {
   final double radioStop;
 
   /// Arrival at the final destination.
-  final double radioDestination;
+  final double destinationRadius;
 
   /// Alighting: distance to the alighting stop.
-  final double radiusAlighting;
+  final double alightingRadius;
 
   /// Maximum lateral distance from the bus route to consider that the user is
   /// on board.
@@ -44,8 +44,8 @@ class NavigationRules {
 
   const NavigationRules({
     this.radioStop = 25,
-    this.radioDestination = 30,
-    this.radiusAlighting = 40,
+    this.destinationRadius = 30,
+    this.alightingRadius = 40,
     this.corridorBus = 40,
     this.advanceBoarding = 60,
     this.speedBus = 2.5,
@@ -78,11 +78,11 @@ class TripNavigator {
 
   int _step = 0;
   bool _completed = false;
-  int _confirmadas = 0;
-  int? _pasoCandidato;
+  int _confirmed = 0;
+  int? _candidateStep;
   double? _metersTotalsStep;
   double _routePrevious = 0;
-  LocationSample? _anterior;
+  LocationSample? _previous;
   ProgressStep _progress = ProgressStep.empty;
 
   TripNavigator(this.option, {this.rules = const NavigationRules()})
@@ -109,9 +109,9 @@ class TripNavigator {
   /// Manual advance ("Ya subí" and "Ya llegué": "I got on", "I arrived").
   NavigationStatus confirmStep() {
     if (_completed) return status;
-    _irTo(_step + 1);
-    if (_anterior != null && !_completed) {
-      _progress = _medir(_anterior!);
+    _goTo(_step + 1);
+    if (_previous != null && !_completed) {
+      _progress = _measure(_previous!);
     }
     return NavigationStatus(
       step: _step,
@@ -127,28 +127,28 @@ class TripNavigator {
       return status;
     }
     final velocity = m.velocity ?? _speedEstimated(m);
-    _anterior = m;
+    _previous = m;
 
-    final destination = _detectar(m.coordinate, velocity);
+    final destination = _detect(m.coordinate, velocity);
     var advanced = false;
     if (destination != null && destination > _step) {
-      if (_pasoCandidato == destination) {
-        _confirmadas++;
+      if (_candidateStep == destination) {
+        _confirmed++;
       } else {
-        _pasoCandidato = destination;
-        _confirmadas = 1;
+        _candidateStep = destination;
+        _confirmed = 1;
       }
-      final necesarias = _confirmationsPara(m.coordinate);
-      if (_confirmadas >= necesarias) {
-        _irTo(destination);
+      final needed = _confirmationsFor(m.coordinate);
+      if (_confirmed >= needed) {
+        _goTo(destination);
         advanced = true;
       }
     } else {
-      _pasoCandidato = null;
-      _confirmadas = 0;
+      _candidateStep = null;
+      _confirmed = 0;
     }
 
-    if (!_completed) _progress = _medir(m);
+    if (!_completed) _progress = _measure(m);
     return NavigationStatus(
       step: _step,
       progress: _progress,
@@ -160,15 +160,15 @@ class TripNavigator {
   // --- Detection --------------------------------------------------------
 
   /// Step this sample would advance to, or null.
-  int? _detectar(Coordinate c, double? velocity) {
+  int? _detect(Coordinate c, double? velocity) {
     final leg = option.legs[_step];
     switch (leg) {
       case WalkLeg():
         final radio =
-            leg.isAtDestination ? rules.radioDestination : rules.radioStop;
-        if (distance(c, leg.fin) <= radio) return _step + 1;
+            leg.isAtDestination ? rules.destinationRadius : rules.radioStop;
+        if (distance(c, leg.end) <= radio) return _step + 1;
         // Did they jump ahead and already travel on the next bus?
-        final jumpBus = _stepBusSiTravels(c, velocity, from: _step + 1);
+        final jumpBus = _busStepIfTraveling(c, velocity, from: _step + 1);
         if (jumpBus != null) return jumpBus;
         final far =
             _lines[_step]!.project(c).distanceLateral > rules.corridorBus;
@@ -176,7 +176,7 @@ class TripNavigator {
       case WaitLeg():
         final bus = option.legs[_step + 1] as BusLeg;
         final line = _lines[_step + 1]!;
-        if (distance(c, bus.alighting.coordinate) <= rules.radiusAlighting) {
+        if (distance(c, bus.alighting.coordinate) <= rules.alightingRadius) {
           return _step +
               2; // We missed the whole ride: already arrived at the alighting stop.
         }
@@ -192,10 +192,10 @@ class TripNavigator {
         // before the stop.
         final onFinal =
             p.distanceLateral <= rules.corridorBus && line.long - p.route <= 20;
-        final inTheAlighting =
-            distance(c, leg.alighting.coordinate) <= rules.radiusAlighting;
+        final atAlighting =
+            distance(c, leg.alighting.coordinate) <= rules.alightingRadius;
         final moving = velocity != null && velocity >= rules.speedBus;
-        if ((onFinal || inTheAlighting) && !moving) return _step + 1;
+        if ((onFinal || atAlighting) && !moving) return _step + 1;
         // Had already reached the alighting point and now walks: got off, even
         // if between two readings it moved away from the stop along the same street.
         if (line.long - _routePrevious <= 20 &&
@@ -226,7 +226,7 @@ class TripNavigator {
         case WalkLeg():
           if (moving) continue;
           if (t.isAtDestination &&
-              distance(c, t.fin) <= rules.radioDestination) {
+              distance(c, t.end) <= rules.destinationRadius) {
             return j + 1;
           }
           if (_lines[j]!.project(c).distanceLateral <= rules.corridorBus) {
@@ -251,7 +251,11 @@ class TripNavigator {
     return velocity >= rules.speedBus;
   }
 
-  int? _stepBusSiTravels(Coordinate c, double? velocity, {required int from}) {
+  int? _busStepIfTraveling(
+    Coordinate c,
+    double? velocity, {
+    required int from,
+  }) {
     for (var i = from; i < option.legs.length; i++) {
       final t = option.legs[i];
       if (t is BusLeg) {
@@ -262,22 +266,22 @@ class TripNavigator {
     return null;
   }
 
-  int _confirmationsPara(Coordinate c) {
+  int _confirmationsFor(Coordinate c) {
     // Very close to the target, one sample is enough.
     final leg = option.legs[_step];
-    if (leg is WalkLeg && distance(c, leg.fin) <= 10) return 1;
+    if (leg is WalkLeg && distance(c, leg.end) <= 10) return 1;
     return rules.confirmations;
   }
 
-  void _irTo(int step) {
-    _confirmadas = 0;
-    _pasoCandidato = null;
+  void _goTo(int step) {
+    _confirmed = 0;
+    _candidateStep = null;
     _metersTotalsStep = null;
     _routePrevious = 0;
     if (step >= option.legs.length) {
       _step = option.legs.length - 1;
       _completed = true;
-      _progress = const ProgressStep(metersRestantes: 0);
+      _progress = const ProgressStep(metersLeft: 0);
       return;
     }
     _step = step;
@@ -285,7 +289,7 @@ class TripNavigator {
   }
 
   double? _speedEstimated(LocationSample m) {
-    final a = _anterior;
+    final a = _previous;
     if (a == null) return null;
     final dt = m.moment.difference(a.moment).inMilliseconds / 1000.0;
     if (dt <= 0.5) return null;
@@ -294,7 +298,7 @@ class TripNavigator {
 
   // --- Measurement ---------------------------------------------------------
 
-  ProgressStep _medir(LocationSample m) {
+  ProgressStep _measure(LocationSample m) {
     final c = m.coordinate;
     final leg = option.legs[_step];
     switch (leg) {
@@ -304,22 +308,22 @@ class TripNavigator {
         _routePrevious = p.route;
         final rest = line.leg(p.route, line.long);
         final route = [if (p.distanceLateral > 3) c, ...rest];
-        final restante = (line.long - p.route) + p.distanceLateral;
-        _metersTotalsStep ??= math.max(restante, 1);
+        final remaining = (line.long - p.route) + p.distanceLateral;
+        _metersTotalsStep ??= math.max(remaining, 1);
         return ProgressStep(
-          metersRestantes: restante.round(),
+          metersLeft: remaining.round(),
           metersTotals: _metersTotalsStep!.round(),
-          routeRemaining: route.length >= 2 ? route : [c, leg.fin],
+          routeRemaining: route.length >= 2 ? route : [c, leg.end],
         );
       case WaitLeg():
         return ProgressStep(
-          metersRestantes: distance(c, leg.stop.coordinate).round(),
+          metersLeft: distance(c, leg.stop.coordinate).round(),
         );
       case BusLeg():
         final line = _lines[_step]!;
         final p = line.project(c, from: math.max(0, _routePrevious - 100));
         _routePrevious = math.max(_routePrevious, p.route);
-        final restante = line.long - _routePrevious;
+        final remaining = line.long - _routePrevious;
         _metersTotalsStep ??= line.long;
         var missing = 0;
         Stop? next;
@@ -331,12 +335,12 @@ class TripNavigator {
           }
         }
         return ProgressStep(
-          metersRestantes: restante.round(),
+          metersLeft: remaining.round(),
           metersTotals: _metersTotalsStep!.round(),
           // From where the bus is (progress that never goes back) to the alighting stop.
           routeRemaining:
-              restante > 1 ? line.leg(_routePrevious, line.long) : null,
-          stopsRestantes: missing,
+              remaining > 1 ? line.leg(_routePrevious, line.long) : null,
+          stopsLeft: missing,
           nextStop: next ?? leg.alighting,
         );
     }

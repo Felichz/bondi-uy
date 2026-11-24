@@ -11,7 +11,7 @@ import 'package:flutter/services.dart' show AssetBundle, rootBundle;
 import '../../contract/model.dart';
 import '../ports.dart';
 
-class CatalogAssets implements CatalogRed {
+class CatalogAssets implements NetworkCatalog {
   final AssetBundle _bundle;
   Future<List<NetworkStop>>? _stops;
   Future<Map<String, List<Coordinate>>>? _shapes;

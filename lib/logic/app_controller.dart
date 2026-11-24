@@ -37,9 +37,9 @@ class LogicConfig {
 
 class AppController extends StateNotifier<AppState> implements AppActions {
   final TripPlanner _planner;
-  final SourceArrivals _arrivals;
+  final ArrivalSource _arrivals;
   final PlaceSearcher _places;
-  final CatalogRed _catalog;
+  final NetworkCatalog _catalog;
   final LocationSource _location;
   final Clock _now;
   final LogicConfig config;
@@ -56,9 +56,9 @@ class AppController extends StateNotifier<AppState> implements AppActions {
 
   AppController({
     required TripPlanner planner,
-    required SourceArrivals arrivals,
+    required ArrivalSource arrivals,
     required PlaceSearcher places,
-    required CatalogRed catalog,
+    required NetworkCatalog catalog,
     required LocationSource location,
     Clock? clock,
     this.config = const LogicConfig(),
@@ -66,7 +66,7 @@ class AppController extends StateNotifier<AppState> implements AppActions {
     this.onFinishTrip,
     this.onArrive,
     this.traces,
-    ControlDemo? demo,
+    DemoControl? demo,
     AppState? statusInitial,
   }) : _planner = planner,
        _arrivals = arrivals,
@@ -81,7 +81,7 @@ class AppController extends StateNotifier<AppState> implements AppActions {
        );
 
   // --- internal state (not visible to the UI) ---
-  bool _arrancado = false;
+  bool _started = false;
   StreamSubscription<LocationSample>? _gps;
   Timer? _debounce;
   int _secQuery = 0;
@@ -89,16 +89,16 @@ class AppController extends StateNotifier<AppState> implements AppActions {
   int _secNotice = 0;
 
   final Map<String, PlannedTrip> _planned = {};
-  final Map<String, BusTracker> _seguidoresOpcion = {};
+  final Map<String, BusTracker> _optionTrackers = {};
   Timer? _timerOptions;
   String? _optionFocused;
 
   TripNavigator? _nav;
   Timer? _timerTrip;
   BusTracker? _trackerTrip;
-  int? _esperaSeguida;
+  int? _trackedWait;
   int _secTrip = 0;
-  final Set<String> _avisosDados = {};
+  final Set<String> _noticesGiven = {};
 
   Timer? _timerStop;
   int _secStop = 0;
@@ -109,8 +109,8 @@ class AppController extends StateNotifier<AppState> implements AppActions {
 
   @override
   void start() {
-    if (_arrancado) return;
-    _arrancado = true;
+    if (_started) return;
+    _started = true;
     unawaited(_loadStops());
     unawaited(_startLocation());
   }
@@ -128,12 +128,12 @@ class AppController extends StateNotifier<AppState> implements AppActions {
   void retryLocation() => unawaited(_startLocation());
 
   Future<void> _startLocation() async {
-    _publicarUbicacion(LocationStatus.searching, state.location.coordinate);
+    _publishLocation(LocationStatus.searching, state.location.coordinate);
     final LocationPermissionState permission;
     try {
       permission = await _location.ensurePermission();
     } catch (_) {
-      _publicarUbicacion(LocationStatus.error, null);
+      _publishLocation(LocationStatus.error, null);
       return;
     }
     if (!mounted) return;
@@ -141,32 +141,32 @@ class AppController extends StateNotifier<AppState> implements AppActions {
       case LocationPermissionState.granted:
         break;
       case LocationPermissionState.serviceOff:
-        _publicarUbicacion(LocationStatus.disabled, null);
+        _publishLocation(LocationStatus.disabled, null);
         return;
       case LocationPermissionState.denied:
-      case LocationPermissionState.deniedParaAlways:
-        _publicarUbicacion(LocationStatus.withoutPermission, null);
+      case LocationPermissionState.deniedForever:
+        _publishLocation(LocationStatus.withoutPermission, null);
         return;
     }
     await _gps?.cancel();
-    _gps = _location.follow().listen(_alRecibirMuestra, onError: (_) {});
-    final primera = await _location.actual();
+    _gps = _location.follow().listen(_onSample, onError: (_) {});
+    final first = await _location.current();
     if (!mounted) return;
-    if (primera != null) {
-      _alRecibirMuestra(primera);
+    if (first != null) {
+      _onSample(first);
     } else if (state.location.coordinate == null) {
-      _publicarUbicacion(LocationStatus.error, null);
+      _publishLocation(LocationStatus.error, null);
     }
   }
 
-  void _publicarUbicacion(LocationStatus status, Coordinate? c) {
+  void _publishLocation(LocationStatus status, Coordinate? c) {
     if (!mounted) return;
     state = state.copyWith(
       location: UserLocation(status: status, coordinate: c),
     );
   }
 
-  void _alRecibirMuestra(LocationSample m) {
+  void _onSample(LocationSample m) {
     if (!mounted) return;
     final previous = state.location.coordinate;
     final phase = state.phase;
@@ -182,17 +182,17 @@ class AppController extends StateNotifier<AppState> implements AppActions {
       traces?.emit(
         Piece.controller,
         Piece.navigator,
-        'procesar(muestra)',
+        'process(sample)',
         result: _summaryStep(r),
       );
       var fresh = phase.copyWith(
-        stepActual: r.step,
+        currentStep: r.step,
         progress: r.progress,
         user: m.coordinate,
         originAdvance: r.advanced ? OriginAdvance.automatic : null,
       );
       if (r.completed) {
-        fresh = fresh.copyWith(status: TripStatus.completed, fin: _now());
+        fresh = fresh.copyWith(status: TripStatus.completed, end: _now());
       }
       state = state.copyWith(
         location: UserLocation(
@@ -201,13 +201,13 @@ class AppController extends StateNotifier<AppState> implements AppActions {
         ),
         phase: fresh,
       );
-      if (r.advanced || r.completed) _onCambiarStep();
+      if (r.advanced || r.completed) _onStepChange();
       _pollIfLeaving();
       _noticesOfProgress();
       return;
     }
     if (move) {
-      _publicarUbicacion(LocationStatus.available, m.coordinate);
+      _publishLocation(LocationStatus.available, m.coordinate);
     }
   }
 
@@ -268,7 +268,7 @@ class AppController extends StateNotifier<AppState> implements AppActions {
   }
 
   @override
-  void cancelarQuery() {
+  void cancelQuery() {
     _debounce?.cancel();
     _secQuery++;
     state = state.copyWith(search: state.search.withoutQuery());
@@ -286,13 +286,13 @@ class AppController extends StateNotifier<AppState> implements AppActions {
   @override
   void useMyLocation(SearchField field) {
     _secQuery++;
-    final actual = state.search;
+    final current = state.search;
     // "Mi ubicación" can't be both origin and destination at the same time.
-    if (field == SearchField.destination && actual.origin is MyLocation) {
-      state = state.copyWith(search: actual.withoutQuery());
+    if (field == SearchField.destination && current.origin is MyLocation) {
+      state = state.copyWith(search: current.withoutQuery());
       return;
     }
-    var b = actual.withPoint(field, const MyLocation());
+    var b = current.withPoint(field, const MyLocation());
     if (field == SearchField.origin && b.destination is MyLocation) {
       b = b.withPoint(SearchField.destination, null);
     }
@@ -307,7 +307,7 @@ class AppController extends StateNotifier<AppState> implements AppActions {
   }
 
   @override
-  void swapOriginYDestination() {
+  void swapOriginAndDestination() {
     final b = state.search;
     if (b.destination == null) return;
     state = state.copyWith(
@@ -327,13 +327,13 @@ class AppController extends StateNotifier<AppState> implements AppActions {
   Future<void> _searchTrips() async {
     final b = state.search;
     if (b.destination == null) {
-      _avisar(NoticeType.missingDestination);
+      _postNotice(NoticeType.missingDestination);
       return;
     }
     final origin = _resolver(b.origin);
     final destination = _resolver(b.destination);
     if (origin == null || destination == null) {
-      _avisar(NoticeType.withoutLocation);
+      _postNotice(NoticeType.withoutLocation);
       if (state.location.coordinate == null) retryLocation();
       return;
     }
@@ -358,15 +358,15 @@ class AppController extends StateNotifier<AppState> implements AppActions {
         destination: destination,
         exit: _now(),
       );
-      trips = sortYRecommend(raw, _now());
+      trips = sortAndRecommend(raw, _now());
       traces?.emit(
         Piece.controller,
         Piece.recommender,
-        'ordenarYRecomendar(${raw.length} viajes)',
+        'sortAndRecommend(${raw.length} trips)',
         result:
             trips.isEmpty
-                ? 'sin opciones'
-                : '${trips.length} opciones, una recomendada',
+                ? 'no options'
+                : '${trips.length} options, one recommended',
       );
     } catch (_) {
       if (!mounted || seq != _secSearch) return;
@@ -396,11 +396,11 @@ class AppController extends StateNotifier<AppState> implements AppActions {
         ],
       ),
     );
-    if (trips.isNotEmpty) unawaited(_etasDeOpciones(seq));
+    if (trips.isNotEmpty) unawaited(_optionEtas(seq));
   }
 
   /// Requests ETAs for the boarding stop of each option's first bus.
-  Future<void> _etasDeOpciones(int seq) async {
+  Future<void> _optionEtas(int seq) async {
     final phase = state.phase;
     if (phase is! OptionsPhase) return;
     final stops = <String>{};
@@ -418,10 +418,10 @@ class AppController extends StateNotifier<AppState> implements AppActions {
             .catchError((_) => const <StopArrival>[]),
     ]);
     if (!mounted || seq != _secSearch) return;
-    final actual = state.phase;
-    if (actual is! OptionsPhase) return;
+    final current = state.phase;
+    if (current is! OptionsPhase) return;
     final options = <TripOption>[];
-    for (final o in actual.options) {
+    for (final o in current.options) {
       final b = o.firstBus;
       final list = b == null ? null : results[b.boarding.id];
       if (b == null || list == null) {
@@ -430,7 +430,7 @@ class AppController extends StateNotifier<AppState> implements AppActions {
       }
       final seg = _trackerOption(o.id);
       final bus = (await seg)?.choose(list, retain: false);
-      _trazarEleccion(list, bus);
+      _traceChoice(list, bus);
       final arrival =
           bus == null
               ? null
@@ -451,7 +451,7 @@ class AppController extends StateNotifier<AppState> implements AppActions {
         ),
       );
       if (bus != null && bus.position != null) {
-        _ponerBusOpcion(o.id, bus);
+        _setOptionBus(o.id, bus);
       }
     }
     final f = state.phase;
@@ -459,18 +459,18 @@ class AppController extends StateNotifier<AppState> implements AppActions {
     state = state.copyWith(phase: f.copyWith(options: options));
   }
 
-  void _ponerBusOpcion(String id, BusInPath bus) {
+  void _setOptionBus(String id, BusInPath bus) {
     final f = state.phase;
     if (f is! OptionsPhase) return;
     state = state.copyWith(
-      phase: f.copyWith(busesInVivo: {...f.busesInVivo, id: bus}),
+      phase: f.copyWith(liveBuses: {...f.liveBuses, id: bus}),
     );
   }
 
-  final Map<String, Future<BusTracker?>> _seguidoresOpcionFut = {};
+  final Map<String, Future<BusTracker?>> _optionTrackerFutures = {};
 
   Future<BusTracker?> _trackerOption(String idOption) {
-    return _seguidoresOpcionFut[idOption] ??= () async {
+    return _optionTrackerFutures[idOption] ??= () async {
       final v = _planned[idOption];
       final bus = v?.option.firstBus;
       if (v == null || bus == null) return null;
@@ -479,7 +479,7 @@ class AppController extends StateNotifier<AppState> implements AppActions {
         route: await _route(v, bus),
         clock: _now,
       );
-      _seguidoresOpcion[idOption] = seg;
+      _optionTrackers[idOption] = seg;
       return seg;
     }();
   }
@@ -524,10 +524,10 @@ class AppController extends StateNotifier<AppState> implements AppActions {
     // In the preview nobody waits at the stop: the bus that passed makes room
     // for the next one.
     final chosen = seg?.choose(list, retain: false);
-    _trazarEleccion(list, chosen);
+    _traceChoice(list, chosen);
     final f = state.phase;
     if (f is! OptionsPhase) return;
-    final buses = Map.of(f.busesInVivo);
+    final buses = Map.of(f.liveBuses);
     if (chosen == null || chosen.position == null) {
       buses.remove(idOption);
     } else {
@@ -548,7 +548,7 @@ class AppController extends StateNotifier<AppState> implements AppActions {
           o,
     ];
     state = state.copyWith(
-      phase: f.copyWith(options: options, busesInVivo: buses),
+      phase: f.copyWith(options: options, liveBuses: buses),
     );
   }
 
@@ -556,8 +556,8 @@ class AppController extends StateNotifier<AppState> implements AppActions {
     _timerOptions?.cancel();
     _timerOptions = null;
     _optionFocused = null;
-    _seguidoresOpcion.clear();
-    _seguidoresOpcionFut.clear();
+    _optionTrackers.clear();
+    _optionTrackerFutures.clear();
   }
 
   @override
@@ -582,45 +582,45 @@ class AppController extends StateNotifier<AppState> implements AppActions {
     if (option == null) return;
     _stopOptions();
     _secTrip++;
-    _avisosDados.clear();
+    _noticesGiven.clear();
     _nav = TripNavigator(option, rules: config.rules);
     final user = state.location.coordinate;
     var phase = TripPhase(
       option: option,
-      stepActual: 0,
-      originAdvance: OriginAdvance.inicio,
+      currentStep: 0,
+      originAdvance: OriginAdvance.start,
       progress: ProgressStep.empty,
       status: TripStatus.inProgress,
-      inicio: _now(),
+      start: _now(),
       user: user,
       // We were already following the first leg's bus in the preview.
-      busExpected: f.busesInVivo[idOption],
+      busExpected: f.liveBuses[idOption],
     );
     if (user != null) {
       final r = _nav!.process(LocationSample(coordinate: user, moment: _now()));
-      phase = phase.copyWith(stepActual: r.step, progress: r.progress);
+      phase = phase.copyWith(currentStep: r.step, progress: r.progress);
     }
     state = state.copyWith(phase: phase);
-    _onCambiarStep();
+    _onStepChange();
     onStartTrip?.call(option);
   }
 
   @override
-  void confirmStepActual() {
+  void confirmCurrentStep() {
     final f = state.phase;
     if (f is! TripPhase || f.status != TripStatus.inProgress || _nav == null)
       return;
     final r = _nav!.confirmStep();
     var fresh = f.copyWith(
-      stepActual: r.step,
+      currentStep: r.step,
       progress: r.progress,
       originAdvance: OriginAdvance.manual,
     );
     if (r.completed) {
-      fresh = fresh.copyWith(status: TripStatus.completed, fin: _now());
+      fresh = fresh.copyWith(status: TripStatus.completed, end: _now());
     }
     state = state.copyWith(phase: fresh);
-    _onCambiarStep();
+    _onStepChange();
   }
 
   @override
@@ -643,27 +643,27 @@ class AppController extends StateNotifier<AppState> implements AppActions {
     _timerTrip?.cancel();
     _timerTrip = null;
     _trackerTrip = null;
-    _esperaSeguida = null;
+    _trackedWait = null;
     _nav = null;
     onFinishTrip?.call();
     // Where the user is right now (the demo sends them home): the next phase
     // doesn't wait for the next GPS reading to show it.
     unawaited(
-      _location.actual().then((m) {
-        if (m != null) _alRecibirMuestra(m);
+      _location.current().then((m) {
+        if (m != null) _onSample(m);
       }, onError: (_) {}),
     );
   }
 
   /// Reconfigures bus tracking for the current step.
-  void _onCambiarStep() {
+  void _onStepChange() {
     final f = state.phase;
     if (f is! TripPhase) return;
     if (f.status == TripStatus.completed) {
       _timerTrip?.cancel();
       _timerTrip = null;
       _trackerTrip = null;
-      _esperaSeguida = null;
+      _trackedWait = null;
       if (f.busExpected != null) {
         state = state.copyWith(phase: f.copyWith(cleanBusExpected: true));
       }
@@ -671,8 +671,8 @@ class AppController extends StateNotifier<AppState> implements AppActions {
       return;
     }
     final wait = _waitToFollow(f);
-    if (wait == _esperaSeguida) return;
-    _esperaSeguida = wait;
+    if (wait == _trackedWait) return;
+    _trackedWait = wait;
     _timerTrip?.cancel();
     _timerTrip = null;
     _trackerTrip = null;
@@ -701,7 +701,7 @@ class AppController extends StateNotifier<AppState> implements AppActions {
 
   /// Index of the next wait leg to follow, or null if already on the bus.
   int? _waitToFollow(TripPhase f) {
-    for (var i = f.stepActual; i < f.option.legs.length; i++) {
+    for (var i = f.currentStep; i < f.option.legs.length; i++) {
       final t = f.option.legs[i];
       if (t is BusLeg) return null;
       if (t is WaitLeg) return i;
@@ -715,8 +715,8 @@ class AppController extends StateNotifier<AppState> implements AppActions {
   void _pollIfLeaving() {
     final f = state.phase;
     if (f is! TripPhase || f.status != TripStatus.inProgress) return;
-    if (f.legActual is! WaitLeg) return;
-    if ((f.progress.metersRestantes ?? 0) < 10) return;
+    if (f.currentLeg is! WaitLeg) return;
+    if ((f.progress.metersLeft ?? 0) < 10) return;
     final bus = f.busExpected;
     if (bus != null && bus.minutes == 0 && (bus.metersUntilStop ?? 0) <= 30) {
       return;
@@ -734,7 +734,7 @@ class AppController extends StateNotifier<AppState> implements AppActions {
     _lastPollTrip = _now();
     final f0 = state.phase;
     final seg = _trackerTrip;
-    final wait = _esperaSeguida;
+    final wait = _trackedWait;
     if (f0 is! TripPhase || seg == null || wait == null) return;
     final stop = (f0.option.legs[wait] as WaitLeg).stop;
     List<StopArrival>? list;
@@ -749,15 +749,15 @@ class AppController extends StateNotifier<AppState> implements AppActions {
     if (list == null) return; // network error: the last value is kept
     // Keeps the bus that arrived only if the user is waiting for it at the
     // stop; while walking toward it, one that already passed is of no use.
-    final waiting = f.legActual is WaitLeg;
+    final waiting = f.currentLeg is WaitLeg;
     final bus = seg.choose(
       list,
       retain: waiting,
       // While waiting, progress is the distance to the stop.
-      userInTheStop: waiting && (f.progress.metersRestantes ?? 99) <= 15,
+      userAtTheStop: waiting && (f.progress.metersLeft ?? 99) <= 15,
       user: f.user,
     );
-    _trazarEleccion(list, bus);
+    _traceChoice(list, bus);
     state = state.copyWith(
       phase: f.copyWith(
         busExpected: bus,
@@ -772,19 +772,19 @@ class AppController extends StateNotifier<AppState> implements AppActions {
   void _noticesOfProgress() {
     final f = state.phase;
     if (f is! TripPhase || f.status != TripStatus.inProgress) return;
-    final t = f.legActual;
+    final t = f.currentLeg;
     if (t is BusLeg &&
-        f.progress.stopsRestantes == 0 &&
-        _avisosDados.add('bajate-${t.id}')) {
-      _avisar(NoticeType.getOffAtNext);
+        f.progress.stopsLeft == 0 &&
+        _noticesGiven.add('get-off-${t.id}')) {
+      _postNotice(NoticeType.getOffAtNext);
     }
     final bus = f.busExpected;
     if (t is WaitLeg &&
         bus != null &&
         bus.live &&
         bus.minutes <= 1 &&
-        _avisosDados.add('llega-${t.id}')) {
-      _avisar(NoticeType.busArriving);
+        _noticesGiven.add('arrives-${t.id}')) {
+      _postNotice(NoticeType.busArriving);
     }
   }
 
@@ -795,21 +795,21 @@ class AppController extends StateNotifier<AppState> implements AppActions {
   @override
   void queryStop(String idStop) {
     if (state.phase is! ExplorePhase) return;
-    NetworkStop? red;
+    NetworkStop? networkStop;
     for (final p in state.stops) {
-      if (p.stop.id == idStop) red = p;
+      if (p.stop.id == idStop) networkStop = p;
     }
-    if (red == null) return;
+    if (networkStop == null) return;
     final seq = ++_secStop;
     _timerStop?.cancel();
     state = state.copyWith(
       stopQueried: StopQuery(
-        stop: red.stop,
-        lines: red.lines,
+        stop: networkStop.stop,
+        lines: networkStop.lines,
         status: QueryStatus.loading,
       ),
     );
-    final r = red;
+    final r = networkStop;
     Future<void> poll() async {
       try {
         final l = await _arrivals.arrivals(idStop);
@@ -858,13 +858,13 @@ class AppController extends StateNotifier<AppState> implements AppActions {
   // Notices
   // =====================================================================
 
-  void _avisar(NoticeType type) {
+  void _postNotice(NoticeType type) {
     if (!mounted) return;
     state = state.copyWith(notice: Notice(++_secNotice, type));
   }
 
   @override
-  void descartarNotice(int idNotice) {
+  void dismissNotice(int idNotice) {
     if (state.notice?.id == idNotice) {
       state = state.copyWith(cleanNotice: true);
     }
@@ -875,22 +875,22 @@ class AppController extends StateNotifier<AppState> implements AppActions {
   // =====================================================================
 
   String _summaryStep(NavigationStatus r) {
-    if (r.completed) return 'llegó';
-    final m = r.progress.metersRestantes;
-    return 'paso ${r.step + 1}${m == null ? '' : ', faltan $m m'}';
+    if (r.completed) return 'arrived';
+    final m = r.progress.metersLeft;
+    return 'step ${r.step + 1}${m == null ? '' : ', $m m left'}';
   }
 
-  void _trazarEleccion(List<StopArrival> list, BusInPath? bus) {
+  void _traceChoice(List<StopArrival> list, BusInPath? bus) {
     final t = traces;
     if (t == null) return;
     t.emit(
       Piece.controller,
       Piece.tracker,
-      'elegir(${list.length} llegadas)',
+      'choose(${list.length} arrivals)',
       result:
           bus == null
-              ? 'ninguno viene'
-              : '${bus.line} a ${bus.minutes} min'
+              ? 'none coming'
+              : '${bus.line} in ${bus.minutes} min'
                   '${bus.metersUntilStop == null ? '' : ', ${bus.metersUntilStop} m'}',
     );
   }

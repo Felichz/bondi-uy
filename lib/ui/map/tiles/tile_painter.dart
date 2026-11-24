@@ -52,30 +52,28 @@ class TilePainter {
   const TilePainter(this.style, {this.resolution = 512});
 
   /// Draws [fuente] onto [canvas] (image coordinates 0..resolucion).
-  /// [escala]/[desplazamiento] map MVT coordinates from the source tile to the
+  /// [escala]/[shift] map MVT coordinates from the source tile to the
   /// destination tile space, in logical px (0..256).
   void paint(
     ui.Canvas canvas,
     TileMvt source, {
     required int zoom,
     required double scale,
-    required ui.Offset desplazamiento,
+    required ui.Offset shift,
   }) {
     final e = style;
     final k = resolution / 256.0;
     canvas.save();
     canvas.scale(k);
 
-    ui.Offset p(TilePoint q) => ui.Offset(
-      q.x * scale + desplazamiento.dx,
-      q.y * scale + desplazamiento.dy,
-    );
+    ui.Offset p(TilePoint q) =>
+        ui.Offset(q.x * scale + shift.dx, q.y * scale + shift.dy);
 
-    ui.Path polygons(Iterable<ElementoMvt> es) {
+    ui.Path polygons(Iterable<MvtElement> elements) {
       final path = ui.Path()..fillType = ui.PathFillType.nonZero;
-      for (final el in es) {
-        if (el.type != GeometryType.polygon) continue;
-        for (final ring in el.geometry) {
+      for (final element in elements) {
+        if (element.type != GeometryType.polygon) continue;
+        for (final ring in element.geometry) {
           if (ring.length < 3) continue;
           path.addPolygon([for (final q in ring) p(q)], true);
         }
@@ -84,21 +82,23 @@ class TilePainter {
     }
 
     ui.Paint fill(ui.Color c) => ui.Paint()..color = c;
-    bool de(ElementoMvt x, Set<String> cs) => cs.contains(x.classValue);
+    bool inClass(MvtElement x, Set<String> cs) => cs.contains(x.classValue);
 
     canvas.drawRect(const ui.Rect.fromLTWH(0, 0, 256, 256), fill(e.land));
 
-    final landuse = source['landuse']?.elementos ?? const <ElementoMvt>[];
+    final landuse = source['landuse']?.elements ?? const <MvtElement>[];
     canvas.drawPath(
       polygons(
-        landuse.where((x) => de(x, const {'residential', 'neighbourhood'})),
+        landuse.where(
+          (x) => inClass(x, const {'residential', 'neighbourhood'}),
+        ),
       ),
       fill(e.block),
     );
     canvas.drawPath(
       polygons(
         landuse.where(
-          (x) => de(x, const {
+          (x) => inClass(x, const {
             'commercial',
             'retail',
             'industrial',
@@ -112,21 +112,24 @@ class TilePainter {
     canvas.drawPath(
       polygons(
         landuse.where(
-          (x) => de(x, const {'school', 'university', 'college', 'hospital'}),
+          (x) =>
+              inClass(x, const {'school', 'university', 'college', 'hospital'}),
         ),
       ),
       fill(e.education),
     );
     canvas.drawPath(
       polygons(
-        landuse.where((x) => de(x, const {'cemetery', 'pitch', 'stadium'})),
+        landuse.where(
+          (x) => inClass(x, const {'cemetery', 'pitch', 'stadium'}),
+        ),
       ),
       fill(e.grass),
     );
 
-    final landcover = source['landcover']?.elementos ?? const <ElementoMvt>[];
+    final landcover = source['landcover']?.elements ?? const <MvtElement>[];
     canvas.drawPath(
-      polygons(landcover.where((x) => de(x, const {'grass', 'farmland'}))),
+      polygons(landcover.where((x) => inClass(x, const {'grass', 'farmland'}))),
       fill(e.grass),
     );
     canvas.drawPath(
@@ -138,27 +141,27 @@ class TilePainter {
       fill(e.arena),
     );
     canvas.drawPath(
-      polygons(source['park']?.elementos ?? const []),
+      polygons(source['park']?.elements ?? const []),
       fill(e.grass),
     );
 
     canvas.drawPath(
-      polygons(source['water']?.elementos ?? const []),
+      polygons(source['water']?.elements ?? const []),
       fill(e.water),
     );
-    for (final w in source['waterway']?.elementos ?? const <ElementoMvt>[]) {
+    for (final w in source['waterway']?.elements ?? const <MvtElement>[]) {
       _lines(canvas, w, p, e.water, zoom >= 15 ? 1.6 : 0.8);
     }
-    for (final a in source['aeroway']?.elementos ?? const <ElementoMvt>[]) {
+    for (final a in source['aeroway']?.elements ?? const <MvtElement>[]) {
       if (a.type == GeometryType.polygon) {
         canvas.drawPath(polygons([a]), fill(e.commercial));
       } else {
-        _lines(canvas, a, p, e.sendero, 3);
+        _lines(canvas, a, p, e.footway, 3);
       }
     }
 
     if (zoom >= 15) {
-      final buildings = polygons(source['building']?.elementos ?? const []);
+      final buildings = polygons(source['building']?.elements ?? const []);
       canvas.drawPath(buildings, fill(e.building));
       if (zoom >= 17) {
         canvas.drawPath(
@@ -172,9 +175,9 @@ class TilePainter {
     }
 
     // Streets: outlines first, then fills, by hierarchy.
-    final byClass = <String, List<ElementoMvt>>{};
+    final byClass = <String, List<MvtElement>>{};
     for (final x
-        in source['transportation']?.elementos ?? const <ElementoMvt>[]) {
+        in source['transportation']?.elements ?? const <MvtElement>[]) {
       if (x.type != GeometryType.line) continue;
       final c = _classStreet(x);
       if (c != null) (byClass[c] ??= []).add(x);
@@ -199,7 +202,7 @@ class TilePainter {
           'primary' || 'secondary' => e.avenueBorder,
           _ => e.streetBorder,
         };
-        for (final x in byClass[c] ?? const <ElementoMvt>[]) {
+        for (final x in byClass[c] ?? const <MvtElement>[]) {
           _lines(canvas, x, p, border, w + (zoom >= 15 ? 2 : 1.2));
         }
       }
@@ -210,17 +213,17 @@ class TilePainter {
       final color = switch (c) {
         'motorway' || 'trunk' => e.motorway,
         'primary' || 'secondary' => withBorder ? e.avenue : e.avenueBorder,
-        'path' || 'track' => e.sendero,
+        'path' || 'track' => e.footway,
         _ => withBorder ? e.street : e.streetBorder,
       };
-      for (final x in byClass[c] ?? const <ElementoMvt>[]) {
+      for (final x in byClass[c] ?? const <MvtElement>[]) {
         _lines(canvas, x, p, color, w, dashed: c == 'path' || c == 'track');
       }
     }
     canvas.restore();
   }
 
-  String? _classStreet(ElementoMvt x) {
+  String? _classStreet(MvtElement x) {
     final c = x.classValue;
     if (c == null || c.endsWith('_construction')) return null;
     if (x.properties['brunnel'] == 'tunnel') return null;
@@ -230,7 +233,7 @@ class TilePainter {
 
   void _lines(
     ui.Canvas canvas,
-    ElementoMvt x,
+    MvtElement x,
     ui.Offset Function(TilePoint) p,
     ui.Color color,
     double width, {

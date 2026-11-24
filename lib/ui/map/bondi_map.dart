@@ -35,7 +35,7 @@ class MapController extends ChangeNotifier {
   /// true if the user moved the camera by hand (tracking is paused).
   bool get free => _free;
 
-  void _marcarLibre(bool v) {
+  void _markFree(bool v) {
     if (_free == v) return;
     _free = v;
     notifyListeners();
@@ -73,28 +73,28 @@ class BondiMap extends StatefulWidget {
   });
 
   @override
-  State<BondiMap> createState() => _MapBondiState();
+  State<BondiMap> createState() => _BondiMapState();
 }
 
-class _MapBondiState extends State<BondiMap> with TickerProviderStateMixin {
+class _BondiMapState extends State<BondiMap> with TickerProviderStateMixin {
   // One manager per style: switching from light to dark and back does not redraw.
-  final Map<Brightness, TileManager> _gestores = {};
+  final Map<Brightness, TileManager> _managers = {};
   late SceneDrawer _painter;
-  late Camera _camera = Camera.en(widget.centerInitial, 13);
+  late Camera _camera = Camera.at(widget.centerInitial, 13);
   late final AnimationController _anim;
   late final AnimationController _heartbeat;
   Camera? _from, _toward;
   Size _size = Size.zero;
-  String? _claveEncuadrada;
+  String? _framedKey;
 
-  Camera? _camaraInicioGesto;
-  Offset? _focusInicio;
-  Offset? _toqueDoble;
+  Camera? _gestureStartCamera;
+  Offset? _focusStart;
+  Offset? _doubleTapAt;
 
   /// Frame clock: glides markers and follows the user. It only runs
   /// while something is moving.
   late final Ticker _clock;
-  Duration _lastTic = Duration.zero;
+  Duration _lastTick = Duration.zero;
 
   /// Moving markers (the user, the bus): their position is predicted between
   /// readings, and they blend when changing shape or leaving.
@@ -103,19 +103,19 @@ class _MapBondiState extends State<BondiMap> with TickerProviderStateMixin {
 
   /// The transition between framings chases the live target (the user
   /// keeps moving while the camera travels).
-  bool _towardVivo = false;
+  bool _towardLive = false;
 
   /// The camera has already reached the target and follows it exactly. It lets go if the
   /// target jumps (the framing changed, a panel's height changed).
-  bool _enganchada = false;
-  Camera? _targetAnterior;
+  bool _engaged = false;
+  Camera? _previousTarget;
 
   TileManager _manager(MapStyle e) =>
-      _gestores[e.glow] ??= TileManager(
+      _managers[e.glow] ??= TileManager(
         widget.source,
         e,
         useIsolate: widget.decodeInIsolate,
-      )..addListener(_repintar);
+      )..addListener(_repaint);
 
   @override
   void initState() {
@@ -127,13 +127,13 @@ class _MapBondiState extends State<BondiMap> with TickerProviderStateMixin {
     )..addListener(() {
       final d = _from;
       final e = widget.framing;
-      if (_towardVivo && e != null) {
+      if (_towardLive && e != null) {
         // The destination moves with the user and can jump (a panel's height
         // changes): it is chased smoothly, never copied all at once.
-        final vivo = _target(e);
+        final live = _target(e);
         final h = _toward;
-        if (vivo != null && h != null) {
-          _toward = Camera.interpolate(h, vivo, 0.2);
+        if (live != null && h != null) {
+          _toward = Camera.interpolate(h, live, 0.2);
         }
       }
       final h = _toward;
@@ -145,9 +145,9 @@ class _MapBondiState extends State<BondiMap> with TickerProviderStateMixin {
     // locked on if it was chasing the live target (there is nothing to correct).
     _anim.addStatusListener((st) {
       if (st == AnimationStatus.completed) {
-        _enganchada = _towardVivo;
-        _targetAnterior = _enganchada ? _camera : null;
-        _towardVivo = false;
+        _engaged = _towardLive;
+        _previousTarget = _engaged ? _camera : null;
+        _towardLive = false;
         _ensureClock();
       }
     });
@@ -156,14 +156,14 @@ class _MapBondiState extends State<BondiMap> with TickerProviderStateMixin {
       // One cycle: two pulses, and the balloon markers float.
       duration: const Duration(milliseconds: 3200),
     );
-    _clock = createTicker(_onTic);
+    _clock = createTicker(_onTick);
     widget.controller?._recenter = _recenter;
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _actualizarHeartbeat();
+    _updateHeartbeat();
   }
 
   @override
@@ -173,24 +173,24 @@ class _MapBondiState extends State<BondiMap> with TickerProviderStateMixin {
       widget.controller?._recenter = _recenter;
     }
     if (old.source != widget.source) {
-      for (final g in _gestores.values) {
+      for (final g in _managers.values) {
         g
-          ..removeListener(_repintar)
+          ..removeListener(_repaint)
           ..dispose();
       }
-      _gestores.clear();
+      _managers.clear();
     }
     if (old.style != widget.style || old.source != widget.source) {
       _painter = SceneDrawer(_manager(widget.style), widget.style);
     }
-    _actualizarHeartbeat();
+    _updateHeartbeat();
     _synchronizeVehicles();
     SchedulerBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _aplicarEncuadre();
+      if (mounted) _applyFraming();
     });
   }
 
-  void _repintar() {
+  void _repaint() {
     if (mounted) setState(() {});
   }
 
@@ -198,11 +198,11 @@ class _MapBondiState extends State<BondiMap> with TickerProviderStateMixin {
       MediaQuery.maybeDisableAnimationsOf(context) ?? false;
 
   /// Pulses and dashed lines only run when something live is in the scene.
-  void _actualizarHeartbeat() {
-    final necesita = !_withoutAnimations && widget.scene.hasHeartbeat;
-    if (necesita && !_heartbeat.isAnimating) {
+  void _updateHeartbeat() {
+    final needsHeartbeat = !_withoutAnimations && widget.scene.hasHeartbeat;
+    if (needsHeartbeat && !_heartbeat.isAnimating) {
       _heartbeat.repeat();
-    } else if (!necesita && _heartbeat.isAnimating) {
+    } else if (!needsHeartbeat && _heartbeat.isAnimating) {
       _heartbeat.stop();
     }
   }
@@ -243,10 +243,10 @@ class _MapBondiState extends State<BondiMap> with TickerProviderStateMixin {
     final e = widget.framing;
     return e != null &&
         e.tracking == Tracking.continuous &&
-        _claveEncuadrada == e.clave &&
+        _framedKey == e.key &&
         !(widget.controller?.free ?? false) &&
         !_anim.isAnimating &&
-        _camaraInicioGesto == null;
+        _gestureStartCamera == null;
   }
 
   void _ensureClock() {
@@ -254,14 +254,14 @@ class _MapBondiState extends State<BondiMap> with TickerProviderStateMixin {
     final now = _now;
     final makes = _vehicles.animating(now) || _following;
     if (makes && !_clock.isActive) {
-      _lastTic = Duration.zero;
+      _lastTick = Duration.zero;
       _clock.start();
     }
   }
 
-  void _onTic(Duration elapsed) {
-    final dt = ((elapsed - _lastTic).inMicroseconds / 1e6).clamp(0.0, 0.1);
-    _lastTic = elapsed;
+  void _onTick(Duration elapsed) {
+    final dt = ((elapsed - _lastTick).inMicroseconds / 1e6).clamp(0.0, 0.1);
+    _lastTick = elapsed;
     final now = _now;
     var follows = _vehicles.advance(now);
     var camera = _camera;
@@ -271,25 +271,25 @@ class _MapBondiState extends State<BondiMap> with TickerProviderStateMixin {
         // Did the target move gradually (the user walking) or jump
         // (the group changed, a panel's height)? If it jumped, let go
         // and catch up to it smoothly.
-        final previous = _targetAnterior;
-        _targetAnterior = target;
+        final previous = _previousTarget;
+        _previousTarget = target;
         if (previous != null) {
           final jump =
               ((target.center - previous.center) * camera.scaleWorld).distance +
               (target.zoom - previous.zoom).abs() * 300;
-          if (jump > 6) _enganchada = false;
+          if (jump > 6) _engaged = false;
         }
         final dz = target.zoom - camera.zoom;
         final dc = (target.center - camera.center) * camera.scaleWorld;
         final k = 1 - math.exp(-dt / 0.35);
-        if (_enganchada) {
+        if (_engaged) {
           // Stuck to the user (no lag: the dot does not "swim" on the
           // screen); the zoom adjusts smoothly.
           camera = Camera(target.center, camera.zoom + dz * k);
           if (dz.abs() > 0.002) follows = true;
         } else if (dz.abs() < 0.004 && dc.distance < 0.5) {
           camera = target;
-          _enganchada = true;
+          _engaged = true;
         } else {
           // Catching up with inertia (time constant ~0.35 s).
           camera = Camera(
@@ -318,21 +318,21 @@ class _MapBondiState extends State<BondiMap> with TickerProviderStateMixin {
         if (_vehicles.position(k) case final p?) p,
     ];
     if (essential.isEmpty) return null;
-    final v = _zonaUtil;
+    final v = _usableArea;
     Camera framing(List<Offset> pts) => frameMercator(
       pts,
       width: _size.width,
       height: _size.height,
-      arriba: v.top,
-      abajo: _size.height - v.bottom,
-      izquierda: v.left,
-      derecha: _size.width - v.right,
+      top: v.top,
+      bottom: _size.height - v.bottom,
+      left: v.left,
+      right: _size.width - v.right,
       zoomMax: e.zoomMax,
       zoomMin: _zoomMin,
     );
     if (extras.isNotEmpty) {
-      final todo = framing([...essential, ...extras]);
-      if (todo.zoom >= math.max(e.zoomMin, e.zoomExtras) - 0.5) return todo;
+      final all = framing([...essential, ...extras]);
+      if (all.zoom >= math.max(e.zoomMin, e.zoomExtras) - 0.5) return all;
     }
     var cam = framing(essential);
     final anchor = _vehicles.position(e.anchor ?? '');
@@ -346,12 +346,12 @@ class _MapBondiState extends State<BondiMap> with TickerProviderStateMixin {
       a.dx.clamp(safe.left, math.max(safe.left, safe.right)),
       a.dy.clamp(safe.top, math.max(safe.top, safe.bottom)),
     );
-    return cam.having(center: cam.center + (a - inside) / cam.scaleWorld);
+    return cam.copyWith(center: cam.center + (a - inside) / cam.scaleWorld);
   }
 
   /// Canvas area where the important things should be seen: without panels and with
   /// room for what sticks out of the markers (the bus badge, the pin).
-  Rect get _zonaUtil {
+  Rect get _usableArea {
     final m = widget.margins;
     return Rect.fromLTRB(
       m.left + 56,
@@ -361,13 +361,13 @@ class _MapBondiState extends State<BondiMap> with TickerProviderStateMixin {
     );
   }
 
-  void _aplicarEncuadre({bool force = false}) {
+  void _applyFraming({bool force = false}) {
     final e = widget.framing;
     if (e == null || _size.isEmpty) return;
-    final freshKey = e.clave != _claveEncuadrada;
+    final freshKey = e.key != _framedKey;
     if (freshKey) {
       _resume?.cancel();
-      widget.controller?._marcarLibre(false);
+      widget.controller?._markFree(false);
     }
     final free = widget.controller?.free ?? false;
     if (!force && !freshKey) {
@@ -385,18 +385,18 @@ class _MapBondiState extends State<BondiMap> with TickerProviderStateMixin {
           if (destination == null) return;
           // Move only if something falls out of view or there is too much zoom.
           final gap = (destination.zoom - _camera.zoom).abs();
-          if (gap < 0.6 && _todosVisibles(e.points)) return;
-          _animarA(destination, fast: true);
+          if (gap < 0.6 && _allVisible(e.points)) return;
+          _animateTo(destination, fast: true);
           return;
       }
     }
     final destination = _target(e);
     if (destination == null) return;
-    _claveEncuadrada = e.clave;
-    _animarA(destination, vivo: e.tracking == Tracking.continuous);
+    _framedKey = e.key;
+    _animateTo(destination, live: e.tracking == Tracking.continuous);
   }
 
-  bool _todosVisibles(List<Coordinate> pts) {
+  bool _allVisible(List<Coordinate> pts) {
     final m = widget.margins;
     final safe = Rect.fromLTRB(
       m.left + 40,
@@ -409,10 +409,10 @@ class _MapBondiState extends State<BondiMap> with TickerProviderStateMixin {
     );
   }
 
-  void _animarA(Camera destination, {bool fast = false, bool vivo = false}) {
-    _enganchada = false;
-    _targetAnterior = null;
-    _towardVivo = vivo;
+  void _animateTo(Camera destination, {bool fast = false, bool live = false}) {
+    _engaged = false;
+    _previousTarget = null;
+    _towardLive = live;
     final distanceZoom = (destination.zoom - _camera.zoom).abs();
     if (_anim.isAnimating) _anim.stop();
     _from = _camera;
@@ -430,14 +430,14 @@ class _MapBondiState extends State<BondiMap> with TickerProviderStateMixin {
 
   void _recenter() {
     _resume?.cancel();
-    widget.controller?._marcarLibre(false);
-    _claveEncuadrada = null;
-    _aplicarEncuadre(force: true);
+    widget.controller?._markFree(false);
+    _framedKey = null;
+    _applyFraming(force: true);
   }
 
   /// During a trip, if the user moved the map and let go, the camera comes back
   /// on its own after a while.
-  void _programarReanudar() {
+  void _scheduleResume() {
     _resume?.cancel();
     final wait = widget.framing?.resumeAfter;
     if (wait != null && (widget.controller?.free ?? false)) {
@@ -452,50 +452,50 @@ class _MapBondiState extends State<BondiMap> with TickerProviderStateMixin {
 
   void _onStart(ScaleStartDetails d) {
     _resume?.cancel();
-    _enganchada = false;
-    _towardVivo = false;
+    _engaged = false;
+    _towardLive = false;
     _anim.stop();
     _toward = null;
-    _camaraInicioGesto = _camera;
-    _focusInicio = d.localFocalPoint;
+    _gestureStartCamera = _camera;
+    _focusStart = d.localFocalPoint;
   }
 
-  void _onActualizar(ScaleUpdateDetails d) {
-    final inicio = _camaraInicioGesto;
-    final focusIni = _focusInicio;
-    if (inicio == null || focusIni == null) return;
+  void _onScaleUpdate(ScaleUpdateDetails d) {
+    final start = _gestureStartCamera;
+    final focusStart = _focusStart;
+    if (start == null || focusStart == null) return;
     final focus = d.localFocalPoint;
-    final zoom = (inicio.zoom + math.log(d.scale) / math.ln2).clamp(
+    final zoom = (start.zoom + math.log(d.scale) / math.ln2).clamp(
       _zoomMin,
       _zoomMax,
     );
-    final underFocus = inicio.fromCanvas(focusIni, _half);
+    final underFocus = start.fromCanvas(focusStart, _half);
     final scale = sizeTile * math.pow(2, zoom);
     final center = underFocus - (focus - _half) / scale.toDouble();
-    if ((focus - focusIni).distance > 6 || (d.scale - 1).abs() > 0.03) {
-      widget.controller?._marcarLibre(true);
+    if ((focus - focusStart).distance > 6 || (d.scale - 1).abs() > 0.03) {
+      widget.controller?._markFree(true);
     }
     setState(() => _camera = Camera(center, zoom));
   }
 
   void _onFinish(ScaleEndDetails d) {
-    _camaraInicioGesto = null;
-    _programarReanudar();
+    _gestureStartCamera = null;
+    _scheduleResume();
     final v = d.velocity.pixelsPerSecond;
     if (v.distance < 250 || !(widget.controller?.free ?? true)) return;
     // Brief inertia, decelerating.
     final scale = _camera.scaleWorld;
     _from = _camera;
-    _toward = _camera.having(center: _camera.center - (v * 0.22) / scale);
+    _toward = _camera.copyWith(center: _camera.center - (v * 0.22) / scale);
     _anim.duration = const Duration(milliseconds: 420);
     _anim.forward(from: 0);
   }
 
-  void _onTocar(TapUpDetails d) {
+  void _onTap(TapUpDetails d) {
     final p = d.localPosition;
     String? best;
     var bestD = 18.0;
-    for (final (id, pos) in _painter.stopsVisibles) {
+    for (final (id, pos) in _painter.visibleStops) {
       final dist = (pos - p).distance;
       if (dist < bestD) {
         bestD = dist;
@@ -509,15 +509,18 @@ class _MapBondiState extends State<BondiMap> with TickerProviderStateMixin {
     }
   }
 
-  void _onDobleToque() {
-    final focus = _toqueDoble;
+  void _onDoubleTap() {
+    final focus = _doubleTapAt;
     if (focus == null) return;
     final under = _camera.fromCanvas(focus, _half);
     final z = (_camera.zoom + 1).clamp(_zoomMin, _zoomMax);
     final scale = sizeTile * math.pow(2, z);
-    widget.controller?._marcarLibre(true);
-    _animarA(Camera(under - (focus - _half) / scale.toDouble(), z), fast: true);
-    _programarReanudar();
+    widget.controller?._markFree(true);
+    _animateTo(
+      Camera(under - (focus - _half) / scale.toDouble(), z),
+      fast: true,
+    );
+    _scheduleResume();
   }
 
   @override
@@ -526,9 +529,9 @@ class _MapBondiState extends State<BondiMap> with TickerProviderStateMixin {
     _clock.dispose();
     _anim.dispose();
     _heartbeat.dispose();
-    for (final g in _gestores.values) {
+    for (final g in _managers.values) {
       g
-        ..removeListener(_repintar)
+        ..removeListener(_repaint)
         ..dispose();
     }
     if (widget.controller?._recenter == _recenter) {
@@ -544,26 +547,26 @@ class _MapBondiState extends State<BondiMap> with TickerProviderStateMixin {
       builder: (context, box) {
         final size = box.biggest;
         if (size != _size) {
-          final primera = _size.isEmpty;
+          final first = _size.isEmpty;
           _size = size;
-          if (primera) {
+          if (first) {
             _synchronizeVehicles();
             final e = widget.framing;
             final c = e == null ? null : _target(e);
             if (c != null) {
               _camera = c;
-              _claveEncuadrada = e!.clave;
+              _framedKey = e!.key;
             }
           }
         }
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
           onScaleStart: _onStart,
-          onScaleUpdate: _onActualizar,
+          onScaleUpdate: _onScaleUpdate,
           onScaleEnd: _onFinish,
-          onTapUp: _onTocar,
-          onDoubleTapDown: (d) => _toqueDoble = d.localPosition,
-          onDoubleTap: _onDobleToque,
+          onTapUp: _onTap,
+          onDoubleTapDown: (d) => _doubleTapAt = d.localPosition,
+          onDoubleTap: _onDoubleTap,
           child: CustomPaint(
             size: size,
             isComplex: true,

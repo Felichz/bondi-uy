@@ -33,17 +33,17 @@ import 'simulation/demo.dart';
 import 'simulation/recording.dart';
 import 'simulation/simulated_world.dart';
 
-enum ModoApp { real, demo, simulated, recorded }
+enum AppMode { real, demo, simulated, recorded }
 
-ModoApp modeFromEnvironment() => switch (const String.fromEnvironment(
+AppMode modeFromEnvironment() => switch (const String.fromEnvironment(
   'BONDI_MODO',
 )) {
-  'demo' => ModoApp.demo,
-  'simulado' => ModoApp.simulated,
-  'grabado' => ModoApp.recorded,
-  'real' => ModoApp.real,
+  'demo' => AppMode.demo,
+  'simulado' => AppMode.simulated,
+  'grabado' => AppMode.recorded,
+  'real' => AppMode.real,
   // On the web there is no reliable GPS or own servers: demo.
-  _ => kIsWeb ? ModoApp.demo : ModoApp.real,
+  _ => kIsWeb ? AppMode.demo : AppMode.real,
 };
 
 /// Origin of the simulated user (by default, the one from the recorded fixture).
@@ -51,11 +51,11 @@ const _originSimulated = Coordinate(-34.902448, -56.12828);
 
 const fixtureRecorded = 'test/fixtures/trip_saldanha_plaza_otp_v2.json';
 
-final modoAppProvider = Provider<ModoApp>((_) => modeFromEnvironment());
+final appModeProvider = Provider<AppMode>((_) => modeFromEnvironment());
 
 /// Calls between pieces, demo only (not listening to them costs nothing).
 final tracesLogicProvider = Provider<Traces?>((ref) {
-  if (ref.watch(modoAppProvider) != ModoApp.demo) return null;
+  if (ref.watch(appModeProvider) != AppMode.demo) return null;
   final t = Traces();
   ref.onDispose(t.close);
   return t;
@@ -64,10 +64,10 @@ final tracesLogicProvider = Provider<Traces?>((ref) {
 final appControllerProvider = StateNotifierProvider<AppController, AppState>((
   ref,
 ) {
-  final modo = ref.watch(modoAppProvider);
+  final mode = ref.watch(appModeProvider);
   final catalog = CatalogAssets();
-  switch (modo) {
-    case ModoApp.real:
+  switch (mode) {
+    case AppMode.real:
       return AppController(
         planner: PlannerOtp(),
         arrivals:
@@ -78,7 +78,7 @@ final appControllerProvider = StateNotifierProvider<AppController, AppState>((
         catalog: catalog,
         location: GpsLocation(),
       );
-    case ModoApp.demo:
+    case AppMode.demo:
       return createControllerDemo(
         world: SimulatedWorld(
           catalog: catalog,
@@ -89,15 +89,15 @@ final appControllerProvider = StateNotifierProvider<AppController, AppState>((
         catalog: catalog,
         traces: ref.watch(tracesLogicProvider),
       );
-    case ModoApp.simulated:
-    case ModoApp.recorded:
+    case AppMode.simulated:
+    case AppMode.recorded:
       final world = SimulatedWorld(
         catalog: catalog,
         positionInitial: _originSimulated,
         p: const SimulationParams(velocity: 6),
       );
       final base =
-          modo == ModoApp.simulated
+          mode == AppMode.simulated
               ? PlannerOtp()
               : _PlannerOfAsset(fixtureRecorded);
       final plan = SimulatedPlanner(base, world);
@@ -105,7 +105,7 @@ final appControllerProvider = StateNotifierProvider<AppController, AppState>((
         planner: plan,
         arrivals: SimulatedArrivals(world),
         places:
-            modo == ModoApp.simulated
+            mode == AppMode.simulated
                 ? searcherPlacesByDefault()
                 : FixedPlaces.montevideo,
         catalog: catalog,
@@ -132,7 +132,7 @@ final overridesLogic = <Override>[
   tracesProvider.overrideWith((ref) => ref.watch(tracesLogicProvider)),
 ];
 
-class _WithoutArrivals implements SourceArrivals {
+class _WithoutArrivals implements ArrivalSource {
   const _WithoutArrivals();
   @override
   Future<List<StopArrival>> arrivals(String idStop) async => const [];

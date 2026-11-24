@@ -42,7 +42,7 @@ import 'texts/texts.dart';
         important: false,
       ),
       NoticeType.getOffAtNext => (
-        text: tx.noticegetOff,
+        text: tx.noticeGetOff,
         icon: Icons.notifications_active,
         important: true,
       ),
@@ -59,17 +59,17 @@ class NoticeListener extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.listen<Notice?>(appStateProvider.select((s) => s.notice), (
-      antes,
+      before,
       notice,
     ) {
-      if (notice == null || notice.id == antes?.id) return;
+      if (notice == null || notice.id == before?.id) return;
       final a = textNotice(notice.type);
       if (a.important) HapticFeedback.heavyImpact();
       final messenger = ScaffoldMessenger.of(context);
       messenger.hideCurrentSnackBar();
       messenger.showSnackBar(
         SnackBar(
-          key: ValueKey('aviso-${notice.type.name}'),
+          key: ValueKey('notice-${notice.type.name}'),
           backgroundColor: a.important ? BondiColors.of(context).bus : null,
           duration: Duration(seconds: a.important ? 8 : 4),
           content: Row(
@@ -89,7 +89,7 @@ class NoticeListener extends ConsumerWidget {
           ),
         ),
       );
-      ref.read(appActionsProvider).descartarNotice(notice.id);
+      ref.read(appActionsProvider).dismissNotice(notice.id);
     });
     return const SizedBox.shrink();
   }

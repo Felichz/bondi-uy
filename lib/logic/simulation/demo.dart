@@ -38,10 +38,10 @@ class DemoScales {
   const DemoScales({this.walk = 30, this.bus = 60});
 
   /// The scale for state [s].
-  double para(AppState s) {
+  double forState(AppState s) {
     final f = s.phase;
     if (f is! TripPhase || f.status != TripStatus.inProgress) return 1;
-    return f.legActual is BusLeg ? bus : walk;
+    return f.currentLeg is BusLeg ? bus : walk;
   }
 }
 
@@ -84,7 +84,7 @@ const destinationsDemo = [
 /// as it would in real life.
 class DemoPlanner implements TripPlanner {
   final AssetBundle _bundle;
-  final Map<String, RecordingPlanner> _cargados = {};
+  final Map<String, RecordingPlanner> _loaded = {};
 
   DemoPlanner({AssetBundle? bundle}) : _bundle = bundle ?? rootBundle;
 
@@ -104,7 +104,7 @@ class DemoPlanner implements TripPlanner {
     }
     if (place == null) return const [];
     final plan =
-        _cargados[place.id] ??= RecordingPlanner.fromFixture(
+        _loaded[place.id] ??= RecordingPlanner.fromFixture(
           jsonDecode(await _bundle.loadString('assets/demo/${place.id}.json'))
               as Map<String, dynamic>,
         );
@@ -116,7 +116,7 @@ class DemoPlanner implements TripPlanner {
 /// clock into it).
 AppController createControllerDemo({
   required SimulatedWorld world,
-  required CatalogRed catalog,
+  required NetworkCatalog catalog,
   AssetBundle? bundle,
   DemoScales scales = const DemoScales(),
   // If given, each call between pieces is reported there.
@@ -161,13 +161,13 @@ AppController createControllerDemo({
   // The world's clock follows the pace of the trip (without jumping when it
   // changes). It is not needed at startup: while exploring, nothing moves.
   c.addListener((s) {
-    final v = scales.para(s);
+    final v = scales.forState(s);
     if (v != world.velocity) world.velocity = v;
   }, fireImmediately: false);
   return c;
 }
 
-class _ControlDemo implements ControlDemo {
+class _ControlDemo implements DemoControl {
   const _ControlDemo();
 
   @override

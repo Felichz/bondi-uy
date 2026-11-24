@@ -24,7 +24,7 @@ class DemoCard extends ConsumerWidget {
     final c = BondiColors.of(context);
     final t = Theme.of(context).textTheme;
     return Sheet(
-      key: const ValueKey('demo-tarjeta'),
+      key: const ValueKey('demo-card'),
       radio: BorderRadius.circular(28),
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
       child: Column(
@@ -60,7 +60,7 @@ class DemoCard extends ConsumerWidget {
           SizedBox(
             height: 42,
             child: ListView.separated(
-              key: const ValueKey('demo-destinos'),
+              key: const ValueKey('demo-destinations'),
               scrollDirection: Axis.horizontal,
               clipBehavior: Clip.none,
               itemCount: demo.destinations.length,
@@ -97,7 +97,7 @@ class _Destination extends StatelessWidget {
       child: Material(
         type: MaterialType.transparency,
         child: InkWell(
-          key: ValueKey('demo-destino-${place.id}'),
+          key: ValueKey('demo-destination-${place.id}'),
           onTap: onTap,
           borderRadius: BorderRadius.circular(14),
           child: Ink(

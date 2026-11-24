@@ -1,1 +1,1 @@
-void abrirLink(String url) {}
+void openLink(String url) {}

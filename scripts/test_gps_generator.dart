@@ -8,7 +8,7 @@ import '../lib/devtools/gps_playback_generator.dart';
 
 void main() async {
   print('\n🎬 ========================================');
-  print('🎬 TEST: Generador de GPS Sintético');
+  print('🎬 TEST: Synthetic GPS generator');
   print('🎬 ========================================\n');
 
   // Read fixture
@@ -19,10 +19,10 @@ void main() async {
   final route = json['route'] as Map<String, dynamic>;
   final segments = route['segments'] as List;
 
-  print('📊 Datos del fixture:');
-  print('   • Nombre: ${json['name']}');
-  print('   • Origen: ${json['origin']['name']}');
-  print('   • Destino: ${json['destination']['name']}');
+  print('📊 Fixture data:');
+  print('   • Name: ${json['name']}');
+  print('   • Origin: ${json['origin']['name']}');
+  print('   • Destination: ${json['destination']['name']}');
   print('   • Segments: ${segments.length}');
   print('');
 
@@ -59,7 +59,7 @@ void main() async {
     }
 
     legs.add(DisplayableTripLeg(
-      idLeg: 'tramo_${legs.length}',
+      idLeg: 'leg_${legs.length}',
       type: type,
       geometryPolyline: geometry.isNotEmpty ? geometry : null,
       pointPosition: pointPosition,
@@ -73,7 +73,7 @@ void main() async {
   final origin = json['origin'] as Map<String, dynamic>;
   final destination = json['destination'] as Map<String, dynamic>;
 
-  print('🎬 Generando GPS playback sintético...\n');
+  print('🎬 Generating synthetic GPS playback...\n');
 
   // Generate the GPS playback
   final gpsPlayback = GpsPlaybackGenerator.generateFromRoute(
@@ -89,15 +89,15 @@ void main() async {
     speedMultiplier: 1.0,
   );
 
-  print('\n✅ GPS playback generado:');
-  print('   • Total de puntos: ${gpsPlayback.length}');
+  print('\n✅ GPS playback generated:');
+  print('   • Total points: ${gpsPlayback.length}');
   if (gpsPlayback.isNotEmpty) {
-    print('   • Primer punto: t=${gpsPlayback.first['timestamp']}s');
-    print('   • Último punto: t=${gpsPlayback.last['timestamp']}s');
-    print('   • Duración total: ${gpsPlayback.last['timestamp']}s');
+    print('   • First point: t=${gpsPlayback.first['timestamp']}s');
+    print('   • Last point: t=${gpsPlayback.last['timestamp']}s');
+    print('   • Total duration: ${gpsPlayback.last['timestamp']}s');
 
     // Show a few sample points
-    print('\n📍 Primeros 5 puntos:');
+    print('\n📍 First 5 points:');
     for (int i = 0; i < 5 && i < gpsPlayback.length; i++) {
       final p = gpsPlayback[i];
       final comment = p['comment'] != null ? ' - ${p['comment']}' : '';
@@ -106,7 +106,7 @@ void main() async {
   }
   print('');
 
-  print('🎯 Generando checkpoints automáticos...\n');
+  print('🎯 Generating automatic checkpoints...\n');
 
   // Generate checkpoints
   final checkpoints = GpsPlaybackGenerator.generateCheckpoints(
@@ -114,7 +114,7 @@ void main() async {
     gpsPlayback: gpsPlayback,
   );
 
-  print('✅ Checkpoints generados:');
+  print('✅ Checkpoints generated:');
   print('   • Total: ${checkpoints.length}');
   for (final cp in checkpoints) {
     final assertions = cp['assertions'] as Map<String, dynamic>;
@@ -124,9 +124,9 @@ void main() async {
   print('');
 
   print('🎉 ========================================');
-  print('🎉 GENERACIÓN EXITOSA');
+  print('🎉 GENERATION SUCCEEDED');
   print('🎉 ========================================\n');
-  print('✅ El generador de GPS sintético funciona correctamente.');
-  print('✅ Genera ${gpsPlayback.length} puntos GPS y ${checkpoints.length} checkpoints.');
-  print('✅ Ahora puedes usarlo en tests de integración.\n');
+  print('✅ The synthetic GPS generator works.');
+  print('✅ Genera ${gpsPlayback.length} GPS points and ${checkpoints.length} checkpoints.');
+  print('✅ You can now use it in integration tests.\n');
 }

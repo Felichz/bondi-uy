@@ -54,9 +54,9 @@ class PlannerOtp implements TripPlanner {
   final http.Client _http;
   final int itineraries;
 
-  PlannerOtp({String? url, http.Client? cliente, this.itineraries = 8})
+  PlannerOtp({String? url, http.Client? client, this.itineraries = 8})
     : url = url ?? otpUrlByDefault(),
-      _http = cliente ?? http.Client();
+      _http = client ?? http.Client();
 
   @override
   Future<List<PlannedTrip>> plan({
@@ -64,7 +64,7 @@ class PlannerOtp implements TripPlanner {
     required Coordinate destination,
     required DateTime exit,
   }) async {
-    String dos(int n) => n.toString().padLeft(2, '0');
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
     // OTP reads date/time in the feed's time zone (America/Montevideo,
     // UTC-3, no daylight saving time). Never the device's time zone.
     exit = timeMontevideo(exit);
@@ -75,8 +75,9 @@ class PlannerOtp implements TripPlanner {
         'fromLon': origin.lng,
         'toLat': destination.lat,
         'toLon': destination.lng,
-        'date': '${exit.year}-${dos(exit.month)}-${dos(exit.day)}',
-        'time': '${dos(exit.hour)}:${dos(exit.minute)}:${dos(exit.second)}',
+        'date': '${exit.year}-${twoDigits(exit.month)}-${twoDigits(exit.day)}',
+        'time':
+            '${twoDigits(exit.hour)}:${twoDigits(exit.minute)}:${twoDigits(exit.second)}',
         'n': itineraries,
       },
     });
@@ -135,31 +136,31 @@ PlannedTrip? _interpretItinerary(Map<String, dynamic> it, int index) {
   final shapes = <String, String>{};
   final signature = StringBuffer();
   var walk = 0.0;
-  int? finPrevious;
-  final inicioIt = it['startTime'] as int?;
+  int? previousEnd;
+  final itStart = it['startTime'] as int?;
 
   for (var li = 0; li < jsonLegs.length; li++) {
     final leg = jsonLegs[li];
-    final modo = leg['mode'] as String? ?? '';
-    final from = _punto(leg['from']);
-    final until = _punto(leg['to']);
+    final mode = leg['mode'] as String? ?? '';
+    final from = _point(leg['from']);
+    final until = _point(leg['to']);
     if (from == null || until == null) return null;
     final geometry = _geometry(leg, from, until);
     final distanceLeg = (leg['distance'] as num?)?.toDouble() ?? long(geometry);
     final duration = (leg['duration'] as num?)?.round() ?? 0;
 
-    if (modo == 'WALK') {
+    if (mode == 'WALK') {
       walk += distanceLeg;
       // A "walk" of a few meters (transfer at the same stop) is not a
       // step for the user.
       if (distanceLeg < 15 && legs.isNotEmpty) {
-        finPrevious = leg['endTime'] as int? ?? finPrevious;
+        previousEnd = leg['endTime'] as int? ?? previousEnd;
         continue;
       }
-      final siguiente = li + 1 < jsonLegs.length ? jsonLegs[li + 1] : null;
+      final next = li + 1 < jsonLegs.length ? jsonLegs[li + 1] : null;
       final towardStop =
-          (siguiente != null && _esTransport(siguiente['mode']))
-              ? _stop(siguiente['from'])
+          (next != null && _isTransit(next['mode']))
+              ? _stop(next['from'])
               : null;
       legs.add(
         WalkLeg(
@@ -170,7 +171,7 @@ PlannedTrip? _interpretItinerary(Map<String, dynamic> it, int index) {
           towardStop: towardStop,
         ),
       );
-    } else if (_esTransport(modo)) {
+    } else if (_isTransit(mode)) {
       final route = leg['route'] as Map<String, dynamic>?;
       final line =
           (route?['shortName'] as String?) ?? (route?['longName'] as String?);
@@ -180,10 +181,10 @@ PlannedTrip? _interpretItinerary(Map<String, dynamic> it, int index) {
       final trip = leg['trip'] as Map<String, dynamic>?;
       final destinationLine =
           (trip?['tripHeadsign'] as String?) ?? (leg['headsign'] as String?);
-      final inicioLeg = leg['startTime'] as int?;
+      final legStart = leg['startTime'] as int?;
       final waitMs =
-          (inicioLeg != null)
-              ? inicioLeg - (finPrevious ?? inicioIt ?? inicioLeg)
+          (legStart != null)
+              ? legStart - (previousEnd ?? itStart ?? legStart)
               : 0;
 
       legs.add(
@@ -222,7 +223,7 @@ PlannedTrip? _interpretItinerary(Map<String, dynamic> it, int index) {
       // Modes the app does not represent (train, bike...): the option is discarded.
       return null;
     }
-    finPrevious = leg['endTime'] as int? ?? finPrevious;
+    previousEnd = leg['endTime'] as int? ?? previousEnd;
   }
 
   if (legs.isEmpty) return null;
@@ -233,7 +234,7 @@ PlannedTrip? _interpretItinerary(Map<String, dynamic> it, int index) {
 
   final option = TripOption(
     id:
-        'otp-$index-${signature.isEmpty ? 'caminata' : signature.toString().hashCode.toUnsigned(32).toRadixString(16)}',
+        'otp-$index-${signature.isEmpty ? 'walk' : signature.toString().hashCode.toUnsigned(32).toRadixString(16)}',
     durationSeconds:
         (it['duration'] as num?)?.round() ??
         ((arrivalMs - exitMs) / 1000).round(),
@@ -247,10 +248,10 @@ PlannedTrip? _interpretItinerary(Map<String, dynamic> it, int index) {
   return PlannedTrip(option, shapeByLeg: shapes);
 }
 
-bool _esTransport(Object? modo) =>
-    modo == 'BUS' || modo == 'TRANSIT' || modo == 'TROLLEYBUS';
+bool _isTransit(Object? mode) =>
+    mode == 'BUS' || mode == 'TRANSIT' || mode == 'TROLLEYBUS';
 
-Coordinate? _punto(Object? place) {
+Coordinate? _point(Object? place) {
   if (place is! Map<String, dynamic>) return null;
   final lat = (place['lat'] as num?)?.toDouble();
   final lon = (place['lon'] as num?)?.toDouble();
@@ -260,7 +261,7 @@ Coordinate? _punto(Object? place) {
 
 Stop? _stop(Object? place) {
   if (place is! Map<String, dynamic>) return null;
-  final c = _punto(place);
+  final c = _point(place);
   final stop = place['stop'] as Map<String, dynamic>?;
   final gtfsId = stop?['gtfsId'] as String?;
   if (c == null || gtfsId == null) return null;

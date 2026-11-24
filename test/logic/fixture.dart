@@ -29,7 +29,7 @@ Map<String, dynamic> optionFromFixture(int otpIndex) =>
     );
 
 /// Recorded GPS samples (one every 5 s) for the option.
-List<LocationSample> samplesFromFixture(int otpIndex, DateTime inicio) {
+List<LocationSample> samplesFromFixture(int otpIndex, DateTime start) {
   final samples =
       (optionFromFixture(otpIndex)['replay']['userSamples'] as List)
           .cast<Map<String, dynamic>>();
@@ -40,7 +40,7 @@ List<LocationSample> samplesFromFixture(int otpIndex, DateTime inicio) {
           (s['lat'] as num).toDouble(),
           (s['lng'] as num).toDouble(),
         ),
-        moment: inicio.add(Duration(seconds: (s['t'] as num).round())),
+        moment: start.add(Duration(seconds: (s['t'] as num).round())),
         velocity: (s['speedMps'] as num?)?.toDouble(),
         precision: 5,
       ),
@@ -53,7 +53,7 @@ List<Map<String, dynamic>> pollsFromFixture(int otpIndex) =>
         .cast<Map<String, dynamic>>();
 
 /// GTFS shape from the bundled asset.
-List<Coordinate>? shapeDelAsset(String shapeId) {
+List<Coordinate>? shapeFromAsset(String shapeId) {
   final json =
       jsonDecode(File('assets/data/shapes.geojson').readAsStringSync())
           as Map<String, dynamic>;

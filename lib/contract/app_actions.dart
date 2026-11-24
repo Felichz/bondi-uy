@@ -27,10 +27,10 @@ abstract interface class AppActions {
   /// Clears the field (the origin goes back to "Mi ubicación" (My location)).
   void cleanField(SearchField field);
 
-  void swapOriginYDestination();
+  void swapOriginAndDestination();
 
   /// Closes the suggestions dropdown without choosing.
-  void cancelarQuery();
+  void cancelQuery();
 
   /// Plans origin -> destination and moves to the options phase.
   void searchTrips();
@@ -49,7 +49,7 @@ abstract interface class AppActions {
 
   /// Manual fallback: the user confirms they completed the current step
   /// (the UI labels, in Spanish: "Ya llegué a la parada", "Ya subí", "Ya me bajé", "Ya llegué").
-  void confirmStepActual();
+  void confirmCurrentStep();
 
   /// Abandons the trip in progress.
   void finishTrip();
@@ -63,5 +63,5 @@ abstract interface class AppActions {
   void closeStop();
 
   // --- Notices ---
-  void descartarNotice(int idNotice);
+  void dismissNotice(int idNotice);
 }

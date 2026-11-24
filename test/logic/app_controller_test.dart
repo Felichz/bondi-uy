@@ -22,7 +22,7 @@ class _Location implements LocationSource {
   @override
   Future<LocationPermissionState> ensurePermission() async => permission;
   @override
-  Future<LocationSample?> actual() async =>
+  Future<LocationSample?> current() async =>
       LocationSample(coordinate: _origin, moment: DateTime(2026));
   @override
   Stream<LocationSample> follow() => c.stream;
@@ -37,7 +37,7 @@ class _Places implements PlaceSearcher {
   }
 }
 
-class _Arrivals implements SourceArrivals {
+class _Arrivals implements ArrivalSource {
   final requests = <String>[];
   List<StopArrival> answer = const [];
   @override
@@ -47,7 +47,7 @@ class _Arrivals implements SourceArrivals {
   }
 }
 
-class _Catalog implements CatalogRed {
+class _Catalog implements NetworkCatalog {
   @override
   Future<List<NetworkStop>> stops() async => const [
     NetworkStop(
@@ -61,7 +61,7 @@ class _Catalog implements CatalogRed {
   ];
   @override
   Future<List<Coordinate>?> shape(String shapeId) async =>
-      shapeDelAsset(shapeId);
+      shapeFromAsset(shapeId);
 }
 
 void main() {
@@ -83,7 +83,7 @@ void main() {
     );
   }
 
-  test('arrancar: carga paradas y ubicación', () {
+  test('start: loads stops and location', () {
     fakeAsync((f) {
       final c = create()..start();
       f.flushMicrotasks();
@@ -94,7 +94,7 @@ void main() {
     });
   });
 
-  test('sin permiso: estado sinPermiso y no se sigue el GPS', () {
+  test('no permission: withoutPermission state and GPS is not followed', () {
     fakeAsync((f) {
       final c = create();
       location.permission = LocationPermissionState.denied;
@@ -106,7 +106,7 @@ void main() {
     });
   });
 
-  test('sugerencias con debounce: solo se consulta el último texto', () {
+  test('debounced suggestions: only the last text is queried', () {
     fakeAsync((f) {
       final c = create();
       for (final t in ['p', 'pl', 'pla', 'plaz', 'plaza']) {
@@ -123,7 +123,7 @@ void main() {
   });
 
   test(
-    'elegir destino, buscar: opciones con exactamente una recomendada y ETAs',
+    'choose destination, search: options with exactly one recommended and ETAs',
     () {
       fakeAsync((f) {
         final c = create()..start();
@@ -144,10 +144,10 @@ void main() {
     },
   );
 
-  test('intercambiar y "Mi ubicación" nunca en los dos extremos', () {
+  test('swap: "My location" is never at both ends', () {
     final c = create();
     c.choosePlace(SearchField.destination, _square);
-    c.swapOriginYDestination();
+    c.swapOriginAndDestination();
     expect(c.state.search.origin, const ChosenPlace(_square));
     expect(c.state.search.destination, const MyLocation());
     c.useMyLocation(SearchField.origin);
@@ -156,7 +156,7 @@ void main() {
     c.dispose();
   });
 
-  test('buscar sin destino avisa y no cambia de fase', () {
+  test('search without destination shows a notice and keeps the phase', () {
     final c = create();
     c.searchTrips();
     expect(c.state.notice?.type, NoticeType.missingDestination);
@@ -165,7 +165,7 @@ void main() {
   });
 
   test(
-    'viaje: el sondeo sigue la espera del paso actual y se apaga arriba del bus',
+    'trip: polling follows the current step wait and stops on board the bus',
     () {
       fakeAsync((f) {
         final c = create()..start();
@@ -190,20 +190,20 @@ void main() {
         var trip = c.state.phase as TripPhase;
         expect(trip.busExpected?.minutes, 4);
         // Confirm manually until on board the bus.
-        while ((c.state.phase as TripPhase).legActual is! BusLeg) {
-          c.confirmStepActual();
+        while ((c.state.phase as TripPhase).currentLeg is! BusLeg) {
+          c.confirmCurrentStep();
           f.elapse(const Duration(milliseconds: 10));
         }
         trip = c.state.phase as TripPhase;
         expect(
           trip.busExpected,
           isNull,
-          reason: 'arriba del bus, el bus es el usuario',
+          reason: 'on board the bus, the bus is the user',
         );
         arrivals.requests.clear();
         f.elapse(const Duration(seconds: 30));
         final hasAnotherWait = trip.option.legs
-            .skip(trip.stepActual)
+            .skip(trip.currentStep)
             .any((t) => t is WaitLeg);
         if (!hasAnotherWait) expect(arrivals.requests, isEmpty);
         c.finishTrip();
@@ -213,7 +213,7 @@ void main() {
     },
   );
 
-  test('parada consultada: llegadas ordenadas y cierre', () {
+  test('queried stop: sorted arrivals and close', () {
     fakeAsync((f) {
       final c = create()..start();
       f.flushMicrotasks();
@@ -231,11 +231,7 @@ void main() {
       expect(c.state.stopQueried, isNull);
       arrivals.requests.clear();
       f.elapse(const Duration(minutes: 1));
-      expect(
-        arrivals.requests,
-        isEmpty,
-        reason: 'sin sondeo después de cerrar',
-      );
+      expect(arrivals.requests, isEmpty, reason: 'no polling after closing');
       c.dispose();
     });
   });

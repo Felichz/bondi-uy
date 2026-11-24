@@ -8,24 +8,24 @@ import '../texts/texts.dart';
 /// Bus line badge: same shape as the map badge.
 class BadgeLine extends StatelessWidget {
   final String line;
-  final bool grande;
-  const BadgeLine(this.line, {super.key, this.grande = false});
+  final bool large;
+  const BadgeLine(this.line, {super.key, this.large = false});
 
   @override
   Widget build(BuildContext context) {
     final c = BondiColors.of(context);
-    final size = grande ? 20.0 : 15.0;
+    final size = large ? 20.0 : 15.0;
     return Semantics(
       label: tx.line(line),
       excludeSemantics: true,
       child: Container(
         padding: EdgeInsets.symmetric(
-          horizontal: grande ? 10 : 7,
-          vertical: grande ? 7 : 4,
+          horizontal: large ? 10 : 7,
+          vertical: large ? 7 : 4,
         ),
         decoration: BoxDecoration(
           color: c.bus,
-          borderRadius: BorderRadius.circular(grande ? 12 : 8),
+          borderRadius: BorderRadius.circular(large ? 12 : 8),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -35,7 +35,7 @@ class BadgeLine extends StatelessWidget {
               size: size + 2,
               color: Colors.white,
             ),
-            SizedBox(width: grande ? 5 : 3),
+            SizedBox(width: large ? 5 : 3),
             Text(
               line,
               style: TextStyle(
@@ -54,17 +54,16 @@ class BadgeLine extends StatelessWidget {
 }
 
 /// Pulsing dot: indicates real-time data.
-class PuntoInVivo extends StatefulWidget {
+class LiveDot extends StatefulWidget {
   final Color? color;
   final double size;
-  const PuntoInVivo({super.key, this.color, this.size = 9});
+  const LiveDot({super.key, this.color, this.size = 9});
 
   @override
-  State<PuntoInVivo> createState() => _PuntoInVivoState();
+  State<LiveDot> createState() => _LiveDotState();
 }
 
-class _PuntoInVivoState extends State<PuntoInVivo>
-    with SingleTickerProviderStateMixin {
+class _LiveDotState extends State<LiveDot> with SingleTickerProviderStateMixin {
   // Created in initState: if animations are disabled, build does not touch it
   // and dispose must not create it late (see test "sin animaciones").
   late final AnimationController _c;
@@ -87,12 +86,12 @@ class _PuntoInVivoState extends State<PuntoInVivo>
   @override
   Widget build(BuildContext context) {
     final color = widget.color ?? BondiColors.of(context).live;
-    final punto = Container(
+    final point = Container(
       width: widget.size,
       height: widget.size,
       decoration: BoxDecoration(color: color, shape: BoxShape.circle),
     );
-    if (MediaQuery.disableAnimationsOf(context)) return punto;
+    if (MediaQuery.disableAnimationsOf(context)) return point;
     return SizedBox(
       width: widget.size * 2.2,
       height: widget.size * 2.2,
@@ -113,7 +112,7 @@ class _PuntoInVivoState extends State<PuntoInVivo>
                 child!,
               ],
             ),
-        child: punto,
+        child: point,
       ),
     );
   }

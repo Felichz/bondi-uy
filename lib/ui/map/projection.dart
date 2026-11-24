@@ -30,7 +30,7 @@ class Camera {
   final double zoom;
   const Camera(this.center, this.zoom);
 
-  factory Camera.en(Coordinate c, double zoom) => Camera(mercator(c), zoom);
+  factory Camera.at(Coordinate c, double zoom) => Camera(mercator(c), zoom);
 
   double get scaleWorld => sizeTile * math.pow(2, zoom).toDouble();
 
@@ -42,7 +42,7 @@ class Camera {
 
   Offset fromCanvas(Offset p, Offset half) => center + (p - half) / scaleWorld;
 
-  Camera having({Offset? center, double? zoom}) =>
+  Camera copyWith({Offset? center, double? zoom}) =>
       Camera(center ?? this.center, zoom ?? this.zoom);
 
   /// Camera whose center falls on a whole art pixel (stable grid).
@@ -72,20 +72,20 @@ Camera frame(
   List<Coordinate> points, {
   required double width,
   required double height,
-  double arriba = 24,
-  double abajo = 24,
-  double izquierda = 24,
-  double derecha = 24,
+  double top = 24,
+  double bottom = 24,
+  double left = 24,
+  double right = 24,
   double zoomMax = 17,
   double zoomMin = 10,
 }) => frameMercator(
   points.map(mercator).toList(),
   width: width,
   height: height,
-  arriba: arriba,
-  abajo: abajo,
-  izquierda: izquierda,
-  derecha: derecha,
+  top: top,
+  bottom: bottom,
+  left: left,
+  right: right,
   zoomMax: zoomMax,
   zoomMin: zoomMin,
 );
@@ -95,10 +95,10 @@ Camera frameMercator(
   List<Offset> ms, {
   required double width,
   required double height,
-  double arriba = 24,
-  double abajo = 24,
-  double izquierda = 24,
-  double derecha = 24,
+  double top = 24,
+  double bottom = 24,
+  double left = 24,
+  double right = 24,
   double zoomMax = 17,
   double zoomMin = 10,
 }) {
@@ -110,8 +110,8 @@ Camera frameMercator(
     minY = math.min(minY, m.dy);
     maxY = math.max(maxY, m.dy);
   }
-  final usableWidth = math.max(40.0, width - izquierda - derecha);
-  final usableHeight = math.max(40.0, height - arriba - abajo);
+  final usableWidth = math.max(40.0, width - left - right);
+  final usableHeight = math.max(40.0, height - top - bottom);
   final dx = maxX - minX, dy = maxY - minY;
   var zoom = zoomMax;
   if (dx > 0 || dy > 0) {
@@ -122,7 +122,7 @@ Camera frameMercator(
     zoom = math.min(zx, zy).clamp(zoomMin, zoomMax).toDouble();
   }
   final e = sizeTile * math.pow(2, zoom);
-  final cx = (minX + maxX) / 2 + ((derecha - izquierda) / 2) / e;
-  final cy = (minY + maxY) / 2 + ((abajo - arriba) / 2) / e;
+  final cx = (minX + maxX) / 2 + ((right - left) / 2) / e;
+  final cy = (minY + maxY) / 2 + ((bottom - top) / 2) / e;
   return Camera(Offset(cx, cy), zoom);
 }

@@ -34,10 +34,10 @@ class TileManager extends ChangeNotifier {
   final bool useIsolate;
 
   final _sources = <String, _Source?>{};
-  final _pedidasFuente = <String, Future<_Source?>>{};
-  final _imagenes = <String, ui.Image>{};
-  final _pedidasImagen = <String>{};
-  bool _descartado = false;
+  final _requestedSources = <String, Future<_Source?>>{};
+  final _images = <String, ui.Image>{};
+  final _requestedImages = <String>{};
+  bool _discarded = false;
 
   TileManager(this.source, MapStyle style, {this.useIsolate = true})
     : _painter = TilePainter(style);
@@ -51,12 +51,12 @@ class TileManager extends ChangeNotifier {
     if (y < 0 || y >= n) return null;
     x = ((x % n) + n) % n;
     final k = _k(z, x, y);
-    final img = _imagenes.remove(k);
+    final img = _images.remove(k);
     if (img != null) {
-      _imagenes[k] = img; // LRU: moved to the end
+      _images[k] = img; // LRU: moved to the end
       return img;
     }
-    if (_pedidasImagen.add(k)) unawaited(_rasterizar(z, x, y));
+    if (_requestedImages.add(k)) unawaited(_rasterize(z, x, y));
     return null;
   }
 
@@ -72,13 +72,13 @@ class TileManager extends ChangeNotifier {
     return (zoomMaxData, x >> d, y >> d);
   }
 
-  Future<void> _rasterizar(int z, int x, int y) async {
+  Future<void> _rasterize(int z, int x, int y) async {
     final (zs, xs, ys) = _sourceOf(z, x, y);
     final f = await _loadSource(zs, xs, ys);
-    if (_descartado) return;
+    if (_discarded) return;
     final k = _k(z, x, y);
     if (f == null) {
-      _pedidasImagen.remove(k);
+      _requestedImages.remove(k);
       return;
     }
     final d = z - zs;
@@ -95,14 +95,14 @@ class TileManager extends ChangeNotifier {
       f.mvt,
       zoom: z,
       scale: scale,
-      desplazamiento: ui.Offset(-subX * 256.0, -subY * 256.0),
+      shift: ui.Offset(-subX * 256.0, -subY * 256.0),
     );
     final img = rec.endRecording().toImageSync(res, res);
-    _imagenes[k] = img;
-    _pedidasImagen.remove(k);
-    while (_imagenes.length > 96) {
-      final old = _imagenes.keys.first;
-      _imagenes.remove(old)?.dispose();
+    _images[k] = img;
+    _requestedImages.remove(k);
+    while (_images.length > 96) {
+      final old = _images.keys.first;
+      _images.remove(old)?.dispose();
     }
     notifyListeners();
   }
@@ -110,7 +110,7 @@ class TileManager extends ChangeNotifier {
   Future<_Source?> _loadSource(int z, int x, int y) {
     final k = _k(z, x, y);
     if (_sources.containsKey(k)) return Future.value(_sources[k]);
-    return _pedidasFuente[k] ??= () async {
+    return _requestedSources[k] ??= () async {
       Uint8List? bytes;
       try {
         bytes = await source.bytes(z, x, y);
@@ -121,9 +121,9 @@ class TileManager extends ChangeNotifier {
       if (bytes != null) {
         final mvt =
             useIsolate ? await compute(decodeMvt, bytes) : decodeMvt(bytes);
-        f = _Source(mvt, _extraerRotulos(mvt, z, x, y));
+        f = _Source(mvt, _extractLabels(mvt, z, x, y));
       }
-      _pedidasFuente.remove(k);
+      _requestedSources.remove(k);
       if (f != null) {
         _sources[k] = f;
         while (_sources.length > 40) {
@@ -134,7 +134,7 @@ class TileManager extends ChangeNotifier {
     }();
   }
 
-  List<MapLabel> _extraerRotulos(TileMvt mvt, int z, int x, int y) {
+  List<MapLabel> _extractLabels(TileMvt mvt, int z, int x, int y) {
     final res = <MapLabel>[];
     final n = math.pow(2, z).toDouble();
     ui.Offset world(TilePoint p, int extent) =>
@@ -142,7 +142,7 @@ class TileManager extends ChangeNotifier {
 
     final names = mvt['transportation_name'];
     if (names != null) {
-      for (final e in names.elementos) {
+      for (final e in names.elements) {
         final name = e.name;
         if (name == null || e.type != GeometryType.line) continue;
         for (final line in e.geometry) {
@@ -157,16 +157,16 @@ class TileManager extends ChangeNotifier {
     }
     final places = mvt['place'];
     if (places != null) {
-      for (final e in places.elementos) {
+      for (final e in places.elements) {
         final name = e.name;
         final classValue = e.classValue;
-        if (name == null || e.type != GeometryType.punto) continue;
+        if (name == null || e.type != GeometryType.point) continue;
         if (classValue != 'suburb' &&
             classValue != 'neighbourhood' &&
             classValue != 'quarter')
           continue;
         res.add(
-          MapLabel(name, 'barrio', [
+          MapLabel(name, 'neighborhood', [
             for (final g in e.geometry)
               for (final p in g) world(p, places.extent),
           ]),
@@ -178,11 +178,11 @@ class TileManager extends ChangeNotifier {
 
   @override
   void dispose() {
-    _descartado = true;
-    for (final i in _imagenes.values) {
+    _discarded = true;
+    for (final i in _images.values) {
       i.dispose();
     }
-    _imagenes.clear();
+    _images.clear();
     super.dispose();
   }
 }

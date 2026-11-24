@@ -21,16 +21,16 @@ import 'harness.dart';
 SceneDrawer get _map => SceneDrawer.last!;
 
 void main() {
-  testWidgets('la cámara sigue al usuario y las paradas llevan su globo', (
+  testWidgets('the camera follows the user and stops carry their balloon', (
     tester,
   ) async {
-    final a = await Harness.mount(tester, prefix: 'viaje_mapa');
+    final a = await Harness.mount(tester, prefix: 'trip_map');
     await a.searchSquare();
     // Preview: the boarding stop and the arrival time, labeled.
     expect(_map.balloonsPlaced, contains('Subís al D1'));
     expect(_map.balloonsPlaced.any((g) => g.startsWith('Llegás ')), isTrue);
 
-    await a.tocar('empezar-viaje');
+    await a.tap('start-trip');
     final option = (a.phase as TripPhase).option;
     final line = option.lines.first;
 
@@ -39,29 +39,29 @@ void main() {
     for (var i = 0; i < 6; i++) {
       await a.wait(const Duration(seconds: 1));
       final f = a.phase as TripPhase;
-      if (f.stepActual != 0) break;
-      final t = f.legActual as WalkLeg;
-      expect(_toTheVista(a, _map.userOnScreen!), isTrue, reason: 'vos');
-      expect(_toTheVista(a, _inPantalla(t.fin)), isTrue, reason: 'la parada');
+      if (f.currentStep != 0) break;
+      final t = f.currentLeg as WalkLeg;
+      expect(_inView(a, _map.userOnScreen!), isTrue, reason: 'you');
+      expect(_inView(a, _onScreen(t.end)), isTrue, reason: 'the stop');
       // The incoming bus, if it is out of view, is marked at the edge.
-      final bus = _map.busInPantalla;
-      if (bus != null && !_toTheVista(a, bus)) {
-        expect(_map.busInBorder, startsWith(line), reason: 'indicador del bus');
+      final bus = _map.busOnScreen;
+      if (bus != null && !_inView(a, bus)) {
+        expect(_map.busInBorder, startsWith(line), reason: 'bus indicator');
       }
     }
     expect(_map.balloonsPlaced, contains('Subís al $line'));
-    await a.capture('caminando');
+    await a.capture('walking');
 
     // Waiting: the stop, the incoming bus and you.
     await a.untilStep(1);
     await a.wait(const Duration(seconds: 2));
     final wait = a.phase as TripPhase;
-    if (wait.stepActual == 1 && wait.busExpected?.position != null) {
-      final t = wait.legActual as WaitLeg;
-      expect(_toTheVista(a, _inPantalla(t.stop.coordinate)), isTrue);
-      expect(_toTheVista(a, _map.userOnScreen!), isTrue);
-      expect(_toTheVista(a, _map.busInPantalla!), isTrue, reason: 'el bus');
-      await a.capture('esperando');
+    if (wait.currentStep == 1 && wait.busExpected?.position != null) {
+      final t = wait.currentLeg as WaitLeg;
+      expect(_inView(a, _onScreen(t.stop.coordinate)), isTrue);
+      expect(_inView(a, _map.userOnScreen!), isTrue);
+      expect(_inView(a, _map.busOnScreen!), isTrue, reason: 'the bus');
+      await a.capture('waiting');
     }
 
     // On the bus: the next stop with its balloon, and the alighting stop in view
@@ -69,24 +69,24 @@ void main() {
     await a.untilStep(2);
     await a.wait(const Duration(seconds: 3));
     expect(find.text('Subiste al $line. ¡Buen viaje!'), findsOneWidget);
-    expect(find.byKey(const ValueKey('viaje-tira-paradas')), findsOneWidget);
-    expect(find.byKey(const ValueKey('viaje-proxima')), findsOneWidget);
+    expect(find.byKey(const ValueKey('trip-stop-strip')), findsOneWidget);
+    expect(find.byKey(const ValueKey('trip-next')), findsOneWidget);
     final next = (a.phase as TripPhase).progress.nextStop!;
     expect(
       _map.balloonsPlaced.any(
         (g) => stopName(next.name).startsWith(g.replaceAll('…', '')),
       ),
       isTrue,
-      reason: 'globo de la próxima parada: ${_map.balloonsPlaced}',
+      reason: 'next stop balloon: ${_map.balloonsPlaced}',
     );
-    await a.capture('en_bus');
+    await a.capture('on_bus');
     await a.until(
-      () => (a.phase as TripPhase).progress.stopsRestantes == 0,
-      reason: 'última parada',
+      () => (a.phase as TripPhase).progress.stopsLeft == 0,
+      reason: 'last stop',
     );
     await a.wait(const Duration(seconds: 2));
     expect(_map.balloonsPlaced, contains('¡Bajate en esta!'));
-    await a.capture('bajate');
+    await a.capture('get_off');
 
     // Walking to the destination: the destination labeled.
     await a.untilStep(3);
@@ -95,99 +95,101 @@ void main() {
     await a.close();
   });
 
-  testWidgets('la subida al bus es un solo movimiento suave', (tester) async {
-    final a = await Harness.mount(tester, prefix: 'subida', velocity: 6);
+  testWidgets('boarding the bus is one smooth movement', (tester) async {
+    final a = await Harness.mount(tester, prefix: 'boarding', velocity: 6);
     await a.searchSquare();
-    await a.tocar('empezar-viaje');
+    await a.tap('start-trip');
     await a.untilStep(1);
-    final stop = ((a.phase as TripPhase).legActual as WaitLeg).stop.coordinate;
+    final stop = ((a.phase as TripPhase).currentLeg as WaitLeg).stop.coordinate;
     await a.until(
       () =>
-          (a.phase as TripPhase).stepActual > 1 ||
+          (a.phase as TripPhase).currentStep > 1 ||
           ((a.phase as TripPhase).busExpected?.minutes ?? 99) <= 1,
-      reason: 'el bus está por llegar',
+      reason: 'the bus is about to arrive',
     );
     // Frame by frame (60 fps) from when the bus arrives until already on board.
-    const cuadro = Duration(milliseconds: 16);
-    Offset? antes;
-    double? stepAntes;
+    const frame = Duration(milliseconds: 16);
+    Offset? before;
+    double? stepBefore;
     var max = 0.0, tug = 0.0;
     var after = 0;
-    var arribaAntesOfConfirm = false;
+    var onBoardBeforeConfirm = false;
     while (after < 120) {
-      await a.wait(cuadro, step: cuadro);
+      await a.wait(frame, step: frame);
       final f = a.phase as TripPhase;
-      if (f.stepActual == 1) {
+      if (f.currentStep == 1) {
         // Your bus is at the stop: neither "no data" nor the next bus.
-        expect(find.byKey(const ValueKey('viaje-sin-datos')), findsNothing);
+        expect(find.byKey(const ValueKey('trip-no-data')), findsNothing);
         expect(f.busExpected?.minutes ?? 0, lessThanOrEqualTo(1));
-        if (_map.userInBus) arribaAntesOfConfirm = true;
+        if (_map.userInBus) onBoardBeforeConfirm = true;
       }
-      if (f.stepActual >= 2) after++;
-      final p = _inPantalla(stop);
-      if (antes != null) {
-        final d = (p - antes).distance;
+      if (f.currentStep >= 2) after++;
+      final p = _onScreen(stop);
+      if (before != null) {
+        final d = (p - before).distance;
         max = math.max(max, d);
-        if (stepAntes != null) tug = math.max(tug, (d - stepAntes).abs());
-        stepAntes = d;
+        if (stepBefore != null) tug = math.max(tug, (d - stepBefore).abs());
+        stepBefore = d;
       }
-      antes = p;
+      before = p;
     }
     expect(
-      arribaAntesOfConfirm,
+      onBoardBeforeConfirm,
       isTrue,
-      reason: 'al irse con el bus ya se lo muestra arriba, sin esperar 60 m',
+      reason:
+          'once leaving with the bus it is shown on board, without waiting 60 m',
     );
-    expect(max, lessThan(12), reason: 'el mapa no pega saltos');
-    expect(tug, lessThan(6), reason: 'sin tirones entre cuadros');
+    expect(max, lessThan(12), reason: 'the map does not jump');
+    expect(tug, lessThan(6), reason: 'no tugs between frames');
     await a.close();
   });
 
-  testWidgets('si movés el mapa en viaje, la cámara vuelve sola', (
+  testWidgets(
+    'if you move the map during a trip, the camera comes back on its own',
+    (tester) async {
+      final a = await Harness.mount(tester, prefix: 'resume');
+      await a.searchSquare();
+      await a.tap('start-trip');
+      await a.wait(const Duration(seconds: 2));
+      final ctl = a.container.read(controllerMapProvider);
+      expect(ctl.free, isFalse);
+
+      await tester.drag(
+        find.byKey(const ValueKey('map')),
+        const Offset(0, -250),
+      );
+      await a.wait(const Duration(milliseconds: 600));
+      expect(ctl.free, isTrue);
+      expect(find.byKey(const ValueKey('button-recenter')), findsOneWidget);
+      await a.capture('map_moved');
+
+      await a.wait(const Duration(seconds: 13));
+      expect(ctl.free, isFalse, reason: 'went back to following the user');
+      await a.close();
+    },
+  );
+
+  testWidgets('the itinerary shows all steps and which one is current', (
     tester,
   ) async {
-    final a = await Harness.mount(tester, prefix: 'reanudar');
+    final a = await Harness.mount(tester, prefix: 'itinerary');
     await a.searchSquare();
-    await a.tocar('empezar-viaje');
-    await a.wait(const Duration(seconds: 2));
-    final ctl = a.container.read(controllerMapProvider);
-    expect(ctl.free, isFalse);
-
-    await tester.drag(
-      find.byKey(const ValueKey('mapa')),
-      const Offset(0, -250),
-    );
-    await a.wait(const Duration(milliseconds: 600));
-    expect(ctl.free, isTrue);
-    expect(find.byKey(const ValueKey('boton-recentrar')), findsOneWidget);
-    await a.capture('mapa_movido');
-
-    await a.wait(const Duration(seconds: 13));
-    expect(ctl.free, isFalse, reason: 'volvió a seguir al usuario');
-    await a.close();
-  });
-
-  testWidgets('el itinerario muestra todos los pasos y cuál es el actual', (
-    tester,
-  ) async {
-    final a = await Harness.mount(tester, prefix: 'itinerario');
-    await a.searchSquare();
-    await a.tocar('empezar-viaje');
+    await a.tap('start-trip');
     await a.untilStep(1);
     await a.wait(const Duration(seconds: 1));
-    await a.tocar('viaje-itinerario');
-    expect(find.byKey(const ValueKey('itinerario')), findsOneWidget);
+    await a.tap('trip-itinerary');
+    expect(find.byKey(const ValueKey('itinerary')), findsOneWidget);
     final line = (a.phase as TripPhase).option.lines.first;
     expect(find.text('Esperá el $line'), findsWidgets);
     expect(find.text('Viajá en el $line'), findsOneWidget);
     expect(find.text('AHORA'), findsOneWidget);
-    await a.capture('abierto');
-    await a.tocar('itinerario-cerrar');
-    expect(find.byKey(const ValueKey('itinerario')), findsNothing);
+    await a.capture('open');
+    await a.tap('itinerary-close');
+    expect(find.byKey(const ValueKey('itinerary')), findsNothing);
     await a.close();
   });
 
-  test('capitalizar respeta siglas y conectores', () {
+  test('capitalize respects acronyms and connectors', () {
     expect(capitalize('PLAZA INDEPENDENCIA'), 'Plaza Independencia');
     expect(capitalize('HACIA UAM'), 'Hacia UAM');
     expect(capitalize('PARQUE DE LOS ALIADOS'), 'Parque de los Aliados');
@@ -197,12 +199,12 @@ void main() {
 }
 
 /// Where [c] lands on screen according to the camera of the last frame.
-Offset _inPantalla(Coordinate c) =>
+Offset _onScreen(Coordinate c) =>
     _map.camera!.toCanvas(mercator(c), const Offset(206, 446));
 
 /// Inside the visible map: below the step card and above the
 /// bottom bar.
-bool _toTheVista(Harness a, Offset p) {
-  final arriba = 24 + 8 + a.container.read(heightCardTripProvider);
-  return p.dx > 0 && p.dx < 412 && p.dy > arriba && p.dy < 892 - 100;
+bool _inView(Harness a, Offset p) {
+  final top = 24 + 8 + a.container.read(heightCardTripProvider);
+  return p.dx > 0 && p.dx < 412 && p.dy > top && p.dy < 892 - 100;
 }

@@ -23,8 +23,8 @@ List<int> _varint(int v) {
   return res;
 }
 
-List<int> _field(int numero, List<int> content) => [
-  ..._varint(numero * 8 + 2),
+List<int> _field(int number, List<int> content) => [
+  ..._varint(number * 8 + 2),
   ..._varint(content.length),
   ...content,
 ];
@@ -32,7 +32,7 @@ List<int> _field(int numero, List<int> content) => [
 int _zigzag(int v) => v >= 0 ? v * 2 : -v * 2 - 1;
 
 void main() {
-  test('MVT: coordenadas relativas negativas', () {
+  test('MVT: negative relative coordinates', () {
     // A line from (10, 10) to (5, 3): the second point is a negative delta.
     final geometry = <int>[
       ..._varint(1 + 1 * 8), // MoveTo x1
@@ -42,22 +42,22 @@ void main() {
       ..._varint(_zigzag(-5)),
       ..._varint(_zigzag(-7)),
     ];
-    final elemento = [
+    final element = [
       ..._varint(3 * 8), ..._varint(2), // type = LINESTRING
       ..._field(4, geometry),
     ];
     final layer = [
       ..._varint(15 * 8), ..._varint(2), // version
       ..._field(1, 'water'.codeUnits),
-      ..._field(2, elemento),
+      ..._field(2, element),
       ..._varint(5 * 8), ..._varint(4096), // extent
     ];
     final tile = decodeMvt(Uint8List.fromList(_field(3, layer)));
-    final line = tile['water']!.elementos.single.geometry.single;
+    final line = tile['water']!.elements.single.geometry.single;
     expect([for (final p in line) (p.x, p.y)], [(10, 10), (5, 3)]);
   });
 
-  test('polilínea de OTP con latitudes y longitudes negativas', () {
+  test('OTP polyline with negative latitudes and longitudes', () {
     // Example from Google's algorithm documentation.
     final pts = decodePolyline('_p~iF~ps|U_ulLnnqC_mqNvxq`@');
     expect(pts.length, 3);

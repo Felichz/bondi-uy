@@ -14,8 +14,8 @@ class Coordinate {
   final double lng;
 
   const Coordinate(this.lat, this.lng)
-    : assert(lat >= -90 && lat <= 90, 'latitud fuera de rango'),
-      assert(lng >= -180 && lng <= 180, 'longitud fuera de rango');
+    : assert(lat >= -90 && lat <= 90, 'latitude out of range'),
+      assert(lng >= -180 && lng <= 180, 'longitude out of range');
 
   @override
   bool operator ==(Object other) =>
@@ -26,7 +26,7 @@ class Coordinate {
 
   @override
   String toString() =>
-      'Coordenada(${lat.toStringAsFixed(6)}, ${lng.toStringAsFixed(6)})';
+      'Coordinate(${lat.toStringAsFixed(6)}, ${lng.toStringAsFixed(6)})';
 }
 
 /// A place that can be chosen as origin or destination (search suggestion).
@@ -174,11 +174,11 @@ class WalkLeg extends Leg {
     required this.distanceMeters,
     required this.durationSeconds,
     this.towardStop,
-  }) : assert(geometry.length >= 2, 'caminata sin geometría'),
+  }) : assert(geometry.length >= 2, 'walk leg without geometry'),
        super(id);
 
   bool get isAtDestination => towardStop == null;
-  Coordinate get fin => geometry.last;
+  Coordinate get end => geometry.last;
 }
 
 @immutable
@@ -223,13 +223,13 @@ class BusLeg extends Leg {
     required this.geometry,
     required this.distanceMeters,
     required this.durationSeconds,
-  }) : assert(geometry.length >= 2, 'tramo de bus sin geometría'),
+  }) : assert(geometry.length >= 2, 'bus leg without geometry'),
        super(id);
 }
 
 /// Possible warnings for an option. The UI decides the text.
 enum NoticeOption {
-  walkLarga,
+  longWalk,
   transferAdjusted,
   withoutLiveDataFirstBus,
   firstBusMayNotReach,
@@ -262,8 +262,8 @@ class TripOption {
     required this.legs,
     this.nextBus,
     this.notice,
-  }) : assert(legs.isNotEmpty, 'opción sin tramos'),
-       assert(_secuenciaValida(legs), 'secuencia de tramos inválida');
+  }) : assert(legs.isNotEmpty, 'option without legs'),
+       assert(_validSequence(legs), 'invalid leg sequence');
 
   List<String> get lines => [
     for (final t in legs)
@@ -304,7 +304,7 @@ class TripOption {
   );
 
   /// Invariant: every bus is preceded by its wait at the same stop.
-  static bool _secuenciaValida(List<Leg> legs) {
+  static bool _validSequence(List<Leg> legs) {
     for (var i = 0; i < legs.length; i++) {
       final t = legs[i];
       if (t is BusLeg) {

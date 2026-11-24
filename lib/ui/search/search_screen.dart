@@ -17,10 +17,10 @@ class SearchScreen extends ConsumerStatefulWidget {
   const SearchScreen({super.key});
 
   @override
-  ConsumerState<SearchScreen> createState() => _PantallaSearchState();
+  ConsumerState<SearchScreen> createState() => _SearchScreenState();
 }
 
-class _PantallaSearchState extends ConsumerState<SearchScreen> {
+class _SearchScreenState extends ConsumerState<SearchScreen> {
   final _ctlOrigin = TextEditingController();
   final _ctlDestination = TextEditingController();
   final _focusOrigin = FocusNode();
@@ -47,7 +47,7 @@ class _PantallaSearchState extends ConsumerState<SearchScreen> {
   void _focus(SearchField c) {
     if (_field == c) return;
     setState(() => _field = c);
-    ref.read(appActionsProvider).cancelarQuery();
+    ref.read(appActionsProvider).cancelQuery();
     _synchronizeTexts();
   }
 
@@ -61,7 +61,7 @@ class _PantallaSearchState extends ConsumerState<SearchScreen> {
   }
 
   void _close() {
-    ref.read(appActionsProvider).cancelarQuery();
+    ref.read(appActionsProvider).cancelQuery();
     ref.read(searchOpenProvider.notifier).state = null;
   }
 
@@ -100,13 +100,13 @@ class _PantallaSearchState extends ConsumerState<SearchScreen> {
     final b = ref.watch(appStateProvider.select((s) => s.search));
     final actions = ref.read(appActionsProvider);
     final queryOfEast = b.fieldQueried == _field;
-    final other = b.punto(
+    final other = b.point(
       _field == SearchField.origin
           ? SearchField.destination
           : SearchField.origin,
     );
     final offerMyLocation =
-        b.punto(_field) is! MyLocation &&
+        b.point(_field) is! MyLocation &&
         !(_field == SearchField.destination && b.origin is MyLocation) &&
         other is! MyLocation;
 
@@ -133,8 +133,8 @@ class _PantallaSearchState extends ConsumerState<SearchScreen> {
                       Padding(
                         padding: const EdgeInsets.only(top: 4),
                         child: IconButton(
-                          key: const ValueKey('busqueda-volver'),
-                          tooltip: tx.returnValue,
+                          key: const ValueKey('search-back'),
+                          tooltip: tx.back,
                           onPressed: _close,
                           icon: const Icon(Icons.arrow_back_rounded),
                         ),
@@ -143,7 +143,7 @@ class _PantallaSearchState extends ConsumerState<SearchScreen> {
                         child: Column(
                           children: [
                             _Field(
-                              clave: 'campo-origen',
+                              keyId: 'field-origin',
                               help:
                                   b.origin is MyLocation
                                       ? tx.myLocation
@@ -152,7 +152,7 @@ class _PantallaSearchState extends ConsumerState<SearchScreen> {
                               controller: _ctlOrigin,
                               focus: _focusOrigin,
                               isMyLocation: b.origin is MyLocation,
-                              onCambiar:
+                              onChanged:
                                   (t) =>
                                       actions.writeQuery(SearchField.origin, t),
                               onClean: () {
@@ -162,7 +162,7 @@ class _PantallaSearchState extends ConsumerState<SearchScreen> {
                             ),
                             const SizedBox(height: 8),
                             _Field(
-                              clave: 'campo-destino',
+                              keyId: 'field-destination',
                               help:
                                   b.destination is MyLocation
                                       ? tx.myLocation
@@ -171,7 +171,7 @@ class _PantallaSearchState extends ConsumerState<SearchScreen> {
                               controller: _ctlDestination,
                               focus: _focusDestination,
                               isMyLocation: b.destination is MyLocation,
-                              onCambiar:
+                              onChanged:
                                   (t) => actions.writeQuery(
                                     SearchField.destination,
                                     t,
@@ -187,13 +187,13 @@ class _PantallaSearchState extends ConsumerState<SearchScreen> {
                       Padding(
                         padding: const EdgeInsets.only(top: 30, left: 2),
                         child: IconButton(
-                          key: const ValueKey('busqueda-intercambiar'),
+                          key: const ValueKey('search-swap'),
                           tooltip: tx.swap,
                           onPressed:
                               b.destination == null
                                   ? null
                                   : () {
-                                    actions.swapOriginYDestination();
+                                    actions.swapOriginAndDestination();
                                     _synchronizeTexts();
                                   },
                           icon: const Icon(Icons.swap_vert_rounded),
@@ -212,14 +212,14 @@ class _PantallaSearchState extends ConsumerState<SearchScreen> {
                 ),
                 Expanded(
                   child: ListView(
-                    key: const ValueKey('busqueda-sugerencias'),
+                    key: const ValueKey('search-suggestions'),
                     padding: const EdgeInsets.symmetric(vertical: 6),
                     keyboardDismissBehavior:
                         ScrollViewKeyboardDismissBehavior.onDrag,
                     children: [
                       if (offerMyLocation)
-                        _FilaSuggestion(
-                          clave: 'sugerencia-mi-ubicacion',
+                        _SuggestionRow(
+                          keyId: 'suggestion-my-location',
                           icon: Icons.my_location_rounded,
                           colorIcon: c.walk,
                           title: tx.myLocation,
@@ -227,8 +227,8 @@ class _PantallaSearchState extends ConsumerState<SearchScreen> {
                         ),
                       if (queryOfEast)
                         for (final l in b.suggestions)
-                          _FilaSuggestion(
-                            clave: 'sugerencia-${l.id}',
+                          _SuggestionRow(
+                            keyId: 'suggestion-${l.id}',
                             icon: Icons.place_outlined,
                             title: l.name,
                             detail: l.detail,
@@ -237,12 +237,12 @@ class _PantallaSearchState extends ConsumerState<SearchScreen> {
                       if (queryOfEast &&
                           b.statusSuggestions == SuggestionsStatus.ready &&
                           b.suggestions.isEmpty)
-                        _Mensaje(tx.placeNotFound),
+                        _Message(tx.placeNotFound),
                       if (queryOfEast &&
                           b.statusSuggestions == SuggestionsStatus.error)
-                        _Mensaje(tx.errorSearchPlaces),
+                        _Message(tx.errorSearchPlaces),
                       if (!queryOfEast || b.query.trim().length < 2)
-                        _Mensaje(tx.helpSearch, soft: true),
+                        _Message(tx.helpSearch, soft: true),
                     ],
                   ),
                 ),
@@ -256,23 +256,23 @@ class _PantallaSearchState extends ConsumerState<SearchScreen> {
 }
 
 class _Field extends StatelessWidget {
-  final String clave;
+  final String keyId;
   final String help;
   final IconData icon;
   final TextEditingController controller;
   final FocusNode focus;
   final bool isMyLocation;
-  final ValueChanged<String> onCambiar;
+  final ValueChanged<String> onChanged;
   final VoidCallback onClean;
 
   const _Field({
-    required this.clave,
+    required this.keyId,
     required this.help,
     required this.icon,
     required this.controller,
     required this.focus,
     required this.isMyLocation,
-    required this.onCambiar,
+    required this.onChanged,
     required this.onClean,
   });
 
@@ -283,10 +283,10 @@ class _Field extends StatelessWidget {
       listenable: controller,
       builder:
           (context, _) => TextField(
-            key: ValueKey(clave),
+            key: ValueKey(keyId),
             controller: controller,
             focusNode: focus,
-            onChanged: onCambiar,
+            onChanged: onChanged,
             textInputAction: TextInputAction.search,
             style: TextStyle(
               fontSize: 17,
@@ -308,7 +308,7 @@ class _Field extends StatelessWidget {
                   controller.text.isEmpty
                       ? null
                       : IconButton(
-                        tooltip: tx.borrar,
+                        tooltip: tx.clear,
                         icon: const Icon(Icons.close_rounded),
                         onPressed: onClean,
                       ),
@@ -318,16 +318,16 @@ class _Field extends StatelessWidget {
   }
 }
 
-class _FilaSuggestion extends StatelessWidget {
-  final String clave;
+class _SuggestionRow extends StatelessWidget {
+  final String keyId;
   final IconData icon;
   final Color? colorIcon;
   final String title;
   final String? detail;
   final VoidCallback onTap;
 
-  const _FilaSuggestion({
-    required this.clave,
+  const _SuggestionRow({
+    required this.keyId,
     required this.icon,
     required this.title,
     this.detail,
@@ -339,7 +339,7 @@ class _FilaSuggestion extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = BondiColors.of(context);
     return InkWell(
-      key: ValueKey(clave),
+      key: ValueKey(keyId),
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 13),
@@ -382,10 +382,10 @@ class _FilaSuggestion extends StatelessWidget {
   }
 }
 
-class _Mensaje extends StatelessWidget {
+class _Message extends StatelessWidget {
   final String text;
   final bool soft;
-  const _Mensaje(this.text, {this.soft = false});
+  const _Message(this.text, {this.soft = false});
 
   @override
   Widget build(BuildContext context) {

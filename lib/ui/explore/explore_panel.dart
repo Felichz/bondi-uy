@@ -82,7 +82,7 @@ class ExplorePanel extends ConsumerWidget {
               right: 8,
               bottom: 8,
               height: heightSheet - 8,
-              child: _SheetStop(stop, key: ValueKey('parada-${stop.stop.id}')),
+              child: _SheetStop(stop, key: ValueKey('stop-${stop.stop.id}')),
             ),
         ],
       ),
@@ -110,7 +110,7 @@ class _ButtonLanguage extends ConsumerWidget {
           child: Material(
             type: MaterialType.transparency,
             child: InkWell(
-              key: const ValueKey('boton-idioma'),
+              key: const ValueKey('button-language'),
               customBorder: const CircleBorder(),
               onTap: () => ref.read(languageProvider.notifier).alternate(),
               child: SizedBox(
@@ -141,18 +141,18 @@ class _ButtonTheme extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final modo = ref.watch(preferenceThemeProvider);
-    final (icon, name) = switch (modo) {
+    final mode = ref.watch(preferenceThemeProvider);
+    final (icon, name) = switch (mode) {
       ThemeMode.system => (Icons.brightness_auto_rounded, tx.themeAutomatic),
       ThemeMode.light => (Icons.light_mode_rounded, tx.themeLight),
       ThemeMode.dark => (Icons.dark_mode_rounded, tx.themeDark),
     };
     return SheetButton(
-      key: const ValueKey('boton-tema'),
+      key: const ValueKey('button-theme'),
       icon: icon,
       label: tx.themeLabel(name),
       onTap: () {
-        ref.read(preferenceThemeProvider.notifier).siguiente();
+        ref.read(preferenceThemeProvider.notifier).next();
         final fresh = switch (ref.read(preferenceThemeProvider)) {
           ThemeMode.system => tx.themeNoticeAutomatic,
           ThemeMode.light => tx.themeNoticeLight,
@@ -180,7 +180,7 @@ class _CardSearch extends ConsumerWidget {
     final c = BondiColors.of(context);
     final t = Theme.of(context).textTheme;
     final destination = search.destination;
-    void abrir(SearchField field) =>
+    void open(SearchField field) =>
         ref.read(searchOpenProvider.notifier).state = field;
     if (destination == null) {
       return Sheet(
@@ -189,8 +189,8 @@ class _CardSearch extends ConsumerWidget {
         child: Material(
           type: MaterialType.transparency,
           child: InkWell(
-            key: const ValueKey('buscar-destino'),
-            onTap: () => abrir(SearchField.destination),
+            key: const ValueKey('search-destination'),
+            onTap: () => open(SearchField.destination),
             child: Padding(
               padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
               child: Row(
@@ -214,7 +214,7 @@ class _CardSearch extends ConsumerWidget {
       );
     }
     return Sheet(
-      key: const ValueKey('buscar-completo'),
+      key: const ValueKey('search-full'),
       padding: const EdgeInsets.fromLTRB(18, 12, 12, 12),
       radio: BorderRadius.circular(26),
       child: Row(
@@ -222,7 +222,7 @@ class _CardSearch extends ConsumerWidget {
           Expanded(
             child: InkWell(
               borderRadius: BorderRadius.circular(12),
-              onTap: () => abrir(SearchField.destination),
+              onTap: () => open(SearchField.destination),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -245,7 +245,7 @@ class _CardSearch extends ConsumerWidget {
           ),
           const SizedBox(width: 10),
           FilledButton(
-            key: const ValueKey('ver-viajes'),
+            key: const ValueKey('see-trips'),
             style: FilledButton.styleFrom(
               minimumSize: const Size(0, 48),
               padding: const EdgeInsets.symmetric(horizontal: 18),
@@ -272,13 +272,13 @@ class _NoticeLocation extends ConsumerWidget {
       _ => tx.locationNotFound,
     };
     return Sheet(
-      key: const ValueKey('aviso-ubicacion'),
+      key: const ValueKey('notice-location'),
       padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
       radio: BorderRadius.circular(20),
       elevated: false,
       child: Row(
         children: [
-          Icon(Icons.location_off_rounded, color: c.alerta),
+          Icon(Icons.location_off_rounded, color: c.alert),
           const SizedBox(width: 12),
           Expanded(
             child: Text(text, style: TextStyle(fontSize: 15, color: c.text)),
@@ -307,7 +307,7 @@ class _SheetStop extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Asa(),
+          const SheetHandle(),
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 6, 8, 10),
             child: Row(
@@ -329,7 +329,7 @@ class _SheetStop extends ConsumerWidget {
                     children: [
                       Text(
                         stopName(query.stop.name),
-                        key: const ValueKey('parada-nombre'),
+                        key: const ValueKey('stop-name'),
                         style: t.titleLarge,
                       ),
                       Text(tx.stopNumber(query.stop.id), style: t.bodyMedium),
@@ -337,7 +337,7 @@ class _SheetStop extends ConsumerWidget {
                   ),
                 ),
                 IconButton(
-                  key: const ValueKey('parada-cerrar'),
+                  key: const ValueKey('stop-close'),
                   tooltip: tx.close,
                   onPressed: () => ref.read(appActionsProvider).closeStop(),
                   icon: const Icon(Icons.close_rounded),
@@ -379,7 +379,7 @@ class _SheetStop extends ConsumerWidget {
           itemBuilder: (context, i) {
             final l = query.arrivals[i];
             return Row(
-              key: ValueKey('llegada-$i'),
+              key: ValueKey('arrival-$i'),
               children: [
                 SizedBox(
                   width: 78,
@@ -413,13 +413,13 @@ class _SheetStop extends ConsumerWidget {
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        if (l.live) PuntoInVivo(size: 6, color: c.live),
+                        if (l.live) LiveDot(size: 6, color: c.live),
                         Text(
                           l.live ? tx.live : tx.schedule,
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
-                            color: l.live ? c.live : c.alerta,
+                            color: l.live ? c.live : c.alert,
                           ),
                         ),
                       ],

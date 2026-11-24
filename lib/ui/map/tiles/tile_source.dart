@@ -23,7 +23,7 @@ class OpenFreeMapTiles implements TileSource {
   final http.Client _http;
   Future<String?>? _template;
 
-  OpenFreeMapTiles({http.Client? cliente}) : _http = cliente ?? http.Client();
+  OpenFreeMapTiles({http.Client? client}) : _http = client ?? http.Client();
 
   Future<String?> _getTemplate() async {
     try {
@@ -58,8 +58,8 @@ class OpenFreeMapTiles implements TileSource {
           .get(Uri.parse(url))
           .timeout(const Duration(seconds: 15));
       if (r.statusCode != 200) return null;
-      final data = decompressSiGzip(r.bodyBytes);
-      await guardarCache(name, data);
+      final data = decompressIfGzip(r.bodyBytes);
+      await saveCache(name, data);
       return data;
     } catch (_) {
       return null;

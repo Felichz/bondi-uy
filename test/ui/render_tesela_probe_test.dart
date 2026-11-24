@@ -10,7 +10,7 @@ import 'package:bondi_uy/ui/map/tiles/mvt.dart';
 import 'package:bondi_uy/ui/map/tiles/tile_painter.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-Future<void> guardar(ui.Image img, String name, {int scale = 3}) async {
+Future<void> save(ui.Image img, String name, {int scale = 3}) async {
   final rec = ui.PictureRecorder();
   final c = ui.Canvas(rec);
   c.drawImageRect(
@@ -19,18 +19,18 @@ Future<void> guardar(ui.Image img, String name, {int scale = 3}) async {
     ui.Rect.fromLTWH(0, 0, img.width * scale * 1.0, img.height * scale * 1.0),
     ui.Paint()..filterQuality = ui.FilterQuality.none,
   );
-  final grande = rec.endRecording().toImageSync(
+  final large = rec.endRecording().toImageSync(
     img.width * scale,
     img.height * scale,
   );
-  final png = await grande.toByteData(format: ui.ImageByteFormat.png);
+  final png = await large.toByteData(format: ui.ImageByteFormat.png);
   final f = File('build/sondas/$name.png');
   await f.parent.create(recursive: true);
   await f.writeAsBytes(png!.buffer.asUint8List());
 }
 
 void main() {
-  test('renderiza teselas del centro y la rambla', () async {
+  test('renders tiles of downtown and the waterfront', () async {
     for (final style in [MapStyle.light, MapStyle.dark]) {
       final painter = TilePainter(style, resolution: 256);
       // z14 x=5634..5638 from the fixture; over-enlarges to z16 a quarter of a tile.
@@ -61,9 +61,9 @@ void main() {
           final extent = mvt['transportation']?.extent ?? 4096;
           final scale = 256 * factor / extent;
           final off = ui.Offset(-(sub % 2) * 256.0, -(sub ~/ 2) * 256.0);
-          painter.paint(c, mvt, zoom: zoom, scale: scale, desplazamiento: off);
+          painter.paint(c, mvt, zoom: zoom, scale: scale, shift: off);
           final img = rec.endRecording().toImageSync(256, 256);
-          await guardar(
+          await save(
             img,
             '${style.glow.name}_z${zoom}_${x}_${y}_$sub',
             scale: 2,

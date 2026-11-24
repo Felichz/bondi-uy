@@ -29,7 +29,7 @@ class RecenterButton extends ConsumerWidget {
             duration: const Duration(milliseconds: 200),
             curve: Curves.easeOutBack,
             child: SheetButton(
-              key: const ValueKey('boton-recentrar'),
+              key: const ValueKey('button-recenter'),
               icon: Icons.my_location_rounded,
               label: tx.recenterMap,
               color: c.walk,
@@ -55,13 +55,15 @@ class TripCameraButton extends ConsumerWidget {
         },
       ),
     );
-    final verBus = ref.watch(verBusProvider);
+    final showBus = ref.watch(showBusProvider);
     final c = BondiColors.of(context);
     final icon =
-        verBus ? Icons.person_pin_circle_rounded : Icons.directions_bus_rounded;
-    final text = verBus ? tx.seeMe : tx.seeTheBus;
+        showBus
+            ? Icons.person_pin_circle_rounded
+            : Icons.directions_bus_rounded;
+    final text = showBus ? tx.seeMe : tx.seeTheBus;
     return AnimatedScale(
-      key: const ValueKey('boton-camara-escala'),
+      key: const ValueKey('button-camera-scale'),
       scale: can ? 1 : 0,
       duration: const Duration(milliseconds: 200),
       curve: Curves.easeOutBack,
@@ -79,13 +81,13 @@ class TripCameraButton extends ConsumerWidget {
               child: Material(
                 type: MaterialType.transparency,
                 child: InkWell(
-                  key: const ValueKey('boton-camara'),
+                  key: const ValueKey('button-camera'),
                   customBorder: const StadiumBorder(),
                   onTap: () {
                     HapticFeedback.selectionClick();
                     // The framing key changes: the map goes to the chosen one
                     // even if it was moved by hand.
-                    ref.read(verBusProvider.notifier).state = !verBus;
+                    ref.read(showBusProvider.notifier).state = !showBus;
                   },
                   child: SizedBox(
                     height: 52,
@@ -94,7 +96,7 @@ class TripCameraButton extends ConsumerWidget {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(icon, size: 22, color: verBus ? c.walk : c.bus),
+                          Icon(icon, size: 22, color: showBus ? c.walk : c.bus),
                           const SizedBox(width: 8),
                           Text(
                             text,
@@ -126,8 +128,8 @@ String pointName(SearchPoint? p, {String? empty}) => switch (p) {
 };
 
 /// Handle of the bottom sheets.
-class Asa extends StatelessWidget {
-  const Asa({super.key});
+class SheetHandle extends StatelessWidget {
+  const SheetHandle({super.key});
 
   @override
   Widget build(BuildContext context) => Center(
@@ -159,20 +161,20 @@ class Measured extends SingleChildRenderObjectWidget {
 
 class _RenderMeasured extends RenderProxyBox {
   ValueChanged<Size> onChange;
-  Size? _antes;
+  Size? _before;
   _RenderMeasured(this.onChange);
 
   @override
   void performLayout() {
     super.performLayout();
-    if (size == _antes) return;
-    _antes = size;
+    if (size == _before) return;
+    _before = size;
     final t = size;
     WidgetsBinding.instance.addPostFrameCallback((_) => onChange(t));
   }
 }
 
-const _minusculas = {
+const _lowercase = {
   'a',
   'al',
   'de',
@@ -196,11 +198,11 @@ String capitalize(String s) {
         final p = words[i];
         if (p.isEmpty) return p;
         final drop = p.toLowerCase();
-        if (i > 0 && _minusculas.contains(drop)) return drop;
+        if (i > 0 && _lowercase.contains(drop)) return drop;
         final acronym =
             p == p.toUpperCase() &&
             p.length <= 3 &&
-            !_minusculas.contains(drop) &&
+            !_lowercase.contains(drop) &&
             RegExp(r'^[A-ZÁÉÍÓÚÑ]+$').hasMatch(p) &&
             !_abbreviations.contains(drop);
         if (acronym && words.length > 1) return p;

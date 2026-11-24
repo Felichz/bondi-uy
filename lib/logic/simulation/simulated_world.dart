@@ -31,12 +31,12 @@ class SimulationParams {
   final double busMps;
 
   /// How often (real time) a GPS sample is emitted, at most.
-  final Duration intervaloGps;
+  final Duration gpsInterval;
 
   /// Maximum world time between two GPS samples: at high speed there are
   /// more samples per real second, as on a real phone (otherwise at 30x,
   /// 250 m of bus would pass between one sample and the next).
-  final Duration intervaloGpsSimulated;
+  final Duration simulatedGpsInterval;
 
   /// Seconds (simulated) the user must be at the stop before their bus
   /// arrives: they take the first one that arrives after that.
@@ -55,8 +55,8 @@ class SimulationParams {
     this.velocity = 8,
     this.walkMps = 1.4,
     this.busMps = 8.3,
-    this.intervaloGps = const Duration(seconds: 1),
-    this.intervaloGpsSimulated = const Duration(seconds: 5),
+    this.gpsInterval = const Duration(seconds: 1),
+    this.simulatedGpsInterval = const Duration(seconds: 5),
     this.waitMin = 3,
     this.frequency = const Duration(minutes: 4),
     this.stopped = const Duration(seconds: 10),
@@ -66,10 +66,10 @@ class SimulationParams {
 
 class SimulatedWorld {
   final SimulationParams p;
-  final CatalogRed catalog;
+  final NetworkCatalog catalog;
   Coordinate positionInitial;
 
-  final DateTime _inicioSim;
+  final DateTime _simStart;
 
   /// Real time elapsed since the start (injectable in tests).
   final Duration Function() _elapsed;
@@ -80,7 +80,7 @@ class SimulatedWorld {
     this.p = const SimulationParams(),
     DateTime? nowSimulated,
     Duration Function()? elapsed,
-  }) : _inicioSim = nowSimulated ?? DateTime.now(),
+  }) : _simStart = nowSimulated ?? DateTime.now(),
        _elapsed = elapsed ?? (Stopwatch()..start()).elapsedFn;
 
   late double _velocity = p.velocity;
@@ -92,9 +92,9 @@ class SimulatedWorld {
   double get velocity => _velocity;
 
   /// Changes the speed without the clock jumping: from now on it runs at [v].
-  set velocity(double v) => _anclar(() => _velocity = v);
+  set velocity(double v) => _anchor(() => _velocity = v);
 
-  void _anclar(void Function() change) {
+  void _anchor(void Function() change) {
     final t = now();
     _anchorReal = _elapsed();
     _anchorSim = t;
@@ -102,7 +102,7 @@ class SimulatedWorld {
   }
 
   /// Simulated clock (inject as `Reloj` in the controller).
-  DateTime now() => (_anchorSim ?? _inicioSim).add(
+  DateTime now() => (_anchorSim ?? _simStart).add(
     Duration(
       microseconds:
           ((_elapsed() - _anchorReal).inMicroseconds * _velocity).round(),
@@ -166,17 +166,17 @@ class SimulatedWorld {
   }
 
   /// The service for [line] at [parada]; if it did not exist, it is created
-  /// with its next bus arriving at [primera].
+  /// with its next bus arriving at [first].
   _Service _service(
     String stop,
     String line,
     RouteLine route,
-    DateTime primera,
+    DateTime first,
   ) =>
       _services['$stop|$line'] ??= _Service(
         line: line,
         route: route,
-        primera: primera,
+        first: first,
         p: p,
       );
 
@@ -238,14 +238,14 @@ class SimulatedWorld {
   /// Lines with no known route: a fixed schedule per line and stop (it
   /// never moves backward).
   StopArrival _bySchedule(String stop, String line, DateTime t) {
-    const cada = 9 * 60;
-    final phase = Object.hash(stop, line).abs() % cada;
+    const every = 9 * 60;
+    final phase = Object.hash(stop, line).abs() % every;
     final s = t.millisecondsSinceEpoch ~/ 1000;
-    final k = ((s - phase) / cada).ceil();
-    final arrives = k * cada + phase;
+    final k = ((s - phase) / every).ceil();
+    final arrives = k * every + phase;
     return StopArrival(
       BusArrival(line: line, minutes: ((arrives - s) / 60).ceil(), live: false),
-      vehicle: 'hor-$line-$k',
+      vehicle: 'sched-$line-$k',
     );
   }
 
@@ -275,44 +275,44 @@ extension on Stopwatch {
 class _Service {
   final String line;
   final RouteLine route;
-  final DateTime primera;
+  final DateTime first;
   final SimulationParams p;
 
   _Service({
     required this.line,
     required this.route,
-    required this.primera,
+    required this.first,
     required this.p,
   });
 
   Polyline get shape => route.line;
   double get recStop => route.routeStop;
 
-  DateTime arrival(int k) => primera.add(p.frequency * k);
+  DateTime arrival(int k) => first.add(p.frequency * k);
 
   /// Meters along the shape of vehicle [k] at [t]: it travels at constant
   /// speed, stops at the stop and moves on.
   double routeIn(int k, DateTime t) {
     final dt = t.difference(arrival(k)).inMicroseconds / 1e6;
     if (dt < 0) return recStop + dt * p.busMps;
-    final det = p.stopped.inMicroseconds / 1e6;
-    if (dt <= det) return recStop;
-    return recStop + (dt - det) * p.busMps;
+    final stoppedS = p.stopped.inMicroseconds / 1e6;
+    if (dt <= stoppedS) return recStop;
+    return recStop + (dt - stoppedS) * p.busMps;
   }
 
   /// The first vehicle that reaches the stop at [t] or later.
   int nextFrom(DateTime t) => math.max(
     0,
-    (t.difference(primera).inMicroseconds / p.frequency.inMicroseconds).ceil(),
+    (t.difference(first).inMicroseconds / p.frequency.inMicroseconds).ceil(),
   );
 
   /// Vehicles that may be on the route at [t].
   Iterable<int> near(DateTime t) sync* {
     final f = p.frequency.inMicroseconds / 1e6;
-    final antes = (recStop / p.busMps / f).ceil() + 1;
+    final before = (recStop / p.busMps / f).ceil() + 1;
     final after = ((shape.long - recStop) / p.busMps / f).ceil() + 1;
     final k = nextFrom(t);
-    for (var i = math.max(0, k - after); i <= k + antes; i++) {
+    for (var i = math.max(0, k - after); i <= k + before; i++) {
       yield i;
     }
   }
@@ -331,8 +331,8 @@ class _Position {
 class _Segment {
   final DateTime from;
   final DateTime until;
-  final _Position Function(DateTime t) en;
-  const _Segment(this.from, this.until, this.en);
+  final _Position Function(DateTime t) at;
+  const _Segment(this.from, this.until, this.at);
 }
 
 class _Script {
@@ -343,12 +343,12 @@ class _Script {
     SimulatedWorld m,
     TripOption o,
     Map<String, RouteLine?> routes,
-    DateTime inicio,
+    DateTime start,
     Coordinate from,
   ) {
     final p = m.p;
     final segs = <_Segment>[];
-    var t = inicio;
+    var t = start;
     var here = from;
     Duration seg(double s) => Duration(microseconds: (s * 1e6).round());
 
@@ -387,17 +387,20 @@ class _Script {
     void walkBy(List<Coordinate> pts) {
       var rest = pts;
       if (pts.length >= 2) {
-        final poli = Polyline(pts);
-        final join = poli.project(here, until: math.min(poli.long, 150));
-        rest = poli.leg(join.route, poli.long);
+        final polyline = Polyline(pts);
+        final join = polyline.project(
+          here,
+          until: math.min(polyline.long, 150),
+        );
+        rest = polyline.leg(join.route, polyline.long);
       }
       final path = [
         if (rest.isEmpty || distance(here, rest.first) > 0.5) here,
         ...rest,
       ];
       if (path.length < 2) return;
-      final poli = Polyline(path);
-      final dur = seg(poli.long / p.walkMps);
+      final polyline = Polyline(path);
+      final dur = seg(polyline.long / p.walkMps);
       final t0 = t;
       segs.add(
         _Segment(t0, t0.add(dur), (x) {
@@ -406,7 +409,7 @@ class _Script {
                   ? 1.0
                   : (x.difference(t0).inMicroseconds / dur.inMicroseconds)
                       .clamp(0.0, 1.0);
-          return _Position(poli.pointAt(poli.long * f), p.walkMps);
+          return _Position(polyline.pointAt(polyline.long * f), p.walkMps);
         }),
       );
       t = t0.add(dur);
@@ -449,15 +452,15 @@ class _Script {
           final rec = routes[leg.id];
           if (rec == null) {
             // No route: goes straight along the leg's geometry.
-            final poli = Polyline(leg.geometry);
-            final dur = seg(poli.long / p.busMps);
+            final polyline = Polyline(leg.geometry);
+            final dur = seg(polyline.long / p.busMps);
             final t0 = t;
             segs.add(
               _Segment(t0, t0.add(dur), (x) {
                 final f = (x.difference(t0).inMicroseconds /
                         math.max(1, dur.inMicroseconds))
                     .clamp(0.0, 1.0);
-                return _Position(poli.pointAt(poli.long * f), p.busMps);
+                return _Position(polyline.pointAt(polyline.long * f), p.busMps);
               }),
             );
             t = t0.add(dur);
@@ -488,7 +491,7 @@ class _Script {
             s.recStop + 1,
             s.shape.project(alighting.coordinate, from: s.recStop).route,
           );
-          final arrivesAlighting = s
+          final arrivesAtAlighting = s
               .arrival(k)
               .add(p.stopped)
               .add(seg((recAlighting - s.recStop) / p.busMps));
@@ -496,14 +499,14 @@ class _Script {
           segs.add(
             _Segment(
               t0,
-              arrivesAlighting,
+              arrivesAtAlighting,
               (x) => _Position(
                 s.shape.pointAt(math.min(recAlighting, s.routeIn(k, x))),
                 p.busMps,
               ),
             ),
           );
-          t = arrivesAlighting;
+          t = arrivesAtAlighting;
           here = s.shape.pointAt(recAlighting);
           getOff(i, alighting.coordinate);
       }
@@ -518,10 +521,10 @@ class _Script {
   _Position position(DateTime t) {
     for (final s in segments) {
       if (!t.isAfter(s.until)) {
-        return s.en(t.isBefore(s.from) ? s.from : t);
+        return s.at(t.isBefore(s.from) ? s.from : t);
       }
     }
-    final last = segments.last.en(segments.last.until);
+    final last = segments.last.at(segments.last.until);
     return _Position(last.coordinate, 0);
   }
 }
@@ -539,10 +542,10 @@ class SimulatedLocation implements LocationSource {
       LocationPermissionState.granted;
 
   @override
-  Future<LocationSample?> actual() async => world.sample();
+  Future<LocationSample?> current() async => world.sample();
 
   /// Checks (real time) every this often whether a sample is due.
-  static const _tic = Duration(milliseconds: 100);
+  static const _tick = Duration(milliseconds: 100);
 
   @override
   Stream<LocationSample> follow() {
@@ -554,11 +557,11 @@ class SimulatedLocation implements LocationSource {
         // of the world, whichever comes first (the speed changes on the fly).
         var real = Duration.zero;
         var last = world.now();
-        timer = Timer.periodic(_tic, (_) {
-          real += _tic;
+        timer = Timer.periodic(_tick, (_) {
+          real += _tick;
           final now = world.now();
-          if (real < world.p.intervaloGps &&
-              now.difference(last) < world.p.intervaloGpsSimulated) {
+          if (real < world.p.gpsInterval &&
+              now.difference(last) < world.p.simulatedGpsInterval) {
             return;
           }
           real = Duration.zero;
@@ -613,7 +616,7 @@ class SimulatedPlanner implements TripPlanner {
   }
 }
 
-class SimulatedArrivals implements SourceArrivals {
+class SimulatedArrivals implements ArrivalSource {
   final SimulatedWorld world;
 
   /// Lines that pass each stop (from the catalog).

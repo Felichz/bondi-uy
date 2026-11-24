@@ -15,18 +15,18 @@ class ThemePreference extends StateNotifier<ThemeMode> {
 
   Future<void> _load() async {
     final v = await readPreference('tema');
-    final modo = ThemeMode.values.where((m) => m.name == v).firstOrNull;
-    if (modo != null && mounted) state = modo;
+    final mode = ThemeMode.values.where((m) => m.name == v).firstOrNull;
+    if (mode != null && mounted) state = mode;
   }
 
   /// automatic -> light -> dark -> automatic
-  void siguiente() {
+  void next() {
     state = switch (state) {
       ThemeMode.system => ThemeMode.light,
       ThemeMode.light => ThemeMode.dark,
       ThemeMode.dark => ThemeMode.system,
     };
-    if (persist) guardarPreference('tema', state.name);
+    if (persist) savePreference('tema', state.name);
   }
 
   void pin(ThemeMode m) => state = m;

@@ -125,7 +125,7 @@ class Harness {
 
   static Future<Harness> mount(
     WidgetTester tester, {
-    String prefix = 'flujo',
+    String prefix = 'flow',
     double velocity = 10,
     Size size = const Size(412, 892),
     TripPlanner Function(TripPlanner real)? wrapPlan,
@@ -214,7 +214,7 @@ class Harness {
     await tester.pumpWidget(
       UncontrolledProviderScope(
         container: container,
-        child: RepaintBoundary(key: _raiz, child: const BondiApp()),
+        child: RepaintBoundary(key: _root, child: const BondiApp()),
       ),
     );
     await harness.wait(const Duration(milliseconds: 600));
@@ -245,7 +245,7 @@ class Harness {
     var t = Duration.zero;
     while (!condition()) {
       if (t > max) {
-        fail('No se cumplió a tiempo: ${reason ?? ''}');
+        fail('Not met in time: ${reason ?? ''}');
       }
       await wait(step, step: step);
       t += step;
@@ -255,25 +255,25 @@ class Harness {
   /// Current phase (shortcut for asserts).
   Phase get phase => controller.state.phase;
 
-  Future<void> tocar(String clave) async {
-    await tester.tap(find.byKey(ValueKey(clave)));
+  Future<void> tap(String key) async {
+    await tester.tap(find.byKey(ValueKey(key)));
     await wait(const Duration(milliseconds: 400));
   }
 
   /// Searches for "plaza" and picks Plaza Independencia; waits for the options.
   Future<void> searchSquare() async {
-    await tocar('buscar-destino');
+    await tap('search-destination');
     await tester.enterText(
-      find.byKey(const ValueKey('campo-destino')),
+      find.byKey(const ValueKey('field-destination')),
       'plaza',
     );
     await wait(const Duration(milliseconds: 600));
-    await tocar('sugerencia-plaza-independencia');
+    await tap('suggestion-plaza-independencia');
     await until(
       () =>
           phase is OptionsPhase &&
           (phase as OptionsPhase).status != OptionsStatus.loading,
-      reason: 'opciones calculadas',
+      reason: 'options computed',
     );
     await wait(const Duration(milliseconds: 500));
   }
@@ -286,18 +286,18 @@ class Harness {
     () {
       final f = phase;
       return f is TripPhase &&
-          (f.stepActual >= step || f.status == TripStatus.completed);
+          (f.currentStep >= step || f.status == TripStatus.completed);
     },
     max: max,
     step: const Duration(milliseconds: 500),
-    reason: 'llegar al paso $step',
+    reason: 'reach step $step',
   );
 
   /// Saves a PNG screenshot of the screen to build/capturas/.
   Future<void> capture(String name) async {
     await tester.pump();
     final boundary = tester.renderObject<RenderRepaintBoundary>(
-      find.byKey(_raiz),
+      find.byKey(_root),
     );
     await tester.runAsync(() async {
       // A phone, sharper; the desktop presentation, at real size.
@@ -331,7 +331,7 @@ class AnnotatedTraces extends Traces {
   }
 }
 
-final _raiz = GlobalKey();
+final _root = GlobalKey();
 final _controllerProvider = StateNotifierProvider<AppController, AppState>(
   (ref) => throw UnimplementedError(),
 );

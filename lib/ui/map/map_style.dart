@@ -24,7 +24,7 @@ class MapStyle {
   final Color avenueBorder;
   final Color motorway;
   final Color motorwayBorder;
-  final Color sendero;
+  final Color footway;
   final Color via;
   final Color label;
   final Color labelHalo;
@@ -40,7 +40,7 @@ class MapStyle {
   final Color border; // outline of routes and markers
   final Color markerBackground;
   final Color ink;
-  final Color stopRed;
+  final Color networkStop;
 
   const MapStyle({
     required this.glow,
@@ -59,7 +59,7 @@ class MapStyle {
     required this.avenueBorder,
     required this.motorway,
     required this.motorwayBorder,
-    required this.sendero,
+    required this.footway,
     required this.via,
     required this.label,
     required this.labelHalo,
@@ -73,7 +73,7 @@ class MapStyle {
     required this.border,
     required this.markerBackground,
     required this.ink,
-    required this.stopRed,
+    required this.networkStop,
   });
 
   static const light = MapStyle(
@@ -93,7 +93,7 @@ class MapStyle {
     avenueBorder: Color(0xFFD6D2C8),
     motorway: Color(0xFFFCEFD2),
     motorwayBorder: Color(0xFFE7D2A6),
-    sendero: Color(0xFFD5D1C7),
+    footway: Color(0xFFD5D1C7),
     via: Color(0xFFC4C1BA),
     label: Color(0xFF6A6E76),
     labelHalo: Color(0xFFF7F6F3),
@@ -107,7 +107,7 @@ class MapStyle {
     border: Color(0xFFFFFFFF),
     markerBackground: Color(0xFFFFFFFF),
     ink: Color(0xFF111318),
-    stopRed: Color(0xFF3B4250),
+    networkStop: Color(0xFF3B4250),
   );
 
   static const dark = MapStyle(
@@ -127,7 +127,7 @@ class MapStyle {
     avenueBorder: Color(0xFF14171C),
     motorway: Color(0xFF4A4436),
     motorwayBorder: Color(0xFF15171B),
-    sendero: Color(0xFF30353E),
+    footway: Color(0xFF30353E),
     via: Color(0xFF3A3F48),
     label: Color(0xFF9CA4B2),
     labelHalo: Color(0xFF181B21),
@@ -141,8 +141,8 @@ class MapStyle {
     border: Color(0xFF0E1014),
     markerBackground: Color(0xFF22262E),
     ink: Color(0xFFF2F4F7),
-    stopRed: Color(0xFFB9C1CE),
+    networkStop: Color(0xFFB9C1CE),
   );
 
-  static MapStyle de(Brightness b) => b == Brightness.dark ? dark : light;
+  static MapStyle of(Brightness b) => b == Brightness.dark ? dark : light;
 }

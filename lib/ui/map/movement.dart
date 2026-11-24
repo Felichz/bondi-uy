@@ -27,7 +27,7 @@ class PredictedMovement {
   double _tFixed;
 
   /// Typical time between readings (moving average), s.
-  double _intervalo = 1;
+  double _interval = 1;
   int _readings = 0;
 
   /// Estimated speed (units/s) and, without a path, 2D velocity.
@@ -59,16 +59,16 @@ class PredictedMovement {
   /// correction would otherwise exceed twice the speed (+3 m/s). With a single
   /// speed sample (just appeared) the estimate is weak: the correction does not
   /// exceed the speed.
-  double _tauPara(double error) {
+  double _tauFor(double error) {
     // Standing still: go to the reading right away, there is no movement to follow.
     if (_still) return 0.4;
     final margin = _speed * (_readings <= 1 ? 1 : 2) + 3 / metersByUnit;
     return (error / margin).clamp(0.5, 4.0);
   }
 
-  PredictedMovement(Offset inicio, double t)
-    : _pos = inicio,
-      _fixed = inicio,
+  PredictedMovement(Offset start, double t)
+    : _pos = start,
+      _fixed = start,
       _tFixed = t;
 
   /// Position to display (mercator).
@@ -123,7 +123,7 @@ class PredictedMovement {
       return;
     }
     if (dt > 0.05) {
-      _intervalo = (_readings == 0 ? dt : 0.6 * _intervalo + 0.4 * dt).clamp(
+      _interval = (_readings == 0 ? dt : 0.6 * _interval + 0.4 * dt).clamp(
         0.2,
         8.0,
       );
@@ -133,9 +133,9 @@ class PredictedMovement {
       // Less than 1.5 m between readings: standing still (GPS noise).
       final sample = meters < 1.5 ? 0.0 : step.distance / dt;
       final v = meters < 1.5 ? Offset.zero : step / dt;
-      final primera = _speed == 0 || pathNew;
-      _speed = primera ? sample : 0.5 * _speed + 0.5 * sample;
-      _velocity = primera ? v : _velocity * 0.5 + v * 0.5;
+      final first = _speed == 0 || pathNew;
+      _speed = first ? sample : 0.5 * _speed + 0.5 * sample;
+      _velocity = first ? v : _velocity * 0.5 + v * 0.5;
       if (meters >= 1.5) _heading = _degrees(step);
     }
     if (!predict) {
@@ -145,7 +145,7 @@ class PredictedMovement {
     }
     _still = !predict;
     _pin(p, t);
-    _planear(p, t);
+    _plan(p, t);
   }
 
   bool _still = false;
@@ -155,13 +155,13 @@ class PredictedMovement {
     _tFixed = t;
   }
 
-  void _planear(Offset p, double t) {
+  void _plan(Offset p, double t) {
     // The marker follows the trajectory the reading predicts (from where the
     // reading is, at the estimated speed), and the error from where it was
     // shown is absorbed gradually: e^(-t/0.5 s). Continuous, without braking or
     // jumping. The prediction lasts two intervals: the next reading arrives
     // earlier and corrects it; if it does not arrive (no signal), it only stops then.
-    final horizon = math.max(2.0, _intervalo * 2);
+    final horizon = math.max(2.0, _interval * 2);
     _t0 = t;
     _horizon = horizon;
     _t1 = t + horizon;
@@ -190,13 +190,13 @@ class PredictedMovement {
         _byPath = true;
         _s0 = sFixed;
         _errorS = sPos - sFixed;
-        _tau = _tauPara(_errorS.abs());
+        _tau = _tauFor(_errorS.abs());
         _t1 = math.max(_t1, t + 3 * _tau);
         // Far ahead (another route, a GPS error): going back is allowed.
-        _monotono = _errorS * metersByUnit < 40;
+        _monotonic = _errorS * metersByUnit < 40;
         _sShown = sPos;
-        _detour = _pos - c.punto(sPos);
-        _tauDetour = _tauPara(_detour.distance);
+        _detour = _pos - c.point(sPos);
+        _tauDetour = _tauFor(_detour.distance);
         _t1 = math.max(_t1, t + 3 * _tauDetour);
         return;
       }
@@ -206,7 +206,7 @@ class PredictedMovement {
     _byPath = false;
     _p0 = p;
     _errorP = _pos - p;
-    _tau = _tauPara(_errorP.distance);
+    _tau = _tauFor(_errorP.distance);
     _t1 = math.max(_t1, t + 3 * _tau);
     final lim = _limit;
     final v = _velocity.distance;
@@ -218,12 +218,12 @@ class PredictedMovement {
     _detour = Offset.zero;
   }
 
-  // Current plan (see [_planear]).
+  // Current plan (see [_plan]).
   double _horizon = 2;
   double _tauDetour = 0.5;
   double _errorS = 0;
   double _sShown = 0;
-  bool _monotono = true;
+  bool _monotonic = true;
   double? _sLim;
   Offset _errorP = Offset.zero;
   Offset? _pLim;
@@ -235,21 +235,21 @@ class PredictedMovement {
     // The advance is predicted up to the horizon; the correction continues until
     // it is absorbed.
     final dtAdvance = math.min(dt, _horizon);
-    final queda = math.exp(-dt / _tau);
+    final decay = math.exp(-dt / _tau);
     final absorber = math.exp(-dt / _tauDetour);
     final c = _path;
     if (_byPath && c != null) {
-      var s = _s0 + _speed * dtAdvance + _errorS * queda;
+      var s = _s0 + _speed * dtAdvance + _errorS * decay;
       final lim = _sLim;
       if (lim != null) s = math.min(s, lim);
-      if (_monotono) s = math.max(s, _sShown);
+      if (_monotonic) s = math.max(s, _sShown);
       s = s.clamp(0.0, c.long);
       if (s - _sShown > 1e-9) _heading = _degrees(c.tangent(s));
       _sShown = s;
-      _pos = c.punto(s) + _detour * absorber;
+      _pos = c.point(s) + _detour * absorber;
     } else {
-      final antes = _pos;
-      var p = _p0 + _velocity * dtAdvance + _errorP * queda;
+      final before = _pos;
+      var p = _p0 + _velocity * dtAdvance + _errorP * decay;
       final lim = _pLim;
       final v = _velocity.distance;
       if (lim != null && v > 0) {
@@ -258,7 +258,7 @@ class PredictedMovement {
         if (past > 0) p -= dir * past;
       }
       _pos = p;
-      final d = _pos - antes;
+      final d = _pos - before;
       if (d.distance * metersByUnit > 0.05 && _velocity != Offset.zero) {
         _heading = _degrees(_velocity);
       }
@@ -272,23 +272,23 @@ class PredictedMovement {
 /// Polyline with cumulative length, to move by distance traveled.
 class _Path {
   final List<Offset> pts;
-  final List<double> acum;
+  final List<double> cum;
 
-  _Path(this.pts) : acum = List.filled(pts.length, 0) {
+  _Path(this.pts) : cum = List.filled(pts.length, 0) {
     for (var i = 1; i < pts.length; i++) {
-      acum[i] = acum[i - 1] + (pts[i] - pts[i - 1]).distance;
+      cum[i] = cum[i - 1] + (pts[i] - pts[i - 1]).distance;
     }
   }
 
-  double get long => acum.last;
+  double get long => cum.last;
 
   /// (distance traveled up to the nearest point, lateral distance),
   /// between [desde] and [hasta] (distances traveled) if given.
   (double, double) project(Offset p, {double? from, double? until}) {
     var bestS = 0.0, bestD = double.infinity;
     for (var i = 1; i < pts.length; i++) {
-      if (from != null && acum[i] < from) continue;
-      if (until != null && acum[i - 1] > until) break;
+      if (from != null && cum[i] < from) continue;
+      if (until != null && cum[i - 1] > until) break;
       final a = pts[i - 1], b = pts[i];
       final ab = b - a;
       final l2 = ab.dx * ab.dx + ab.dy * ab.dy;
@@ -303,7 +303,7 @@ class _Path {
       final d = (p - q).distance;
       if (d < bestD) {
         bestD = d;
-        bestS = acum[i - 1] + math.sqrt(l2) * u;
+        bestS = cum[i - 1] + math.sqrt(l2) * u;
       }
     }
     return (bestS, bestD);
@@ -311,18 +311,18 @@ class _Path {
 
   int _leg(double s) {
     var i = 1;
-    while (i < pts.length - 1 && acum[i] < s) {
+    while (i < pts.length - 1 && cum[i] < s) {
       i++;
     }
     return i;
   }
 
-  Offset punto(double s) {
+  Offset point(double s) {
     if (s <= 0) return pts.first;
     if (s >= long) return pts.last;
     final i = _leg(s);
-    final l = acum[i] - acum[i - 1];
-    final u = l == 0 ? 0.0 : (s - acum[i - 1]) / l;
+    final l = cum[i] - cum[i - 1];
+    final u = l == 0 ? 0.0 : (s - cum[i - 1]) / l;
     return Offset.lerp(pts[i - 1], pts[i], u)!;
   }
 

@@ -38,7 +38,7 @@ double costOption(
       extraWalk * p.byHundredMeters;
 }
 
-List<PlannedTrip> sortYRecommend(
+List<PlannedTrip> sortAndRecommend(
   List<PlannedTrip> trips,
   DateTime now, {
   int max = 6,
@@ -79,7 +79,7 @@ String _signature(TripOption o) {
     for (final t in o.legs)
       if (t is BusLeg) '${t.line}@${t.boarding.id}>${t.alighting.id}',
   ];
-  return buses.isEmpty ? 'caminata' : buses.join('|');
+  return buses.isEmpty ? 'walk' : buses.join('|');
 }
 
 /// Main warning for an option, if applicable.
@@ -91,7 +91,7 @@ NoticeOption? noticeOfOption(TripOption o, {BusArrival? next}) {
       return NoticeOption.firstBusMayNotReach;
     }
   }
-  if (o.walkMeters > 1500) return NoticeOption.walkLarga;
+  if (o.walkMeters > 1500) return NoticeOption.longWalk;
   // Transfer waits (not the first one) of less than one minute.
   final waits = o.legs.whereType<WaitLeg>().skip(1);
   if (waits.any((e) => e.waitScheduledSeconds < 60)) {

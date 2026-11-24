@@ -23,10 +23,10 @@ import 'fixture.dart';
 }
 
 void main() {
-  final inicio = DateTime(2026, 8, 3, 18);
+  final start = DateTime(2026, 8, 3, 18);
 
-  group('Plan OTP grabado', () {
-    test('D1 directo: caminar -> esperar -> bus -> caminar', () {
+  group('Recorded OTP plan', () {
+    test('D1 direct: walk -> wait -> bus -> walk', () {
       final o = tripFromFixture(0).option;
       expect(o.legs.map((t) => t.runtimeType.toString()), [
         'WalkLeg',
@@ -44,7 +44,7 @@ void main() {
       expect(tripFromFixture(0).shapeByLeg[bus.id], '9102');
     });
 
-    test('526 -> 109: siete pasos con trasbordo caminando', () {
+    test('526 -> 109: seven steps with a walking transfer', () {
       final o = tripFromFixture(9).option;
       expect(o.legs.length, 7);
       expect(o.lines, ['526', '109']);
@@ -53,28 +53,28 @@ void main() {
     });
   });
 
-  group('Navegación con el GPS grabado', () {
+  group('Navigation with the recorded GPS', () {
     for (final (index, stepsExpected) in [
       (0, [0, 1, 2, 3]),
       (9, [0, 1, 2, 3, 4, 5, 6]),
     ]) {
-      test('opción $index avanza de a un paso y termina', () {
+      test('option $index advances one step at a time and finishes', () {
         final nav = TripNavigator(tripFromFixture(index).option);
-        final r = repeat(nav, samplesFromFixture(index, inicio));
-        expect(r.steps, stepsExpected, reason: 'traza estricta +1');
+        final r = repeat(nav, samplesFromFixture(index, start));
+        expect(r.steps, stepsExpected, reason: 'strict +1 trace');
         expect(r.completed, isTrue);
       });
     }
 
-    test('la caminata informa metros restantes decrecientes y recorrido', () {
+    test('the walk reports decreasing remaining meters and the route', () {
       final nav = TripNavigator(tripFromFixture(0).option);
-      final locationSamples = samplesFromFixture(0, inicio);
+      final locationSamples = samplesFromFixture(0, start);
       final first =
           [
             for (final m in locationSamples.take(20)) nav.process(m),
           ].where((e) => e.step == 0).toList();
       expect(first, isNotEmpty);
-      final meters = first.map((e) => e.progress.metersRestantes!).toList();
+      final meters = first.map((e) => e.progress.metersLeft!).toList();
       expect(meters.first, greaterThan(250));
       expect(meters.last, lessThan(meters.first));
       final route = first.last.progress.routeRemaining!;
@@ -82,24 +82,28 @@ void main() {
       expect(first.last.progress.fraction, greaterThan(0));
     });
 
-    test('arriba del bus cuenta las paradas que faltan hasta 0', () {
+    test('on board the bus it counts the remaining stops down to 0', () {
       final nav = TripNavigator(tripFromFixture(0).option);
       final inBus = <int>[];
-      for (final m in samplesFromFixture(0, inicio)) {
+      for (final m in samplesFromFixture(0, start)) {
         final r = nav.process(m);
-        if (r.step == 2 && r.progress.stopsRestantes != null) {
-          inBus.add(r.progress.stopsRestantes!);
+        if (r.step == 2 && r.progress.stopsLeft != null) {
+          inBus.add(r.progress.stopsLeft!);
         }
       }
       expect(inBus, isNotEmpty);
       expect(inBus.first, greaterThan(5));
       expect(inBus.last, 0);
       for (var i = 1; i < inBus.length; i++) {
-        expect(inBus[i], lessThanOrEqualTo(inBus[i - 1]), reason: 'nunca sube');
+        expect(
+          inBus[i],
+          lessThanOrEqualTo(inBus[i - 1]),
+          reason: 'never goes up',
+        );
       }
     });
 
-    test('esperar sin moverse no dispara la subida', () {
+    test('waiting without moving does not trigger boarding', () {
       final o = tripFromFixture(0).option;
       final nav = TripNavigator(o);
       final stop = (o.legs[1] as WaitLeg).stop.coordinate;
@@ -108,7 +112,7 @@ void main() {
         final r = nav.process(
           LocationSample(
             coordinate: stop,
-            moment: inicio.add(Duration(seconds: 5 * i)),
+            moment: start.add(Duration(seconds: 5 * i)),
             velocity: 0,
           ),
         );
@@ -116,7 +120,7 @@ void main() {
       }
     });
 
-    test('respaldo manual avanza y al final completa', () {
+    test('manual fallback advances and completes at the end', () {
       final o = tripFromFixture(0).option;
       final nav = TripNavigator(o);
       for (var i = 0; i < o.legs.length - 1; i++) {
@@ -125,36 +129,42 @@ void main() {
       expect(nav.confirmStep().completed, isTrue);
     });
 
-    test('si el GPS se perdió la subida, salta al bus cuando ya viaja', () {
-      final o = tripFromFixture(0).option;
-      final nav = TripNavigator(o);
-      final locationSamples = samplesFromFixture(0, inicio);
-      // The waiting samples are discarded: the user "appears" already traveling.
-      final samples = (optionFromFixture(0)['replay']['userSamples'] as List);
-      final withoutWait = [
-        for (var i = 0; i < locationSamples.length; i++)
-          if (samples[i]['phase'] != 'wait') locationSamples[i],
-      ];
-      final r = repeat(nav, withoutWait);
-      expect(r.steps.first, 0);
-      expect(r.steps, containsAllInOrder([0, 2, 3]));
-      expect(r.completed, isTrue);
-    });
+    test(
+      'if the GPS missed the boarding, it jumps to the bus once traveling',
+      () {
+        final o = tripFromFixture(0).option;
+        final nav = TripNavigator(o);
+        final locationSamples = samplesFromFixture(0, start);
+        // The waiting samples are discarded: the user "appears" already traveling.
+        final samples = (optionFromFixture(0)['replay']['userSamples'] as List);
+        final withoutWait = [
+          for (var i = 0; i < locationSamples.length; i++)
+            if (samples[i]['phase'] != 'wait') locationSamples[i],
+        ];
+        final r = repeat(nav, withoutWait);
+        expect(r.steps.first, 0);
+        expect(r.steps, containsAllInOrder([0, 2, 3]));
+        expect(r.completed, isTrue);
+      },
+    );
 
-    test('si se bajó entre dos lecturas, sigue en la caminata final', () {
-      // Readings spaced apart (GPS cut out, app suspended, accelerated demo):
-      // none falls near the drop-off stop. Before this fix the
-      // browser stayed on "Viajá en el D1" with the user already walking.
-      final o = tripFromFixture(0).option;
-      final alighting = (o.legs[2] as BusLeg).alighting.coordinate;
-      final nav = TripNavigator(o);
-      final withoutAlighting = [
-        for (final m in samplesFromFixture(0, inicio))
-          if (distance(m.coordinate, alighting) > 150) m,
-      ];
-      final r = repeat(nav, withoutAlighting);
-      expect(r.steps, containsAllInOrder([2, 3]));
-      expect(r.completed, isTrue);
-    });
+    test(
+      'if they got off between two readings, it continues on the final walk',
+      () {
+        // Readings spaced apart (GPS cut out, app suspended, accelerated demo):
+        // none falls near the drop-off stop. Before this fix the
+        // browser stayed on "Viajá en el D1" with the user already walking.
+        final o = tripFromFixture(0).option;
+        final alighting = (o.legs[2] as BusLeg).alighting.coordinate;
+        final nav = TripNavigator(o);
+        final neverAlighting = [
+          for (final m in samplesFromFixture(0, start))
+            if (distance(m.coordinate, alighting) > 150) m,
+        ];
+        final r = repeat(nav, neverAlighting);
+        expect(r.steps, containsAllInOrder([2, 3]));
+        expect(r.completed, isTrue);
+      },
+    );
   });
 }

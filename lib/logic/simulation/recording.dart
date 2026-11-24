@@ -93,15 +93,15 @@ class FixedPlaces implements PlaceSearcher {
 
   @override
   Future<List<Place>> suggestions(String text, {Coordinate? near}) async {
-    final q = _normalizar(text);
+    final q = _normalize(text);
     if (q.isEmpty) return const [];
     return [
       for (final l in places)
-        if (_normalizar('${l.name} ${l.detail ?? ''}').contains(q)) l,
+        if (_normalize('${l.name} ${l.detail ?? ''}').contains(q)) l,
     ];
   }
 
-  static String _normalizar(String s) =>
+  static String _normalize(String s) =>
       s
           .toLowerCase()
           .replaceAll(RegExp('[áà]'), 'a')

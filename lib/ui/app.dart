@@ -45,7 +45,11 @@ class BondiApp extends ConsumerWidget {
       // On the web, on wide screens, inside a phone frame.
       builder: (context, child) {
         final forced = ref.watch(frameForcedProvider);
-        return WebFrame(force: forced != null, byInside: forced, child: child!);
+        return WebFrame(
+          force: forced != null,
+          underTheHood: forced,
+          child: child!,
+        );
       },
     );
   }
@@ -55,10 +59,10 @@ class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  ConsumerState<HomeScreen> createState() => _PantallaPrincipalState();
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _PantallaPrincipalState extends ConsumerState<HomeScreen> {
+class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   void initState() {
     super.initState();
@@ -73,15 +77,15 @@ class _PantallaPrincipalState extends ConsumerState<HomeScreen> {
     final searching = ref.watch(searchOpenProvider);
     final uiMap = MapUiStatus(
       optionFocused: ref.watch(optionFocusedProvider),
-      verBus: ref.watch(verBusProvider),
+      showBus: ref.watch(showBusProvider),
     );
     // Each trip starts by following you.
     ref.listen<bool>(appStateProvider.select((s) => s.phase is TripPhase), (
-      antes,
+      before,
       inTrip,
     ) {
-      if (inTrip && antes == false) {
-        ref.read(verBusProvider.notifier).state = false;
+      if (inTrip && before == false) {
+        ref.read(showBusProvider.notifier).state = false;
       }
     });
     final c = BondiColors.of(context);
@@ -121,7 +125,7 @@ class _PantallaPrincipalState extends ConsumerState<HomeScreen> {
           children: [
             Positioned.fill(
               child: BondiMap(
-                key: const ValueKey('mapa'),
+                key: const ValueKey('map'),
                 scene: buildScene(status, uiMap),
                 framing: framingOf(status, uiMap),
                 style: c.map,
@@ -157,18 +161,18 @@ class _PantallaPrincipalState extends ConsumerState<HomeScreen> {
                     ),
                 child: switch (status.phase) {
                   ExplorePhase() => const ExplorePanel(
-                    key: ValueKey('fase-explorar'),
+                    key: ValueKey('phase-explore'),
                   ),
                   OptionsPhase() => const OptionsPanel(
-                    key: ValueKey('fase-opciones'),
+                    key: ValueKey('phase-options'),
                   ),
-                  TripPhase() => const TripPanel(key: ValueKey('fase-viaje')),
+                  TripPhase() => const TripPanel(key: ValueKey('phase-trip')),
                 },
               ),
             ),
             if (searching != null)
               const Positioned.fill(
-                child: SearchScreen(key: ValueKey('busqueda')),
+                child: SearchScreen(key: ValueKey('search')),
               ),
             const NoticeListener(),
           ],

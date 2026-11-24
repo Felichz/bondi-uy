@@ -159,13 +159,13 @@ class Search {
 
   bool get complete => destination != null && origin != destination;
 
-  SearchPoint? punto(SearchField field) =>
+  SearchPoint? point(SearchField field) =>
       field == SearchField.origin ? origin : destination;
 
-  Search withPoint(SearchField field, SearchPoint? punto) => Search(
+  Search withPoint(SearchField field, SearchPoint? point) => Search(
     origin:
-        field == SearchField.origin ? (punto ?? const MyLocation()) : origin,
-    destination: field == SearchField.destination ? punto : destination,
+        field == SearchField.origin ? (point ?? const MyLocation()) : origin,
+    destination: field == SearchField.destination ? point : destination,
   );
 
   Search withQuery({
@@ -214,27 +214,27 @@ class OptionsPhase extends Phase {
 
   /// Live bus on the first bus leg of each option that the UI asked to
   /// follow (see `AppActions.enfocarOpcion`). Key: option id.
-  final Map<String, BusInPath> busesInVivo;
+  final Map<String, BusInPath> liveBuses;
 
   const OptionsPhase({
     required this.status,
     this.origin,
     this.destination,
     this.options = const [],
-    this.busesInVivo = const {},
+    this.liveBuses = const {},
   });
 
   OptionsPhase copyWith({
     OptionsStatus? status,
     List<TripOption>? options,
-    Map<String, BusInPath>? busesInVivo,
+    Map<String, BusInPath>? liveBuses,
   }) {
     return OptionsPhase(
       status: status ?? this.status,
       origin: origin,
       destination: destination,
       options: options ?? this.options,
-      busesInVivo: busesInVivo ?? this.busesInVivo,
+      liveBuses: liveBuses ?? this.liveBuses,
     );
   }
 }
@@ -242,7 +242,7 @@ class OptionsPhase extends Phase {
 enum TripStatus { inProgress, completed }
 
 /// How the advance to the current step was detected.
-enum OriginAdvance { inicio, automatic, manual }
+enum OriginAdvance { start, automatic, manual }
 
 /// Active trip, guided step by step.
 class TripPhase extends Phase {
@@ -250,7 +250,7 @@ class TripPhase extends Phase {
 
   /// Index in `opcion.tramos` of the step in progress (the logic detects it through GPS
   /// or manual confirmation).
-  final int stepActual;
+  final int currentStep;
   final OriginAdvance originAdvance;
   final ProgressStep progress;
   final TripStatus status;
@@ -266,27 +266,27 @@ class TripPhase extends Phase {
   /// true if the live source answered without a usable bus for the line.
   final bool withoutLiveData;
 
-  final DateTime inicio;
-  final DateTime? fin;
+  final DateTime start;
+  final DateTime? end;
 
   const TripPhase({
     required this.option,
-    required this.stepActual,
+    required this.currentStep,
     required this.originAdvance,
     required this.progress,
     required this.status,
-    required this.inicio,
+    required this.start,
     this.user,
     this.busExpected,
     this.withoutLiveData = false,
-    this.fin,
+    this.end,
   });
 
-  Leg get legActual => option.legs[stepActual];
+  Leg get currentLeg => option.legs[currentStep];
   int get totalSteps => option.legs.length;
 
   TripPhase copyWith({
-    int? stepActual,
+    int? currentStep,
     OriginAdvance? originAdvance,
     ProgressStep? progress,
     TripStatus? status,
@@ -294,19 +294,19 @@ class TripPhase extends Phase {
     BusInPath? busExpected,
     bool cleanBusExpected = false,
     bool? withoutLiveData,
-    DateTime? fin,
+    DateTime? end,
   }) {
     return TripPhase(
       option: option,
-      stepActual: stepActual ?? this.stepActual,
+      currentStep: currentStep ?? this.currentStep,
       originAdvance: originAdvance ?? this.originAdvance,
       progress: progress ?? this.progress,
       status: status ?? this.status,
-      inicio: inicio,
+      start: start,
       user: user ?? this.user,
       busExpected: cleanBusExpected ? null : (busExpected ?? this.busExpected),
       withoutLiveData: withoutLiveData ?? this.withoutLiveData,
-      fin: fin ?? this.fin,
+      end: end ?? this.end,
     );
   }
 }
@@ -316,7 +316,7 @@ class TripPhase extends Phase {
 @immutable
 class ProgressStep {
   /// Walking / bus: meters still missing, from the geometry.
-  final int? metersRestantes;
+  final int? metersLeft;
 
   /// Meters of the step when it started (to compute progress).
   final int? metersTotals;
@@ -325,16 +325,16 @@ class ProgressStep {
   final List<Coordinate>? routeRemaining;
 
   /// Bus: stops remaining before the alighting one (0 = get off at the next one).
-  final int? stopsRestantes;
+  final int? stopsLeft;
 
   /// Bus: next stop the bus passes.
   final Stop? nextStop;
 
   const ProgressStep({
-    this.metersRestantes,
+    this.metersLeft,
     this.metersTotals,
     this.routeRemaining,
-    this.stopsRestantes,
+    this.stopsLeft,
     this.nextStop,
   });
 
@@ -342,7 +342,7 @@ class ProgressStep {
 
   /// 0..1, or null if it cannot be computed.
   double? get fraction {
-    final total = metersTotals, rest = metersRestantes;
+    final total = metersTotals, rest = metersLeft;
     if (total == null || rest == null || total <= 0) return null;
     return (1 - rest / total).clamp(0.0, 1.0);
   }

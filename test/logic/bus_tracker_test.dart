@@ -22,7 +22,7 @@ StopArrival arrivalOfPoll(Map<String, dynamic> s) => StopArrival(
 void main() {
   final trip = tripFromFixture(0);
   final bus = trip.option.legs[2] as BusLeg;
-  final shape = shapeDelAsset(trip.shapeByLeg[bus.id]!)!;
+  final shape = shapeFromAsset(trip.shapeByLeg[bus.id]!)!;
   final route =
       RouteLine.create(
         shape,
@@ -30,7 +30,7 @@ void main() {
         alighting: bus.alighting.coordinate,
       )!;
 
-  test('cada sondeo real de D1 produce una aproximación por la calle', () {
+  test('every real D1 poll produces an approximation along the street', () {
     final tracker = BusTracker(line: 'D1', route: route);
     for (final s in pollsFromFixture(0).where((s) => s['found'] == true)) {
       final b = tracker.choose([arrivalOfPoll(s)])!;
@@ -49,7 +49,7 @@ void main() {
     }
   });
 
-  test('sigue al mismo vehículo entre sondeos', () {
+  test('follows the same vehicle between polls', () {
     final tracker = BusTracker(line: 'D1', route: route);
     final s = pollsFromFixture(0).first;
     final chosen = tracker.choose([arrivalOfPoll(s)]);
@@ -62,13 +62,13 @@ void main() {
         live: true,
         position: shape[shape.length ~/ 3],
       ),
-      vehicle: 'otro',
+      vehicle: 'other',
     );
     final b = tracker.choose([other, arrivalOfPoll(s)])!;
     expect(b.minutes, s['etaMinutes']);
   });
 
-  test('un bus que ya pasó la parada no se muestra viniendo', () {
+  test('a bus that already passed the stop is not shown as coming', () {
     final tracker = BusTracker(line: 'D1', route: route);
     final after = Polyline(shape).pointAt(route.routeStop + 800);
     final b = tracker.choose([
@@ -79,7 +79,7 @@ void main() {
     expect(b, isNull);
   });
 
-  test('otra línea en la misma parada se ignora', () {
+  test('another line at the same stop is ignored', () {
     final tracker = BusTracker(line: 'D1', route: route);
     expect(
       tracker.choose([
@@ -89,7 +89,7 @@ void main() {
     );
   });
 
-  test('sin shape: bus con posición pero sin aproximación inventada', () {
+  test('no shape: bus with a position but no made-up approximation', () {
     final tracker = BusTracker(line: 'D1');
     final s = pollsFromFixture(0).first;
     final b = tracker.choose([arrivalOfPoll(s)])!;
@@ -97,29 +97,33 @@ void main() {
     expect(b.approximation, isNull);
   });
 
-  test('el bus que llegó a la parada se informa llegado, no el siguiente', () {
-    final tracker = BusTracker(line: 'D1', route: route);
-    StopArrival en(double metersBefore, String vehicle, int minutes) =>
-        StopArrival(
-          BusArrival(
-            line: 'D1',
-            minutes: minutes,
-            live: true,
-            position: Polyline(shape).pointAt(route.routeStop - metersBefore),
-          ),
-          vehicle: vehicle,
-        );
-    // Ours is arriving; the next one is 2 km away.
-    final arriving = tracker.choose([en(80, 'a', 0), en(2000, 'b', 4)])!;
-    expect(arriving.metersUntilStop, lessThan(150));
-    // It passed the stop: the source now only reports the next one.
-    for (var i = 0; i < BusTracker.pollsArrived; i++) {
-      final b = tracker.choose([en(1900, 'b', 4)])!;
-      expect(b.minutes, 0, reason: 'sigue "llegó" en el sondeo $i');
-      expect(b.metersUntilStop, 0);
-    }
-    // If the user did not board, only now is the next one announced.
-    final siguiente = tracker.choose([en(1800, 'b', 4)])!;
-    expect(siguiente.minutes, 4);
-  });
+  test(
+    'the bus that reached the stop is reported as arrived, not the next one',
+    () {
+      final tracker = BusTracker(line: 'D1', route: route);
+      StopArrival arrivalAt(double metersBefore, String vehicle, int minutes) =>
+          StopArrival(
+            BusArrival(
+              line: 'D1',
+              minutes: minutes,
+              live: true,
+              position: Polyline(shape).pointAt(route.routeStop - metersBefore),
+            ),
+            vehicle: vehicle,
+          );
+      // Ours is arriving; the next one is 2 km away.
+      final arriving =
+          tracker.choose([arrivalAt(80, 'a', 0), arrivalAt(2000, 'b', 4)])!;
+      expect(arriving.metersUntilStop, lessThan(150));
+      // It passed the stop: the source now only reports the next one.
+      for (var i = 0; i < BusTracker.pollsArrived; i++) {
+        final b = tracker.choose([arrivalAt(1900, 'b', 4)])!;
+        expect(b.minutes, 0, reason: 'still "arrived" at poll $i');
+        expect(b.metersUntilStop, 0);
+      }
+      // If the user did not board, only now is the next one announced.
+      final next = tracker.choose([arrivalAt(1800, 'b', 4)])!;
+      expect(next.minutes, 4);
+    },
+  );
 }

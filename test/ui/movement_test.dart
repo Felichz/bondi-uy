@@ -12,8 +12,8 @@ void main() {
   // An L-shaped street: 200 m east and 200 m south.
   final origin = const Offset(0.35, 0.60);
   final corner = origin + Offset(m(200), 0);
-  final fin = corner + Offset(0, m(200));
-  final path = [origin, corner, fin];
+  final end = corner + Offset(0, m(200));
+  final path = [origin, corner, end];
 
   /// Point [d] meters along the street.
   Offset byStreet(double d) =>
@@ -27,41 +27,46 @@ void main() {
     return toEast < toSouth ? toEast : toSouth;
   }
 
-  test('con lecturas cada 5 s avanza sin frenar y dobla por la calle', () {
-    const v = 1.4; // m/s, walking
-    const cada = 5.0;
-    final mov = PredictedMovement(byStreet(0), 0);
-    Offset? anterior;
-    final steps = <double>[];
-    for (var cuadro = 0; cuadro <= 2500; cuadro++) {
-      final t = cuadro / 10;
-      // A reading arrives every 5 s (the real position at that instant).
-      if (cuadro > 0 && cuadro % (cada * 10).round() == 0) {
-        mov.reading(byStreet(v * t), t, path: path);
+  test(
+    'with readings every 5 s it moves without stopping and turns along the street',
+    () {
+      const v = 1.4; // m/s, walking
+      const every = 5.0;
+      final mov = PredictedMovement(byStreet(0), 0);
+      Offset? previous;
+      final steps = <double>[];
+      for (var frame = 0; frame <= 2500; frame++) {
+        final t = frame / 10;
+        // A reading arrives every 5 s (the real position at that instant).
+        if (frame > 0 && frame % (every * 10).round() == 0) {
+          mov.reading(byStreet(v * t), t, path: path);
+        }
+        mov.advance(t);
+        final p = mov.position;
+        if (previous != null && t > 12) {
+          steps.add((p - previous).distance / m(1));
+        }
+        previous = p;
+        if (t > 12) {
+          expect(
+            lateral(p),
+            lessThan(1.5),
+            reason: 'at ${t.toStringAsFixed(1)} s it is on the street',
+          );
+        }
       }
-      mov.advance(t);
-      final p = mov.position;
-      if (anterior != null && t > 12) steps.add((p - anterior).distance / m(1));
-      anterior = p;
-      if (t > 12) {
-        expect(
-          lateral(p),
-          lessThan(1.5),
-          reason: 'a los ${t.toStringAsFixed(1)} s va por la calle',
-        );
-      }
-    }
-    // After startup, each frame (0.1 s) advances ~0.14 m: it never stands
-    // still waiting for the next reading, nor does it jump.
-    final min = steps.reduce((a, b) => a < b ? a : b);
-    final max = steps.reduce((a, b) => a > b ? a : b);
-    expect(min, greaterThan(0.05), reason: 'no se detiene entre lecturas');
-    expect(max, lessThan(0.5), reason: 'no salta');
-    // It faces where it is going: at the end, south.
-    expect(mov.heading, closeTo(180, 5));
-  });
+      // After startup, each frame (0.1 s) advances ~0.14 m: it never stands
+      // still waiting for the next reading, nor does it jump.
+      final min = steps.reduce((a, b) => a < b ? a : b);
+      final max = steps.reduce((a, b) => a > b ? a : b);
+      expect(min, greaterThan(0.05), reason: 'does not stop between readings');
+      expect(max, lessThan(0.5), reason: 'does not jump');
+      // It faces where it is going: at the end, south.
+      expect(mov.heading, closeTo(180, 5));
+    },
+  );
 
-  test('quieto no se mueve con el ruido del GPS', () {
+  test('standing still does not move with GPS noise', () {
     final mov = PredictedMovement(origin, 0);
     for (var i = 1; i <= 10; i++) {
       mov.reading(origin + Offset(m(0.5) * (i.isEven ? 1 : -1), 0), i * 5.0);
@@ -70,14 +75,14 @@ void main() {
     expect((mov.position - origin).distance / m(1), lessThan(1));
   });
 
-  test('un salto grande se muestra directo', () {
+  test('a big jump is shown directly', () {
     final mov = PredictedMovement(origin, 0);
     final far = origin + Offset(m(2000), 0);
     mov.reading(far, 5, relocated: true);
     expect(mov.position, far);
   });
 
-  test('el bus que viene no se pasa de la parada por predicción', () {
+  test('the incoming bus does not overshoot the stop by prediction', () {
     // Coming along the L-shaped street toward a stop 150 m away, at 8 m/s.
     final stop = byStreet(150);
     final mov = PredictedMovement(byStreet(0), 0);
@@ -95,11 +100,11 @@ void main() {
     expect(
       (mov.position - byStreet(190)).distance / m(1),
       lessThan(20),
-      reason: 'sigue al GPS real',
+      reason: 'follows the real GPS',
     );
   });
 
-  test('sin camino, también frena en la parada', () {
+  test('without a path, it also stops at the stop', () {
     final stop = origin + Offset(m(100), 0);
     final mov = PredictedMovement(origin, 0);
     for (var t = 5.0; t <= 10; t += 5) {

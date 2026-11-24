@@ -157,19 +157,19 @@ class Pressable extends StatefulWidget {
 }
 
 class _PressableState extends State<Pressable> {
-  bool _abajo = false;
+  bool _down = false;
 
-  void _poner(bool v) {
-    if (_abajo != v) setState(() => _abajo = v);
+  void _setDown(bool v) {
+    if (_down != v) setState(() => _down = v);
   }
 
   @override
   Widget build(BuildContext context) => Listener(
-    onPointerDown: (_) => _poner(true),
-    onPointerUp: (_) => _poner(false),
-    onPointerCancel: (_) => _poner(false),
+    onPointerDown: (_) => _setDown(true),
+    onPointerUp: (_) => _setDown(false),
+    onPointerCancel: (_) => _setDown(false),
     child: AnimatedScale(
-      scale: _abajo ? 0.94 : 1,
+      scale: _down ? 0.94 : 1,
       duration: Duration(
         milliseconds: MediaQuery.disableAnimationsOf(context) ? 0 : 140,
       ),

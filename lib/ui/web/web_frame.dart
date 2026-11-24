@@ -23,16 +23,16 @@ const _urlApk = String.fromEnvironment('APK_URL');
 const _urlCode = String.fromEnvironment('SOURCE_URL');
 
 /// Screen size of a typical phone (logical px).
-const _pantalla = Size(412, 892);
+const _screen = Size(412, 892);
 
 /// The phone of the "inside" view in a window of [alto].
-Size sizePhoneByInside(double height) {
-  final scale = ((height - 96) / (_pantalla.height + 24)).clamp(0.5, 0.92);
-  return Size((_pantalla.width + 24) * scale, (_pantalla.height + 24) * scale);
+Size phoneSizeUnderTheHood(double height) {
+  final scale = ((height - 96) / (_screen.height + 24)).clamp(0.5, 0.92);
+  return Size((_screen.width + 24) * scale, (_screen.height + 24) * scale);
 }
 
 /// Minimum window height for the "inside" view.
-const heightMinByInside = 680.0;
+const heightMinUnderTheHood = 680.0;
 
 class WebFrame extends ConsumerStatefulWidget {
   final Widget child;
@@ -41,25 +41,25 @@ class WebFrame extends ConsumerStatefulWidget {
   final bool force;
 
   /// Start in the "inside" view (otherwise the URL decides).
-  final bool? byInside;
+  final bool? underTheHood;
   const WebFrame({
     super.key,
     required this.child,
     this.force = false,
-    this.byInside,
+    this.underTheHood,
   });
 
   @override
-  ConsumerState<WebFrame> createState() => _FrameWebState();
+  ConsumerState<WebFrame> createState() => _WebFrameState();
 }
 
-class _FrameWebState extends ConsumerState<WebFrame> {
-  static bool get _desactivado => Uri.base.queryParameters['marco'] == '0';
+class _WebFrameState extends ConsumerState<WebFrame> {
+  static bool get _disabled => Uri.base.queryParameters['marco'] == '0';
 
-  final _clavePhone = GlobalKey();
+  final _phoneKey = GlobalKey();
 
-  late bool _byInside =
-      widget.byInside ?? Uri.base.queryParameters['vista'] == 'core';
+  late bool _underTheHood =
+      widget.underTheHood ?? Uri.base.queryParameters['vista'] == 'core';
 
   Widget get child => widget.child;
   bool get force => widget.force;
@@ -68,7 +68,7 @@ class _FrameWebState extends ConsumerState<WebFrame> {
   Widget build(BuildContext context) {
     final mq = MediaQuery.of(context);
     final size = mq.size;
-    if (!(kIsWeb || force) || _desactivado) return child;
+    if (!(kIsWeb || force) || _disabled) return child;
     if (size.width < 700 || size.height < 560) {
       final android = defaultTargetPlatform == TargetPlatform.android;
       return kIsWeb && android && _urlApk.isNotEmpty
@@ -77,17 +77,14 @@ class _FrameWebState extends ConsumerState<WebFrame> {
     }
     final c = BondiColors.of(context);
     // The phone fits entirely in the window, with some room above and below.
-    final scale = ((size.height - 64) / (_pantalla.height + 24)).clamp(
-      0.5,
-      1.0,
-    );
+    final scale = ((size.height - 64) / (_screen.height + 24)).clamp(0.5, 1.0);
     // With a global key: when switching views, the app moves without being
     // unmounted (the trip, the map and the camera stay as they were).
     final device = _Phone(
-      key: _clavePhone,
+      key: _phoneKey,
       child: MediaQuery(
         data: mq.copyWith(
-          size: _pantalla,
+          size: _screen,
           padding: const EdgeInsets.only(top: 24, bottom: 16),
           viewPadding: const EdgeInsets.only(top: 24, bottom: 16),
         ),
@@ -95,26 +92,26 @@ class _FrameWebState extends ConsumerState<WebFrame> {
       ),
     );
     final phone = SizedBox(
-      width: (_pantalla.width + 24) * scale,
-      height: (_pantalla.height + 24) * scale,
+      width: (_screen.width + 24) * scale,
+      height: (_screen.height + 24) * scale,
       child: FittedBox(child: device),
     );
     // Inside view: only if the logic reports its calls (the demo) and it fits
     // whole (the story, the phone and the board, without shrinking texts).
-    final sizeCore = sizePhoneByInside(size.height);
-    final byInsidePossible =
+    final sizeCore = phoneSizeUnderTheHood(size.height);
+    final underTheHoodPossible =
         ref.watch(tracesProvider) != null &&
-        size.height >= heightMinByInside &&
-        size.width >= widthMinByInside(sizeCore.width);
+        size.height >= heightMinUnderTheHood &&
+        size.width >= widthMinUnderTheHood(sizeCore.width);
     final selector =
-        byInsidePossible
+        underTheHoodPossible
             ? _Selector(
-              byInside: _byInside,
-              dark: _byInside || c.glow == Brightness.dark,
-              onChange: (v) => setState(() => _byInside = v),
+              underTheHood: _underTheHood,
+              dark: _underTheHood || c.glow == Brightness.dark,
+              onChange: (v) => setState(() => _underTheHood = v),
             )
             : null;
-    if (byInsidePossible && _byInside) {
+    if (underTheHoodPossible && _underTheHood) {
       return ColoredBox(
         color: const Color(0xFF06080B),
         child: UnderTheHood(
@@ -159,8 +156,8 @@ class _Phone extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: _pantalla.width + 24,
-      height: _pantalla.height + 24,
+      width: _screen.width + 24,
+      height: _screen.height + 24,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: const Color(0xFF15171C),
@@ -181,7 +178,7 @@ class _Phone extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(44),
-        child: SizedBox.fromSize(size: _pantalla, child: child),
+        child: SizedBox.fromSize(size: _screen, child: child),
       ),
     );
   }
@@ -222,7 +219,7 @@ class _Presentation extends StatelessWidget {
                       minimumSize: const Size(0, 48),
                       padding: const EdgeInsets.symmetric(horizontal: 18),
                     ),
-                    onPressed: () => abrirLink(_urlApk),
+                    onPressed: () => openLink(_urlApk),
                     icon: const Icon(Icons.android_rounded),
                     label: Text(tx.webDownload),
                   ),
@@ -232,7 +229,7 @@ class _Presentation extends StatelessWidget {
                       minimumSize: const Size(0, 48),
                       padding: const EdgeInsets.symmetric(horizontal: 18),
                     ),
-                    onPressed: () => abrirLink(_urlCode),
+                    onPressed: () => openLink(_urlCode),
                     icon: const Icon(Icons.code_rounded),
                     label: Text(tx.webCode),
                   ),
@@ -261,7 +258,7 @@ class _WithNotice extends StatefulWidget {
 }
 
 class _WithNoticeState extends State<_WithNotice> {
-  static const _clave = 'avisoApp';
+  static const _noticeKey = 'avisoApp';
 
   /// Hidden until it is known whether it was already closed, so it does not appear and then vanish.
   bool _visible = false;
@@ -269,14 +266,14 @@ class _WithNoticeState extends State<_WithNotice> {
   @override
   void initState() {
     super.initState();
-    readPreference(_clave).then((v) {
+    readPreference(_noticeKey).then((v) {
       if (mounted && v != 'cerrado') setState(() => _visible = true);
     });
   }
 
   void _close() {
     setState(() => _visible = false);
-    guardarPreference(_clave, 'cerrado');
+    savePreference(_noticeKey, 'cerrado');
   }
 
   @override
@@ -307,13 +304,13 @@ class _Notice extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = BondiColors.of(context);
     final t = Theme.of(context).textTheme;
-    final arriba = MediaQuery.of(context).padding.top;
+    final topInset = MediaQuery.of(context).padding.top;
     return Material(
       color: c.sheetSolid,
       child: Container(
-        padding: EdgeInsets.fromLTRB(16, arriba + 10, 4, 10),
+        padding: EdgeInsets.fromLTRB(16, topInset + 10, 4, 10),
         decoration: BoxDecoration(
-          border: Border(bottom: BorderSide(color: c.separador)),
+          border: Border(bottom: BorderSide(color: c.separator)),
         ),
         child: Row(
           children: [
@@ -357,7 +354,7 @@ class _Notice extends StatelessWidget {
                 minimumSize: const Size(0, 40),
                 padding: const EdgeInsets.symmetric(horizontal: 14),
               ),
-              onPressed: () => abrirLink(_urlApk),
+              onPressed: () => openLink(_urlApk),
               icon: const Icon(Icons.android_rounded, size: 18),
               label: Text(tx.noticeAppDownload),
             ),
@@ -412,11 +409,11 @@ class _Marker extends StatelessWidget {
 
 /// Chooses the presentation view: the usual one or "inside".
 class _Selector extends StatelessWidget {
-  final bool byInside;
+  final bool underTheHood;
   final bool dark;
   final ValueChanged<bool> onChange;
   const _Selector({
-    required this.byInside,
+    required this.underTheHood,
     required this.dark,
     required this.onChange,
   });
@@ -432,7 +429,7 @@ class _Selector extends StatelessWidget {
       color: current ? active : Colors.transparent,
       borderRadius: BorderRadius.circular(20),
       child: InkWell(
-        key: ValueKey(value ? 'vista-por-dentro' : 'vista-presentacion'),
+        key: ValueKey(value ? 'view-under-the-hood' : 'view-presentation'),
         borderRadius: BorderRadius.circular(20),
         onTap: current ? null : () => onChange(value),
         child: Padding(
@@ -460,9 +457,9 @@ class _Selector extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            option(tx.webViewPresentation, !byInside, false),
+            option(tx.webViewPresentation, !underTheHood, false),
             const SizedBox(width: 2),
-            option(tx.webViewByInside, byInside, true),
+            option(tx.webViewInside, underTheHood, true),
           ],
         ),
       ),

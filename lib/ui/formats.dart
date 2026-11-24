@@ -16,7 +16,7 @@ String duration(int seconds) {
 }
 
 /// "1 min", "12 min" for ETAs (no hours).
-String minutes(int m) => m <= 0 ? tx.ya : '$m${_nb}min';
+String minutes(int m) => m <= 0 ? tx.now : '$m${_nb}min';
 
 String distance(int meters) {
   if (meters < 1000) {

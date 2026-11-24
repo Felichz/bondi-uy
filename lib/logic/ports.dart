@@ -19,7 +19,7 @@ class PlannedTrip {
 
 abstract interface class TripPlanner {
   /// Returns raw itineraries (no ranking or ETAs). Throws
-  /// [ErrorServicio] if the service does not respond.
+  /// [ServiceError] if the service does not respond.
   Future<List<PlannedTrip>> plan({
     required Coordinate origin,
     required Coordinate destination,
@@ -35,8 +35,8 @@ class StopArrival {
   const StopArrival(this.data, {this.vehicle});
 }
 
-abstract interface class SourceArrivals {
-  /// Upcoming arrivals at a stop. Throws [ErrorServicio] if it fails.
+abstract interface class ArrivalSource {
+  /// Upcoming arrivals at a stop. Throws [ServiceError] if it fails.
   Future<List<StopArrival>> arrivals(String idStop);
 }
 
@@ -45,7 +45,7 @@ abstract interface class PlaceSearcher {
 }
 
 /// Static network data (bundled GTFS).
-abstract interface class CatalogRed {
+abstract interface class NetworkCatalog {
   Future<List<NetworkStop>> stops();
 
   /// Full geometry of a GTFS shape, or null if it does not exist.
@@ -70,14 +70,14 @@ class LocationSample {
   });
 }
 
-enum LocationPermissionState { granted, denied, deniedParaAlways, serviceOff }
+enum LocationPermissionState { granted, denied, deniedForever, serviceOff }
 
 abstract interface class LocationSource {
   /// Requests permission if needed.
   Future<LocationPermissionState> ensurePermission();
 
   /// A single reading (or null if no fix is available in time).
-  Future<LocationSample?> actual();
+  Future<LocationSample?> current();
 
   /// Continuous stream of readings. Stops when the subscription is cancelled.
   Stream<LocationSample> follow();
@@ -89,14 +89,14 @@ class ServiceError implements Exception {
   const ServiceError(this.service, [this.cause]);
 
   @override
-  String toString() => 'ErrorServicio($service): $cause';
+  String toString() => 'ServiceError($service): $cause';
 }
 
 /// Injectable clock (tests and demo mode speed up time).
 typedef Clock = DateTime Function();
 
 /// The simulated world of demo mode.
-abstract interface class ControlDemo {
+abstract interface class DemoControl {
   /// Destinations with a recorded trip.
   List<Place> get destinations;
 }

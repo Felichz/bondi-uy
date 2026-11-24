@@ -1,5 +1,5 @@
 // Tracing: wraps the seams of the logic (the actions it receives from the
-// UI and the ports toward the outside world) to report each call in [Trazas],
+// UI and the ports toward the outside world) to report each call in [Traces],
 // without changing what they do. The web demo uses it to show the app from
 // the inside.
 
@@ -24,110 +24,110 @@ class TracedActions implements AppActions {
 
   @override
   void start() {
-    _t('arrancar()');
+    _t('start()');
     real.start();
   }
 
   @override
   void retryLocation() {
-    _t('reintentarUbicacion()');
+    _t('retryLocation()');
     real.retryLocation();
   }
 
   @override
   void writeQuery(SearchField field, String text) {
-    _t('escribirConsulta(${field.name}, ${_q(text)})');
+    _t('writeQuery(${field.name}, ${_q(text)})');
     real.writeQuery(field, text);
   }
 
   @override
   void choosePlace(SearchField field, Place place) {
-    _t('elegirLugar(${field.name}, ${_q(place.name)})');
+    _t('choosePlace(${field.name}, ${_q(place.name)})');
     real.choosePlace(field, place);
   }
 
   @override
   void useMyLocation(SearchField field) {
-    _t('usarMiUbicacion(${field.name})');
+    _t('useMyLocation(${field.name})');
     real.useMyLocation(field);
   }
 
   @override
   void cleanField(SearchField field) {
-    _t('limpiarCampo(${field.name})');
+    _t('cleanField(${field.name})');
     real.cleanField(field);
   }
 
   @override
-  void swapOriginYDestination() {
-    _t('intercambiarOrigenYDestino()');
-    real.swapOriginYDestination();
+  void swapOriginAndDestination() {
+    _t('swapOriginAndDestination()');
+    real.swapOriginAndDestination();
   }
 
   @override
-  void cancelarQuery() {
-    _t('cancelarConsulta()');
-    real.cancelarQuery();
+  void cancelQuery() {
+    _t('cancelQuery()');
+    real.cancelQuery();
   }
 
   @override
   void searchTrips() {
-    _t('buscarViajes()');
+    _t('searchTrips()');
     real.searchTrips();
   }
 
   @override
   void focusOption(String idOption) {
-    _t('enfocarOpcion(${_q(idOption)})');
+    _t('focusOption(${_q(idOption)})');
     real.focusOption(idOption);
   }
 
   @override
   void closeOptions() {
-    _t('cerrarOpciones()');
+    _t('closeOptions()');
     real.closeOptions();
   }
 
   @override
   void startTrip(String idOption) {
-    _t('iniciarViaje(${_q(idOption)})');
+    _t('startTrip(${_q(idOption)})');
     real.startTrip(idOption);
   }
 
   @override
-  void confirmStepActual() {
-    _t('confirmarPasoActual()');
-    real.confirmStepActual();
+  void confirmCurrentStep() {
+    _t('confirmCurrentStep()');
+    real.confirmCurrentStep();
   }
 
   @override
   void finishTrip() {
-    _t('terminarViaje()');
+    _t('finishTrip()');
     real.finishTrip();
   }
 
   @override
   void closeArrival() {
-    _t('cerrarLlegada()');
+    _t('closeArrival()');
     real.closeArrival();
   }
 
   @override
   void queryStop(String idStop) {
-    _t('consultarParada(${_q(idStop)})');
+    _t('queryStop(${_q(idStop)})');
     real.queryStop(idStop);
   }
 
   @override
   void closeStop() {
-    _t('cerrarParada()');
+    _t('closeStop()');
     real.closeStop();
   }
 
   @override
-  void descartarNotice(int idNotice) {
-    _t('descartarAviso($idNotice)');
-    real.descartarNotice(idNotice);
+  void dismissNotice(int idNotice) {
+    _t('dismissNotice($idNotice)');
+    real.dismissNotice(idNotice);
   }
 }
 
@@ -142,7 +142,7 @@ class TracedPlanner implements TripPlanner {
     required Coordinate destination,
     required DateTime exit,
   }) async {
-    final call = 'planificar(${_c(origin)}, ${_c(destination)})';
+    final call = 'plan(${_c(origin)}, ${_c(destination)})';
     traces.emit(Piece.controller, Piece.planner, call);
     final r = await real.plan(
       origin: origin,
@@ -153,20 +153,20 @@ class TracedPlanner implements TripPlanner {
       Piece.planner,
       Piece.controller,
       call,
-      result: '${r.length} itinerarios',
+      result: '${r.length} itineraries',
     );
     return r;
   }
 }
 
-class TracedArrivals implements SourceArrivals {
-  final SourceArrivals real;
+class TracedArrivals implements ArrivalSource {
+  final ArrivalSource real;
   final Traces traces;
   TracedArrivals(this.real, this.traces);
 
   @override
   Future<List<StopArrival>> arrivals(String idStop) async {
-    final call = 'llegadas(${_q(idStop)})';
+    final call = 'arrivals(${_q(idStop)})';
     traces.emit(Piece.controller, Piece.arrivals, call);
     final r = await real.arrivals(idStop);
     final live = r.where((l) => l.data.position != null).length;
@@ -174,7 +174,7 @@ class TracedArrivals implements SourceArrivals {
       Piece.arrivals,
       Piece.controller,
       call,
-      result: '${r.length} buses, $live en vivo',
+      result: '${r.length} buses, $live live',
     );
     return r;
   }
@@ -187,33 +187,33 @@ class TracedPlaces implements PlaceSearcher {
 
   @override
   Future<List<Place>> suggestions(String text, {Coordinate? near}) async {
-    final call = 'sugerencias(${_q(text)})';
+    final call = 'suggestions(${_q(text)})';
     traces.emit(Piece.controller, Piece.places, call);
     final r = await real.suggestions(text, near: near);
     traces.emit(
       Piece.places,
       Piece.controller,
       call,
-      result: '${r.length} lugares',
+      result: '${r.length} places',
     );
     return r;
   }
 }
 
-class TracedCatalog implements CatalogRed {
-  final CatalogRed real;
+class TracedCatalog implements NetworkCatalog {
+  final NetworkCatalog real;
   final Traces traces;
   TracedCatalog(this.real, this.traces);
 
   @override
   Future<List<NetworkStop>> stops() async {
-    traces.emit(Piece.controller, Piece.catalog, 'paradas()');
+    traces.emit(Piece.controller, Piece.catalog, 'stops()');
     final r = await real.stops();
     traces.emit(
       Piece.catalog,
       Piece.controller,
-      'paradas()',
-      result: '${r.length} paradas',
+      'stops()',
+      result: '${r.length} stops',
     );
     return r;
   }
@@ -227,7 +227,7 @@ class TracedCatalog implements CatalogRed {
       Piece.catalog,
       Piece.controller,
       call,
-      result: r == null ? 'sin recorrido' : '${r.length} puntos',
+      result: r == null ? 'no shape' : '${r.length} points',
     );
     return r;
   }
@@ -240,20 +240,20 @@ class TracedLocation implements LocationSource {
 
   @override
   Future<LocationPermissionState> ensurePermission() async {
-    traces.emit(Piece.controller, Piece.location, 'asegurarPermiso()');
+    traces.emit(Piece.controller, Piece.location, 'ensurePermission()');
     final r = await real.ensurePermission();
     traces.emit(
       Piece.location,
       Piece.controller,
-      'asegurarPermiso()',
+      'ensurePermission()',
       result: r.name,
     );
     return r;
   }
 
   @override
-  Future<LocationSample?> actual() async {
-    final r = await real.actual();
+  Future<LocationSample?> current() async {
+    final r = await real.current();
     if (r != null) _sample(r);
     return r;
   }
@@ -267,7 +267,7 @@ class TracedLocation implements LocationSource {
   void _sample(LocationSample m) => traces.emit(
     Piece.location,
     Piece.controller,
-    'ubicacion${_c(m.coordinate)}',
+    'location${_c(m.coordinate)}',
     result: m.velocity == null ? null : '${m.velocity!.toStringAsFixed(1)} m/s',
   );
 }

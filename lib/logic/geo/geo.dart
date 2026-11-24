@@ -40,18 +40,18 @@ class Projection {
 
   /// Position within the segment (0..1).
   final double t;
-  final Coordinate punto;
+  final Coordinate point;
 
   /// Perpendicular distance from the coordinate to the polyline.
   final double distanceLateral;
 
-  /// Meters traveled from the start of the polyline to [punto].
+  /// Meters traveled from the start of the polyline to [point].
   final double route;
 
   const Projection({
     required this.segment,
     required this.t,
-    required this.punto,
+    required this.point,
     required this.distanceLateral,
     required this.route,
   });
@@ -63,10 +63,10 @@ class Polyline {
   final List<double> _accumulated;
 
   Polyline(this.points)
-    : assert(points.length >= 2, 'una polilínea necesita 2 puntos'),
-      _accumulated = _acumular(points);
+    : assert(points.length >= 2, 'a polyline needs 2 points'),
+      _accumulated = _accumulate(points);
 
-  static List<double> _acumular(List<Coordinate> p) {
+  static List<double> _accumulate(List<Coordinate> p) {
     final acc = List<double>.filled(p.length, 0);
     for (var i = 1; i < p.length; i++) {
       acc[i] = acc[i - 1] + distance(p[i - 1], p[i]);
@@ -102,7 +102,7 @@ class Polyline {
     final len2 = bx * bx + by * by;
     var t = len2 == 0 ? 0.0 : (cx * bx + cy * by) / len2;
     t = t.clamp(0.0, 1.0);
-    final punto = Coordinate(
+    final point = Coordinate(
       a.lat + (b.lat - a.lat) * t,
       a.lng + (b.lng - a.lng) * t,
     );
@@ -110,8 +110,8 @@ class Polyline {
     return Projection(
       segment: i,
       t: t,
-      punto: punto,
-      distanceLateral: distance(c, punto),
+      point: point,
+      distanceLateral: distance(c, point),
       route: _accumulated[i] + seg * t,
     );
   }
@@ -122,10 +122,10 @@ class Polyline {
     final res = <Coordinate>[pointAt(from)];
     for (var i = 0; i < points.length; i++) {
       if (_accumulated[i] > from && _accumulated[i] < until) {
-        _agregarSinDuplicar(res, points[i]);
+        _addUnlessDuplicate(res, points[i]);
       }
     }
-    _agregarSinDuplicar(res, pointAt(until));
+    _addUnlessDuplicate(res, pointAt(until));
     if (res.length == 1) res.add(res.first);
     return res;
   }
@@ -152,7 +152,7 @@ class Polyline {
   }
 }
 
-void _agregarSinDuplicar(List<Coordinate> list, Coordinate c) {
+void _addUnlessDuplicate(List<Coordinate> list, Coordinate c) {
   if (list.isEmpty || distance(list.last, c) > 0.25) list.add(c);
 }
 

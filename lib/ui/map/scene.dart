@@ -201,7 +201,7 @@ class MarkerBus extends MapMarker {
 }
 
 class MarkerStop extends MapMarker {
-  final StopRole rol;
+  final StopRole role;
 
   /// true if it is the stop of the current step (highlighted).
   final bool active;
@@ -210,7 +210,7 @@ class MarkerStop extends MapMarker {
   final bool urgent;
   const MarkerStop(
     super.coordinate, {
-    required this.rol,
+    required this.role,
     this.active = false,
     this.urgent = false,
     super.balloon,
@@ -280,8 +280,8 @@ class MapScene {
   final List<MapMarker> marks;
 
   /// Stop network: tappable when exploring; faint (context only) during a trip.
-  final List<NetworkStop> stopsRed;
-  final bool stopsRedFaint;
+  final List<NetworkStop> networkStops;
+  final bool networkStopsFaint;
   final MapTarget? target;
 
   /// Markers halfway through appearing or fading out (by identity; 1 if absent).
@@ -290,8 +290,8 @@ class MapScene {
   const MapScene({
     this.strokes = const [],
     this.marks = const [],
-    this.stopsRed = const [],
-    this.stopsRedFaint = false,
+    this.networkStops = const [],
+    this.networkStopsFaint = false,
     this.target,
     this.opacities = const {},
   });
@@ -300,15 +300,15 @@ class MapScene {
 
   static const empty = MapScene();
 
-  MapScene having({
+  MapScene copyWith({
     List<MapMarker>? marks,
     List<MapStroke>? strokes,
     Map<MapMarker, double>? opacity,
   }) => MapScene(
     strokes: strokes ?? this.strokes,
     marks: marks ?? this.marks,
-    stopsRed: stopsRed,
-    stopsRedFaint: stopsRedFaint,
+    networkStops: networkStops,
+    networkStopsFaint: networkStopsFaint,
     target: target,
     opacities: opacity ?? opacities,
   );
@@ -335,8 +335,8 @@ class MapUiStatus {
   final String? optionFocused;
 
   /// During a trip, the camera follows the approaching bus instead of the user.
-  final bool verBus;
-  const MapUiStatus({this.optionFocused, this.verBus = false});
+  final bool showBus;
+  const MapUiStatus({this.optionFocused, this.showBus = false});
 }
 
 // ---------------------------------------------------------------------------
@@ -353,7 +353,7 @@ MapScene buildScene(AppState s, MapUiStatus ui) {
     case ExplorePhase():
       final queried = s.stopQueried;
       return MapScene(
-        stopsRed: s.stops,
+        networkStops: s.stops,
         marks: [
           if (queried != null)
             MarkerStopQueried(
@@ -378,10 +378,10 @@ MapScene buildScene(AppState s, MapUiStatus ui) {
           option,
           strokes,
           marks,
-          stepActual: null,
+          currentStep: null,
           destinationName: destinationName,
         );
-        final bus = f.busesInVivo[option.id];
+        final bus = f.liveBuses[option.id];
         if (bus != null && bus.position != null) {
           if (bus.approximation != null) {
             strokes.add(
@@ -406,7 +406,7 @@ MapScene buildScene(AppState s, MapUiStatus ui) {
       if (f.status == TripStatus.completed) {
         return MapScene(
           marks: [
-            MarkerDestination(_fin(f.option)),
+            MarkerDestination(_end(f.option)),
             if (pos != null) MarkerUser(pos, still: true),
           ],
         );
@@ -415,16 +415,16 @@ MapScene buildScene(AppState s, MapUiStatus ui) {
         f.option,
         strokes,
         marks,
-        stepActual: f.stepActual,
+        currentStep: f.currentStep,
         progress: f.progress,
         destinationName: destinationName,
       );
-      final actual = f.legActual;
+      final current = f.currentLeg;
       final bus = f.busExpected;
       final boarding = _boarding(f);
       if (bus != null &&
           bus.position != null &&
-          actual is! BusLeg &&
+          current is! BusLeg &&
           boarding == null) {
         if (bus.approximation != null) {
           strokes.add(MapStroke(StrokeStyle.approximation, bus.approximation!));
@@ -432,7 +432,7 @@ MapScene buildScene(AppState s, MapUiStatus ui) {
         marks.add(_markerBus(bus, stop: _stopOfWait(f)));
       }
       if (pos != null) {
-        switch (actual) {
+        switch (current) {
           case WaitLeg() when boarding != null:
             // Already on board even though the logic has not confirmed it yet:
             // the bus and the user are one (without waiting for the 60 m).
@@ -454,8 +454,8 @@ MapScene buildScene(AppState s, MapUiStatus ui) {
       return MapScene(
         strokes: strokes,
         marks: marks,
-        stopsRed: s.stops,
-        stopsRedFaint: true,
+        networkStops: s.stops,
+        networkStopsFaint: true,
         target: _target(f, destinationName),
       );
   }
@@ -463,7 +463,7 @@ MapScene buildScene(AppState s, MapUiStatus ui) {
 
 /// The stop where the bus for the current or next step is awaited.
 Coordinate? _stopOfWait(TripPhase f) {
-  for (final i in [f.stepActual, f.stepActual + 1]) {
+  for (final i in [f.currentStep, f.currentStep + 1]) {
     if (i >= f.totalSteps) break;
     final t = f.option.legs[i];
     if (t is WaitLeg) return t.stop.coordinate;
@@ -478,15 +478,15 @@ const metersBoarding = 25;
 /// The bus of the next step if the user is already leaving on it: its bus
 /// is at the stop and the user has moved away from it.
 BusLeg? _boarding(TripPhase f) {
-  final t = f.legActual;
-  if (t is! WaitLeg || f.stepActual + 1 >= f.totalSteps) return null;
+  final t = f.currentLeg;
+  if (t is! WaitLeg || f.currentStep + 1 >= f.totalSteps) return null;
   final bus = f.busExpected;
-  final far = f.progress.metersRestantes;
+  final far = f.progress.metersLeft;
   if (bus == null || far == null) return null;
   final inTheStop = bus.minutes == 0 && (bus.metersUntilStop ?? 0) <= 30;
   if (!inTheStop || far < metersBoarding) return null;
-  final siguiente = f.option.legs[f.stepActual + 1];
-  return siguiente is BusLeg ? siguiente : null;
+  final next = f.option.legs[f.currentStep + 1];
+  return next is BusLeg ? next : null;
 }
 
 MarkerBus _markerBus(BusInPath bus, {Coordinate? stop}) => MarkerBus(
@@ -513,13 +513,13 @@ MarkerBus _markerBus(BusInPath bus, {Coordinate? stop}) => MarkerBus(
 
 /// What is sought in the current step, to flag it if it leaves the view.
 MapTarget? _target(TripPhase f, String? destinationName) {
-  final rest = f.progress.metersRestantes;
+  final rest = f.progress.metersLeft;
   final a = rest == null ? '' : ' · ${distance(rest)}';
-  return switch (f.legActual) {
-    WalkLeg(:final towardStop, :final fin) =>
+  return switch (f.currentLeg) {
+    WalkLeg(:final towardStop, :final end) =>
       towardStop != null
           ? MapTarget(towardStop.coordinate, '${tx.yourStop}$a')
-          : MapTarget(fin, '${tx.yourDestination}$a'),
+          : MapTarget(end, '${tx.yourDestination}$a'),
     WaitLeg(:final stop) => MapTarget(stop.coordinate, tx.yourStop),
     BusLeg(:final alighting) => MapTarget(
       alighting.coordinate,
@@ -540,36 +540,36 @@ TripOption? _focused(OptionsPhase f, String? id) {
   );
 }
 
-/// Strokes, stops and balloons of an option. With [stepActual] (during a trip)
+/// Strokes, stops and balloons of an option. With [currentStep] (during a trip)
 /// that step is highlighted, what is done is dimmed or disappears, and what
 /// comes next stays as context.
 void _drawOption(
   TripOption o,
   List<MapStroke> strokes,
   List<MapMarker> marks, {
-  required int? stepActual,
+  required int? currentStep,
   ProgressStep? progress,
   String? destinationName,
 }) {
-  final inTrip = stepActual != null;
+  final inTrip = currentStep != null;
   final faintFirst = <MapStroke>[];
   final activeStrokes = <MapStroke>[];
   for (var i = 0; i < o.legs.length; i++) {
     final t = o.legs[i];
-    final active = !inTrip || stepActual == i;
+    final active = !inTrip || currentStep == i;
     // What is already done is not drawn: only what remains.
-    if (inTrip && i < stepActual) continue;
+    if (inTrip && i < currentStep) continue;
     switch (t) {
       case WalkLeg():
         final points =
-            (stepActual == i && progress?.routeRemaining != null)
+            (currentStep == i && progress?.routeRemaining != null)
                 ? progress!.routeRemaining!
                 : t.geometry;
         (active ? activeStrokes : faintFirst).add(
           MapStroke(active ? StrokeStyle.walk : StrokeStyle.walkFaint, points),
         );
       case BusLeg():
-        if (stepActual == i) {
+        if (currentStep == i) {
           // On the bus: the whole route, gray, underneath; what remains
           // (from where the bus is, measured by the logic) in red on top,
           // covering it. The gray that shows is what has been done.
@@ -577,13 +577,14 @@ void _drawOption(
           final rest = progress?.routeRemaining;
           if (rest != null && rest.length >= 2) {
             activeStrokes.add(MapStroke(StrokeStyle.bus, rest));
-          } else if (progress?.metersRestantes == null) {
+          } else if (progress?.metersLeft == null) {
             // Just boarded and not measured yet: everything ahead.
             activeStrokes.add(MapStroke(StrokeStyle.bus, t.geometry));
           }
           continue;
         }
-        final highlight = active || stepActual == i - 1; // waiting for this bus
+        final highlight =
+            active || currentStep == i - 1; // waiting for this bus
         (highlight ? activeStrokes : faintFirst).add(
           MapStroke(
             highlight ? StrokeStyle.bus : StrokeStyle.busFaint,
@@ -626,13 +627,13 @@ void _drawOption(
     if (t is! BusLeg) continue;
     final isFirst = firstBus;
     firstBus = false;
-    if (inTrip && i < stepActual) continue;
-    final arriba = stepActual == i;
+    if (inTrip && i < currentStep) continue;
+    final onBoard = currentStep == i;
     // Waiting for this bus or walking toward its stop.
-    final toward = inTrip && (stepActual == i - 1 || stepActual == i - 2);
-    final missing = arriba ? progress?.stopsRestantes : null;
-    final next = arriba ? progress?.nextStop : null;
-    final last = arriba && missing == 0;
+    final toward = inTrip && (currentStep == i - 1 || currentStep == i - 2);
+    final missing = onBoard ? progress?.stopsLeft : null;
+    final next = onBoard ? progress?.nextStop : null;
+    final last = onBoard && missing == 0;
 
     // Intermediate stops: route context; on the bus, the ones already
     // passed are dimmed and the next one is highlighted.
@@ -643,7 +644,7 @@ void _drawOption(
     for (var k = 0; k < t.stopsIntermediate.length; k++) {
       final p = t.stopsIntermediate[k];
       final status =
-          !arriba
+          !onBoard
               ? RouteStopStatus.future
               : idxNext < 0
               ? (next != null && next.id == t.alighting.id
@@ -673,7 +674,7 @@ void _drawOption(
     marks.add(
       MarkerStop(
         t.boarding.coordinate,
-        rol: StopRole.boarding,
+        role: StopRole.boarding,
         active: toward,
         balloon:
             (toward || (!inTrip && isFirst))
@@ -690,11 +691,11 @@ void _drawOption(
     marks.add(
       MarkerStop(
         t.alighting.coordinate,
-        rol: StopRole.alighting,
-        active: arriba,
+        role: StopRole.alighting,
+        active: onBoard,
         urgent: last,
         balloon:
-            arriba
+            onBoard
                 ? Balloon(
                   last ? tx.getOffHere : tx.youGetOffHere,
                   detail:
@@ -712,15 +713,15 @@ void _drawOption(
   }
 
   final last = o.legs.last;
-  final arrivingToPie =
-      last is WalkLeg && inTrip && stepActual == o.legs.length - 1;
+  final arrivingOnFoot =
+      last is WalkLeg && inTrip && currentStep == o.legs.length - 1;
   marks.add(
     MarkerDestination(
-      _fin(o),
+      _end(o),
       balloon:
           !inTrip
               ? Balloon(tx.arrive(time(o.arrival)), priority: 60)
-              : arrivingToPie
+              : arrivingOnFoot
               ? Balloon(
                 destinationName == null
                     ? tx.yourDestination
@@ -743,8 +744,8 @@ void _drawOption(
   }
 }
 
-Coordinate _fin(TripOption o) => switch (o.legs.last) {
-  WalkLeg(:final fin) => fin,
+Coordinate _end(TripOption o) => switch (o.legs.last) {
+  WalkLeg(:final end) => end,
   BusLeg(:final alighting) => alighting.coordinate,
   WaitLeg(:final stop) => stop.coordinate,
 };

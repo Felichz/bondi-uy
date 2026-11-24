@@ -15,11 +15,11 @@ import 'harness.dart';
 
 void main() {
   for (final (prefix, withoutAnimations, dark) in [
-    ('recomendado', false, false),
-    ('oscuro', false, true),
-    ('sin_animaciones', true, false),
+    ('recommended', false, false),
+    ('dark', false, true),
+    ('no_animations', true, false),
   ]) {
-    testWidgets('viaje recomendado de punta a punta ($prefix)', (tester) async {
+    testWidgets('recommended trip end to end ($prefix)', (tester) async {
       final a = await Harness.mount(
         tester,
         prefix: prefix,
@@ -30,60 +30,60 @@ void main() {
       // Home: search and map.
       expect(find.text('¿A dónde vas?'), findsOneWidget);
       await a.wait(const Duration(seconds: 2));
-      await a.capture('inicio');
+      await a.capture('start');
 
       // Search for a destination.
-      await tester.tap(find.byKey(const ValueKey('buscar-destino')));
+      await tester.tap(find.byKey(const ValueKey('search-destination')));
       await a.wait(const Duration(milliseconds: 400));
-      expect(find.byKey(const ValueKey('campo-destino')), findsOneWidget);
+      expect(find.byKey(const ValueKey('field-destination')), findsOneWidget);
       await tester.enterText(
-        find.byKey(const ValueKey('campo-destino')),
+        find.byKey(const ValueKey('field-destination')),
         'plaza',
       );
       await a.wait(const Duration(milliseconds: 600));
       expect(
-        find.byKey(const ValueKey('sugerencia-plaza-independencia')),
+        find.byKey(const ValueKey('suggestion-plaza-independencia')),
         findsOneWidget,
       );
-      await a.capture('sugerencias');
+      await a.capture('suggestions');
       await tester.tap(
-        find.byKey(const ValueKey('sugerencia-plaza-independencia')),
+        find.byKey(const ValueKey('suggestion-plaza-independencia')),
       );
       await a.wait(const Duration(milliseconds: 300));
 
       // Options: exactly one recommended, focused.
       await a.until(
-        () => find.byKey(const ValueKey('empezar-viaje')).evaluate().isNotEmpty,
-        reason: 'aparecen opciones',
+        () => find.byKey(const ValueKey('start-trip')).evaluate().isNotEmpty,
+        reason: 'options appear',
       );
-      expect(find.byKey(const ValueKey('sello-recomendado')), findsOneWidget);
+      expect(find.byKey(const ValueKey('recommended-badge')), findsOneWidget);
       final phase = a.controller.state.phase as OptionsPhase;
       expect(phase.options.where((o) => o.recommended).length, 1);
       expect(phase.options.first.recommended, isTrue);
       await a.wait(const Duration(seconds: 2));
       // The preview already shows the live bus for the focused option.
       await a.until(
-        () => (a.controller.state.phase as OptionsPhase).busesInVivo.isNotEmpty,
-        reason: 'bus en vivo en vista previa',
+        () => (a.controller.state.phase as OptionsPhase).liveBuses.isNotEmpty,
+        reason: 'live bus in the preview',
       );
       await a.wait(const Duration(seconds: 1));
-      await a.capture('opciones');
+      await a.capture('options');
 
       // Swipe to another option and back.
       await tester.drag(
-        find.byKey(const ValueKey('opciones-carrusel')),
+        find.byKey(const ValueKey('options-carousel')),
         const Offset(-300, 0),
       );
       await a.wait(const Duration(milliseconds: 800));
-      await a.capture('otra_opcion');
+      await a.capture('other_option');
       await tester.drag(
-        find.byKey(const ValueKey('opciones-carrusel')),
+        find.byKey(const ValueKey('options-carousel')),
         const Offset(300, 0),
       );
       await a.wait(const Duration(milliseconds: 800));
 
       // Start trip.
-      await tester.tap(find.byKey(const ValueKey('empezar-viaje')));
+      await tester.tap(find.byKey(const ValueKey('start-trip')));
       await a.wait(const Duration(milliseconds: 600));
       final trip = a.controller.state.phase as TripPhase;
       expect(find.text('Paso 1 de ${trip.totalSteps}'), findsOneWidget);
@@ -92,7 +92,7 @@ void main() {
       // The user's dot shows the direction they are walking, also with the
       // system animations disabled (the heading used to be lost).
       expect(SceneDrawer.last!.headingUser, isNotNull);
-      await a.capture('caminando');
+      await a.capture('walking');
 
       // The trip advances on its own, step by step, without jumps.
       final steps = <int>[0];
@@ -102,32 +102,32 @@ void main() {
             () {
               final f = a.controller.state.phase;
               if (f is TripPhase) {
-                if (f.stepActual != steps.last) steps.add(f.stepActual);
+                if (f.currentStep != steps.last) steps.add(f.currentStep);
                 return f.status == TripStatus.completed;
               }
               return false;
             },
             max: const Duration(minutes: 8),
             step: const Duration(milliseconds: 500),
-            reason: 'el viaje se completa',
+            reason: 'the trip completes',
           )
           .then((_) {});
       expect(
         steps,
         List.generate(trip.totalSteps, (i) => i),
-        reason: 'avance estricto +1',
+        reason: 'strict +1 advance',
       );
-      captured.add('fin');
+      captured.add('end');
       await a.wait(const Duration(seconds: 1));
       expect(find.text('¡Llegaste!'), findsOneWidget);
       expect(find.text('Plaza Independencia'), findsOneWidget);
-      await a.capture('llegada');
+      await a.capture('arrival');
 
-      await tester.tap(find.byKey(const ValueKey('viaje-listo')));
+      await tester.tap(find.byKey(const ValueKey('trip-done')));
       await a.wait(const Duration(milliseconds: 600));
       expect(a.controller.state.phase, isA<ExplorePhase>());
       expect(find.text('¿A dónde vas?'), findsOneWidget);
-      await a.capture('fin');
+      await a.capture('end');
       await a.close();
     });
   }

@@ -12,7 +12,7 @@ import '../theme/app_theme.dart';
 import '../theme/sheet.dart';
 import '../texts/texts.dart';
 
-Future<void> mostrarItinerary(
+Future<void> showItinerary(
   BuildContext context,
   TripPhase f,
   String destination,
@@ -37,7 +37,7 @@ class _Itinerary extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
       child: ConstrainedBox(
-        key: const ValueKey('itinerario'),
+        key: const ValueKey('itinerary'),
         constraints: BoxConstraints(maxHeight: height * 0.78),
         child: Sheet(
           padding: EdgeInsets.zero,
@@ -46,7 +46,7 @@ class _Itinerary extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Asa(),
+              const SheetHandle(),
               Padding(
                 padding: const EdgeInsets.fromLTRB(22, 8, 12, 4),
                 child: Row(
@@ -69,7 +69,7 @@ class _Itinerary extends StatelessWidget {
                       ),
                     ),
                     IconButton(
-                      key: const ValueKey('itinerario-cerrar'),
+                      key: const ValueKey('itinerary-close'),
                       tooltip: tx.close,
                       onPressed: () => Navigator.pop(context),
                       icon: const Icon(Icons.close_rounded),
@@ -83,13 +83,13 @@ class _Itinerary extends StatelessWidget {
                   padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
                   children: [
                     for (var i = 0; i < f.totalSteps; i++)
-                      _Fila(
+                      _ItineraryRow(
                         f.option.legs[i],
                         status:
-                            i < f.stepActual
+                            i < f.currentStep
                                 ? _Status.done
-                                : i == f.stepActual
-                                ? _Status.actual
+                                : i == f.currentStep
+                                ? _Status.current
                                 : _Status.pending,
                         last: i == f.totalSteps - 1,
                         destination: destination,
@@ -105,14 +105,14 @@ class _Itinerary extends StatelessWidget {
   }
 }
 
-enum _Status { done, actual, pending }
+enum _Status { done, current, pending }
 
-class _Fila extends StatelessWidget {
+class _ItineraryRow extends StatelessWidget {
   final Leg leg;
   final _Status status;
   final bool last;
   final String destination;
-  const _Fila(
+  const _ItineraryRow(
     this.leg, {
     required this.status,
     required this.last,
@@ -161,7 +161,7 @@ class _Fila extends StatelessWidget {
         ),
     };
     final done = status == _Status.done;
-    final actual = status == _Status.actual;
+    final current = status == _Status.current;
     final tone = done ? c.textFaint : color;
     return IntrinsicHeight(
       child: Row(
@@ -175,13 +175,13 @@ class _Fila extends StatelessWidget {
                   width: 36,
                   height: 36,
                   decoration: BoxDecoration(
-                    color: actual ? tone : tone.withValues(alpha: 0.12),
+                    color: current ? tone : tone.withValues(alpha: 0.12),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
                     done ? Icons.check_rounded : icon,
                     size: 20,
-                    color: actual ? Colors.white : tone,
+                    color: current ? Colors.white : tone,
                   ),
                 ),
                 if (!last)
@@ -216,7 +216,7 @@ class _Fila extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 17,
                             fontWeight:
-                                actual ? FontWeight.w700 : FontWeight.w600,
+                                current ? FontWeight.w700 : FontWeight.w600,
                             color: done ? c.textFaint : c.text,
                             decoration:
                                 done ? TextDecoration.lineThrough : null,
@@ -224,7 +224,7 @@ class _Fila extends StatelessWidget {
                           ),
                         ),
                       ),
-                      if (actual) ...[
+                      if (current) ...[
                         const SizedBox(width: 8),
                         Container(
                           padding: const EdgeInsets.symmetric(

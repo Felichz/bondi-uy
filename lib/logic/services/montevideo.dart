@@ -23,16 +23,19 @@ const _clientSecret = String.fromEnvironment('MVD_CLIENT_SECRET');
 bool get arrivalsMontevideoConfigured =>
     _clientId.isNotEmpty && _clientSecret.isNotEmpty;
 
-class MontevideoArrivals implements SourceArrivals {
+class MontevideoArrivals implements ArrivalSource {
   final http.Client _http;
   String? _token;
-  DateTime? _vence;
+  DateTime? _expires;
 
-  MontevideoArrivals({http.Client? cliente}) : _http = cliente ?? http.Client();
+  MontevideoArrivals({http.Client? client}) : _http = client ?? http.Client();
 
   Future<String> _getToken({bool force = false}) async {
     final now = DateTime.now();
-    if (!force && _token != null && _vence != null && now.isBefore(_vence!)) {
+    if (!force &&
+        _token != null &&
+        _expires != null &&
+        now.isBefore(_expires!)) {
       return _token!;
     }
     final resp = await _http
@@ -52,7 +55,7 @@ class MontevideoArrivals implements SourceArrivals {
     final json = jsonDecode(resp.body) as Map<String, dynamic>;
     _token = json['access_token'] as String;
     final expires = (json['expires_in'] as num?)?.toInt() ?? 300;
-    _vence = now.add(Duration(seconds: (expires - 60).clamp(30, 1 << 20)));
+    _expires = now.add(Duration(seconds: (expires - 60).clamp(30, 1 << 20)));
     return _token!;
   }
 

@@ -14,14 +14,14 @@ import 'traces.dart';
 final appStateProvider = Provider<AppState>(
   (_) =>
       throw UnimplementedError(
-        'appStateProvider sin implementar: '
-        'la raíz de composición debe sobreescribirlo',
+        'appStateProvider not implemented: '
+        'the composition root must override it',
       ),
 );
 
 /// Actions the UI can invoke.
 final appActionsProvider = Provider<AppActions>(
-  (_) => throw UnimplementedError('appActionsProvider sin implementar'),
+  (_) => throw UnimplementedError('appActionsProvider not implemented'),
 );
 
 /// Calls between the app's parts, if the logic reports them (the web demo,

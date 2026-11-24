@@ -14,7 +14,7 @@ final optionFocusedProvider = StateProvider<String?>((_) => null);
 final frameForcedProvider = Provider<bool?>((_) => null);
 
 /// On a trip, the camera follows the approaching bus (true) or the user.
-final verBusProvider = StateProvider<bool>((_) => false);
+final showBusProvider = StateProvider<bool>((_) => false);
 
 /// Search open and field with focus (null = closed).
 final searchOpenProvider = StateProvider<SearchField?>((_) => null);
