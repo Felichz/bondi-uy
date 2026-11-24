@@ -331,14 +331,14 @@
                   
                   "inputs": [{
                     "name": "destinations",
-                    "type": "List<Coordenada>",
+                    "type": "List<Coordinate>",
                     "description": "Target locations for geofences",
                     "source": "journey management"
                   }],
                   
                   "outputs": [{
                     "name": "locationUpdates",
-                    "type": "Coordenada",
+                    "type": "Coordinate",
                     "description": "Current user location",
                     "destination": "callback functions"
                   }],
@@ -440,7 +440,7 @@
                   "concern": "Route visualization and styling",
                   
                   "flow": {
-                    "in": "Route tramos with geometry data",
+                    "in": "Route legs with geometry data",
                     "does": "processGeometry → createLayers → applyStyles → addToMap",
                     "out": "Styled route layers on map"
                   },

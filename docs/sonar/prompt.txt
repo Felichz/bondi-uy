@@ -4,54 +4,54 @@ OUTPUT = "docs/sonar"
 USER_FLOWS = """
 ```mermaid
 flowchart TD
-    A["🔍 Usuario introduce origen y destino"] --> B["🔍 Usuario presiona buscar"]
-    B --> C["📱 App muestra carousel de opciones"]
-    C --> D{"🤔 Usuario explora opciones<br/>en carousel?"}
-    D -->|Sí| E["🗺️ Mapa muestra preview<br/>con zoom centrado"]
-    E --> F{"🚌 ¿Hay ETA para<br/>primera parada?"}
-    F -->|Sí| G["🚌 Se visualiza bus en tiempo real<br/>+ tramo verde a parada"]
-    F -->|No| H["📍 Solo se muestra preview básico"]
-    G --> I["▶️ Usuario selecciona opción<br/>e inicia viaje"]
+    A["🔍 User enters origin and destination"] --> B["🔍 User presses search"]
+    B --> C["📱 App shows carousel of options"]
+    C --> D{"🤔 User explores options<br/>in carousel?"}
+    D -->|Yes| E["🗺️ Map shows preview<br/>with centered zoom"]
+    E --> F{"🚌 Is there an ETA for<br/>the first stop?"}
+    F -->|Yes| G["🚌 Real-time bus shown<br/>+ green segment to stop"]
+    F -->|No| H["📍 Only basic preview shown"]
+    G --> I["▶️ User selects option<br/>and starts trip"]
     H --> I
     D -->|No| I
     
-    I --> J["🎯 INICIO ACTIVE TRIP<br/>Sondeo bus en tiempo real"]
-    J --> K["🚶‍♂️ PASO 1: Caminar a parada"]
-    K --> L["📍 Ubicación cada 5s + tramo azul<br/>+ widget distancia + progreso"]
-    L --> M{"📍 ¿Usuario llegó<br/>a la parada?"}
+    I --> J["🎯 ACTIVE TRIP START<br/>Real-time bus polling"]
+    J --> K["🚶‍♂️ STEP 1: Walk to stop"]
+    K --> L["📍 Location every 5s + blue segment<br/>+ distance widget + progress"]
+    L --> M{"📍 Did user reach<br/>the stop?"}
     M -->|No| L
-    M -->|Sí| N["🚏 PASO 2: Esperar bus"]
+    M -->|Yes| N["🚏 STEP 2: Wait for bus"]
     
-    N --> O{"🚌 ¿Hay ETA<br/>disponible?"}
-    O -->|No| P["📍 Mapa enfoca parada<br/>+ muestra línea a esperar"]
-    O -->|Sí| Q["🚌 Mapa enfoca parada + bus<br/>+ zoom dinámico parada-bus"]
+    N --> O{"🚌 Is there an ETA<br/>available?"}
+    O -->|No| P["📍 Map focuses on stop<br/>+ shows line to wait for"]
+    O -->|Yes| Q["🚌 Map focuses on stop + bus<br/>+ dynamic zoom stop-bus"]
     
-    P --> R["⏱️ Monitor ubicación cada 5s<br/>¿Usuario se movió en tramo bus?"]
-    Q --> S["⏱️ Monitor ubicación cada 5s<br/>¿Usuario se movió en tramo bus?"]
+    P --> R["⏱️ Location monitor every 5s<br/>Did user move on bus leg?"]
+    Q --> S["⏱️ Location monitor every 5s<br/>Did user move on bus leg?"]
     
-    R --> T{"🚌 ¿Usuario subió al bus?"}
-    S --> U{"🚌 ¿Usuario subió al bus?"}
+    R --> T{"🚌 Did user get on the bus?"}
+    S --> U{"🚌 Did user get on the bus?"}
     T -->|No| R
     U -->|No| S
     
-    T -->|Sí| V["🚌 PASO 3: En el bus<br/>Stop sondeo ETA<br/>Usuario = ubicación bus"]
-    U -->|Sí| V
+    T -->|Yes| V["🚌 STEP 3: On the bus<br/>Stop ETA polling<br/>User = bus location"]
+    U -->|Yes| V
     
-    V --> W["🗺️ Mapa enfoca parada destino<br/>+ ubicación usuario/bus"]
-    W --> X{"📍 ¿Usuario llegó a<br/>parada destino?"}
+    V --> W["🗺️ Map focuses on destination stop<br/>+ user/bus location"]
+    W --> X{"📍 Did user reach<br/>destination stop?"}
     X -->|No| W
-    X -->|Sí| Y["🚶‍♂️ Modo caminata default<br/>Próximo paso"]
+    X -->|Yes| Y["🚶‍♂️ Default walking mode<br/>Next step"]
     
-    Y --> Z{"🤔 ¿Tipo de próximo paso?"}
-    Z -->|🚌 Esperar otro bus| AA["🚏 Reutilizar flujo espera bus<br/>(como PASO 2)"]
-    Z -->|🚶‍♂️ Caminar a otra parada| BB["🚶‍♂️ Reutilizar flujo caminata<br/>(como PASO 1)"]
-    Z -->|🎯 Caminar a destino final| CC["🚶‍♂️ Caminata al punto final<br/>(similar PASO 1)"]
+    Y --> Z{"🤔 Type of next step?"}
+    Z -->|🚌 Wait for another bus| AA["🚏 Reuse bus waiting flow<br/>(like STEP 2)"]
+    Z -->|🚶‍♂️ Walk to another stop| BB["🚶‍♂️ Reuse walking flow<br/>(like STEP 1)"]
+    Z -->|🎯 Walk to final destination| CC["🚶‍♂️ Walk to final point<br/>(similar to STEP 1)"]
     
-    AA --> DD["🔄 Continuar con siguiente paso"]
+    AA --> DD["🔄 Continue with next step"]
     BB --> DD
-    CC --> EE{"📍 ¿Usuario llegó al<br/>destino final?"}
+    CC --> EE{"📍 Did user reach the<br/>final destination?"}
     EE -->|No| CC
-    EE -->|Sí| FF["✅ VIAJE FINALIZADO<br/>AUTOMÁTICAMENTE"]
+    EE -->|Yes| FF["✅ TRIP FINISHED<br/>AUTOMATICALLY"]
     
     DD --> Y
     

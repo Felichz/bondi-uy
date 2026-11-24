@@ -1,68 +1,67 @@
-// Acciones que la UI puede pedirle a la lógica. Es la ÚNICA salida de la UI.
+// Actions the UI can ask the logic to perform. This is the ONLY output of the UI.
 //
-// Cada acción expresa una intención del usuario, no un detalle de
-// implementación. La lógica decide cómo cumplirla y responde cambiando el
-// AppState.
+// Each action expresses a user intent, not an implementation detail. The
+// logic decides how to fulfill it and responds by changing the AppState.
 
 import 'app_state.dart';
 
 abstract interface class AppActions {
-  // --- Arranque y ubicación ---
+  // --- Startup and location ---
 
-  /// La UI está lista (mapa montado). Pide ubicación y carga la red de paradas.
-  void arrancar();
+  /// The UI is ready (map mounted). Requests location and loads the stop network.
+  void start();
 
-  /// Reintenta obtener la ubicación (p.ej. después de conceder el permiso).
-  void reintentarUbicacion();
+  /// Retries getting the location (e.g. after the permission is granted).
+  void retryLocation();
 
-  // --- Búsqueda ---
+  // --- Search ---
 
-  /// El usuario escribió en un campo. Dispara sugerencias (con debounce).
-  void escribirConsulta(CampoBusqueda campo, String texto);
+  /// The user typed in a field. Triggers suggestions (with debounce).
+  void writeQuery(SearchField field, String text);
 
-  void elegirLugar(CampoBusqueda campo, Lugar lugar);
+  void choosePlace(SearchField field, Place place);
 
-  /// Usa "Mi ubicación" en el campo.
-  void usarMiUbicacion(CampoBusqueda campo);
+  /// Uses "Mi ubicación" (My location) in the field.
+  void useMyLocation(SearchField field);
 
-  /// Vacía el campo (el origen vuelve a "Mi ubicación").
-  void limpiarCampo(CampoBusqueda campo);
+  /// Clears the field (the origin goes back to "Mi ubicación" (My location)).
+  void cleanField(SearchField field);
 
-  void intercambiarOrigenYDestino();
+  void swapOriginYDestination();
 
-  /// Cierra el desplegable de sugerencias sin elegir.
-  void cancelarConsulta();
+  /// Closes the suggestions dropdown without choosing.
+  void cancelarQuery();
 
-  /// Planifica origen -> destino y pasa a la fase de opciones.
-  void buscarViajes();
+  /// Plans origin -> destination and moves to the options phase.
+  void searchTrips();
 
-  // --- Opciones ---
+  // --- Options ---
 
-  /// La UI está mostrando esta opción: seguir en vivo su primer bus.
-  void enfocarOpcion(String idOpcion);
+  /// The UI is showing this option: follow its first bus live.
+  void focusOption(String idOption);
 
-  /// Vuelve a explorar conservando origen y destino.
-  void cerrarOpciones();
+  /// Goes back to exploring, keeping origin and destination.
+  void closeOptions();
 
-  void iniciarViaje(String idOpcion);
+  void startTrip(String idOption);
 
-  // --- Viaje activo ---
+  // --- Active trip ---
 
-  /// Respaldo manual: el usuario confirma que completó el paso actual
-  /// ("Ya llegué a la parada", "Ya subí", "Ya me bajé", "Ya llegué").
-  void confirmarPasoActual();
+  /// Manual fallback: the user confirms they completed the current step
+  /// (the UI labels, in Spanish: "Ya llegué a la parada", "Ya subí", "Ya me bajé", "Ya llegué").
+  void confirmStepActual();
 
-  /// Abandona el viaje en curso.
-  void terminarViaje();
+  /// Abandons the trip in progress.
+  void finishTrip();
 
-  /// Cierra la confirmación de llegada y vuelve a explorar.
-  void cerrarLlegada();
+  /// Closes the arrival confirmation and goes back to exploring.
+  void closeArrival();
 
-  // --- Paradas ---
+  // --- Stops ---
 
-  void consultarParada(String idParada);
-  void cerrarParada();
+  void queryStop(String idStop);
+  void closeStop();
 
-  // --- Avisos ---
-  void descartarAviso(int idAviso);
+  // --- Notices ---
+  void descartarNotice(int idNotice);
 }

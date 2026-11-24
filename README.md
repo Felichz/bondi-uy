@@ -7,7 +7,7 @@ live bus, ride, walk, arrive.
 **[Try the demo](https://bondiuy.medanolabs.com)** · **[Download for Android](https://github.com/Felichz/bondi-uy/releases/latest)** · **[Case study](https://felix.medanolabs.com/work/bondiuy/)** · **Author: [Felix Andersson](https://felix.medanolabs.com)**
 
 Product and vision: [PRODUCT.md](PRODUCT.md) · Visual language: [DESIGN.md](DESIGN.md) ·
-Flows: [docs/flujos/flujo-principal](docs/flujos/flujo-principal/1-flujo-de-usuario.txt) (in Spanish)
+Flows: [docs/flujos/flujo-principal](docs/flujos/flujo-principal/1-flujo-de-user.txt)
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/readme/01-wait-dark.webp">
@@ -26,18 +26,18 @@ lib/
   contract/   the ONLY point of contact between the UI and the logic
     app_state.dart      state (explore / options / trip phases), raw data
     app_actions.dart    the user's intents
-    proveedores.dart    appStateProvider + appActionsProvider (the root wires them)
+    providers.dart      appStateProvider + appActionsProvider (the root wires them)
   logic/      data and rules: knows no widgets, maps, colors or copy
     app_controller.dart      implements AppActions
-    viaje/navegador.dart     finds the current step from the GPS (pure, deterministic)
-    viaje/seguidor_bus.dart  live bus, and its approach along the GTFS shape
-    viaje/recomendador.dart  deduplicates the options and picks the recommended one
-    servicios/   OTP, Montevideo's bus API, geocoding (Photon/Mapbox), GPS, GTFS
-    simulacion/  a simulated world (synthetic GPS and buses) and recorded sources
+    trip/trip_navigator.dart  finds the current step from the GPS (pure, deterministic)
+    trip/bus_tracker.dart     live bus, and its approach along the GTFS shape
+    trip/recommender.dart     deduplicates the options and picks the recommended one
+    services/    OTP, Montevideo's bus API, geocoding (Photon/Mapbox), GPS, GTFS
+    simulation/  a simulated world (synthetic GPS and buses) and recorded sources
   ui/         presentation: formats, animates, draws the map, decides the camera
-    mapa/        the app's own map renderer (OSM vector tiles, light and dark)
-    tema/        colors, material (sheets), badges, theme preference
-    explorar/ busqueda/ opciones/ viaje/   panels per phase
+    map/        the app's own map renderer (OSM vector tiles, light and dark)
+    theme/       colors, material (sheets), badges, theme preference
+    explore/ search/ options/ trip/   panels per phase
   main.dart   composition root
 ```
 
@@ -103,7 +103,7 @@ The emulator reaches it at `http://10.0.2.2:8080` (the default). On a physical p
 flutter test
 ```
 
-See [docs/testing/README.md](docs/testing/README.md) (in Spanish): the logic against real recorded data, and the
+See [docs/testing/README.md](docs/testing/README.md): the logic against real recorded data, and the
 whole app headless (map included, light and dark) with screenshots in `build/capturas/`.
 
 ## Tools

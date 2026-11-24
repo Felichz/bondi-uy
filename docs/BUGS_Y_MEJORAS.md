@@ -1,191 +1,191 @@
-# 🐛 BUGS Y MEJORAS - BondiUY Flutter
+# 🐛 BUGS AND IMPROVEMENTS - BondiUY Flutter
 
-## Reparación Post-Refactor Inicial
+## Post-Initial-Refactor Repair
 
-**Contexto**: Después del refactor inicial, hemos identificado varios problemas críticos que impiden que la app funcione como se espera. La visión es una app "abuelita-friendly" - tan intuitiva que tu abuelita pueda usarla para llegar a casa.
-
----
-
-## 🚨 BUGS CRÍTICOS
-
-### Bug #1: TypeAheadField no muestra sugerencias en tiempo real
-
-**Problema**: Las sugerencias llegan del backend (se ve en logs) pero el dropdown no aparece hasta que el usuario presiona espacio u otra tecla.
-
-**Síntomas**:
-
-- Usuario escribe "plaza i"
-- Logs muestran: "Obtenidas 2 sugerencias para 'plaza i'"
-- Dropdown no aparece
-- Usuario presiona espacio → ahí recién aparece el dropdown
-
-**Ubicación**: `lib/ui/widgets/app_compose_with_origin.dart`
-
-**Análisis**: El `TypeAheadField` no se refresca automáticamente cuando llegan nuevas sugerencias del estado. El `suggestionsCallback` solo se ejecuta en input del usuario, no en cambios de estado.
-
-**Solución Implementada**:
-
-- Uso de `SuggestionsController` para triggerar refreshes manuales
-- Detección de cambios en sugerencias y refresh automático
-- Prevención de dropdown vacío después de selecciones
-
-**Prioridad**: 🔴 CRÍTICA
-**Estado**: ✅ COMPLETADO
+**Context**: After the initial refactor, we identified several critical problems that prevent the app from working as expected. The vision is a "grandma-friendly" app - so intuitive that your grandma can use it to get home.
 
 ---
 
-### Bug #2: Mapas múltiples rompen la experiencia de navegación
+## 🚨 CRITICAL BUGS
 
-**Problema**: Cada vista (`InitialPhaseView`, `RouteOptionsView`, `ActiveTripView`) tiene su propio `MapWidget`, causando:
+### Bug #1: TypeAheadField does not show suggestions in real time
 
-- Percepción de "cambio de mapa" entre fases
-- Pérdida de contexto visual
-- Carga innecesaria de recursos
+**Problem**: The suggestions arrive from the backend (visible in the logs) but the dropdown does not appear until the user presses space or another key.
 
-**Síntomas**:
+**Symptoms**:
 
-- Usuario hace búsqueda en un mapa
-- Presiona "Buscar Ruta" → ve que "cambia a otro mapa"
-- Experiencia jarring, no fluida
+- User types "plaza i"
+- Logs show: "Obtenidas 2 sugerencias para 'plaza i'" ("Got 2 suggestions for 'plaza i'")
+- Dropdown does not appear
+- User presses space → only then does the dropdown appear
 
-**Ubicación**:
+**Location**: `lib/ui/widgets/app_compose_with_origin.dart`
 
-- `lib/ui/initial_phase_view.dart` (línea ~456)
-- `lib/ui/route_options_view.dart` (línea ~344)
+**Analysis**: The `TypeAheadField` does not refresh automatically when new suggestions arrive from the state. The `suggestionsCallback` only runs on user input, not on state changes.
+
+**Implemented Solution**:
+
+- Use of `SuggestionsController` to trigger manual refreshes
+- Detection of changes in suggestions and automatic refresh
+- Prevention of an empty dropdown after selections
+
+**Priority**: 🔴 CRITICAL
+**Status**: ✅ COMPLETED
+
+---
+
+### Bug #2: Multiple maps break the navigation experience
+
+**Problem**: Each view (`InitialPhaseView`, `RouteOptionsView`, `ActiveTripView`) has its own `MapWidget`, causing:
+
+- Perception of a "map change" between phases
+- Loss of visual context
+- Unnecessary resource loading
+
+**Symptoms**:
+
+- User searches on one map
+- Presses "Buscar Ruta" ("Search Route") → sees the map "change to another one"
+- Jarring, non-fluid experience
+
+**Location**:
+
+- `lib/ui/initial_phase_view.dart` (line ~456)
+- `lib/ui/route_options_view.dart` (line ~344)
 - `lib/ui/active_trip_view.dart`
 
-**Solución Implementada**:
+**Implemented Solution**:
 
-1. ✅ Mapa único en `AppHost` como base persistente
-2. ✅ Overlays por fase (`InitialPhaseOverlay`, `RouteOptionsOverlay`, `ActiveTripOverlay`)
-3. ✅ Transiciones fluidas sin recrear mapa
-4. ⏳ Migración de lógica de capas del mapa (próximo)
+1. ✅ Single map in `AppHost` as a persistent base
+2. ✅ Overlays per phase (`InitialPhaseOverlay`, `RouteOptionsOverlay`, `ActiveTripOverlay`)
+3. ✅ Smooth transitions without recreating the map
+4. ⏳ Migration of the map layer logic (next)
 
-**Prioridad**: 🔴 CRÍTICA
-**Estado**: ✅ COMPLETADO
-
----
-
-### Bug #3: Carousel de opciones de ruta no es intuitivo
-
-**Problema**: El carousel de opciones muestra una línea azul básica sin colores distintivos, no hay preview interactivo de ruta, y no es "abuelita-friendly"
-
-**Síntomas**:
-
-- Solo muestra línea azul genérica
-- No hay carousel horizontal intuitivo
-- No muestra preview de cada opción al seleccionarla
-- Colores incorrectos vs proyecto viejo
-- Preview no se mostraba al cargar opciones por primera vez
-
-**Ubicación**: `lib/ui/overlays/route_options_overlay.dart`
-
-**Solución Implementada**:
-
-1. ✅ UI moderna y minimalista implementada (cards estilo material design)
-2. ✅ Carousel horizontal con indicadores de página
-3. ✅ Preview de ruta con estilos originales exactos:
-   - **WALK**: Líneas SÓLIDAS azul (`0xFF448AFF` - Colors.blueAccent), grosor 4px, NO dashed
-   - **BUS**: Líneas sólidas naranja (`0xFFFF5722` - Colors.deepOrangeAccent), grosor 5px
-   - **WAIT**: Círculos naranjas (`0xFFFFA500` - Colors.orange), radio 8px, borde blanco
-   - **BORDES**: Líneas completamente opacas negras (`0xFF000000`), grosor 8px para contraste
-   - Marcadores verde/rojo para origen/destino
-4. ✅ Sistema de highlighting para viaje activo con estados transparentados/destacados
-5. ✅ Layout responsivo para pantallas pequeñas y medianas
-6. ✅ Arreglados problemas de overflow usando Flutter best practices
-7. ✅ Zoom automático a ruta con padding adaptativo
-8. ✅ Sistema de inicialización inteligente:
-   - PageController inicializado con opción recomendada
-   - Preview automático al cargar opciones por primera vez
-   - Navegación libre sin reseteo automático
-   - Manejo robusto de errores concurrentes
-9. ✅ Preview interactivo que se actualiza al cambiar de opción
-10. ✅ Archivo `map_style_constants.dart` con estilos reutilizables para futuras funciones
-11. ✅ **CORREGIDO**: Estilos exactos del código viejo aplicados (WALK sólido, grosores correctos)
-12. ✅ **CORREGIDO**: Problema de bordes/sombras solucionado:
-    - Reemplazadas sombras transparentes problemáticas por líneas de borde sólidas
-    - Eliminado efecto de degradado extraño en bordes
-    - Mejor contraste y visibilidad de tramos en el mapa
-    - Solución técnica: líneas idénticas más gruesas y opacas por debajo
-13. ✅ **MEJORAS UX ADICIONALES (Enero 2025)**:
-    - **Panel colapsable**: `DraggableScrollableSheet` permite colapsar para usuarios avanzados que quieren hacer zoom manual
-    - **Iconos de parada reales**: Reemplazados círculos de colores por `stop_icon.png` original con flechas indicativas (↑ verde subir, ↓ roja bajar)
-    - **Z-order corregido**: Paradas siempre aparecen encima de líneas de ruta en todos los niveles de zoom
-    - **Limpieza de estado**: Preview se limpia automáticamente al cancelar y volver a fase de búsqueda
-    - **Panel completamente expandido**: Inicia 100% expandido para mejor UX inicial
-
-**Características Implementadas**:
-
-- **Diseño moderno**: Cards con selección visual (highlighting azul)
-- **Información completa**: Duración, hora llegada, ETA tiempo real, distancia caminata
-- **Iconografía clara**: Modos de transporte con conectores visuales
-- **Responsivo**: Adaptación automática a pantallas pequeñas (< 700px)
-- **Preview automático**: Muestra ruta desde el primer momento
-- **Navegación intuitiva**: Permite cambio libre entre opciones
-
-**Prioridad**: 🔴 CRÍTICA
-**Estado**: ✅ **COMPLETADO**
-
-**Criterios de Aceptación Cumplidos**:
-
-- ✅ Preview se muestra automáticamente al cargar opciones
-- ✅ Usuario puede navegar libremente entre opciones
-- ✅ Cada opción muestra su ruta en el mapa con colores distintivos
-- ✅ UI es intuitiva y "abuelita-friendly"
-- ✅ Layout responsivo funciona en diferentes tamaños de pantalla
-- ✅ No hay errores de concurrent modification
-- ✅ PageController sincronizado correctamente
+**Priority**: 🔴 CRITICAL
+**Status**: ✅ COMPLETED
 
 ---
 
-## 🎯 MEJORAS UX "ABUELITA-FRIENDLY"
+### Bug #3: Route options carousel is not intuitive
 
-### Mejora #1: Flujo de viaje activo por pasos
+**Problem**: The options carousel shows a basic blue line without distinctive colors, there is no interactive route preview, and it is not "grandma-friendly"
 
-**Descripción**: En la fase de viaje activo, guiar paso a paso:
+**Symptoms**:
 
-1. **Caminar** → Zoom a punto de origen + ruta a primera parada
-2. **Esperar** → Focus en parada + bus en tiempo real (si disponible)
-3. **Viajar** → Seguir bus de parada origen a destino
-4. **Llegar** → Zoom a destino final
+- Only shows a generic blue line
+- No intuitive horizontal carousel
+- Does not show a preview of each option when selected
+- Wrong colors vs. the old project
+- Preview was not shown when loading options for the first time
 
-**Características**:
+**Location**: `lib/ui/overlays/route_options_overlay.dart`
 
-- Auto-avance por pasos cuando corresponda
-- Botones grandes y claros para navegación manual
-- Instrucciones en lenguaje simple
-- Indicador visual de progreso
+**Implemented Solution**:
 
-**Prioridad**: 🟡 MEDIA
-**Estado**: ❌ PENDIENTE
+1. ✅ Modern, minimalist UI implemented (material design style cards)
+2. ✅ Horizontal carousel with page indicators
+3. ✅ Route preview with the exact original styles:
+   - **WALK**: SOLID blue lines (`0xFF448AFF` - Colors.blueAccent), 4px width, NOT dashed
+   - **BUS**: Solid orange lines (`0xFFFF5722` - Colors.deepOrangeAccent), 5px width
+   - **WAIT**: Orange circles (`0xFFFFA500` - Colors.orange), 8px radius, white border
+   - **BORDERS**: Fully opaque black lines (`0xFF000000`), 8px width for contrast
+   - Green/red markers for origin/destination
+4. ✅ Highlighting system for the active trip with faded/highlighted states
+5. ✅ Responsive layout for small and medium screens
+6. ✅ Overflow issues fixed using Flutter best practices
+7. ✅ Automatic zoom to the route with adaptive padding
+8. ✅ Smart initialization system:
+   - PageController initialized with the recommended option
+   - Automatic preview when loading options for the first time
+   - Free navigation without automatic reset
+   - Robust handling of concurrent errors
+9. ✅ Interactive preview that updates when the option changes
+10. ✅ `map_style_constants.dart` file with reusable styles for future features
+11. ✅ **FIXED**: Exact styles from the old code applied (solid WALK, correct widths)
+12. ✅ **FIXED**: Border/shadow problem resolved:
+    - Replaced problematic transparent shadows with solid border lines
+    - Removed strange gradient effect on borders
+    - Better contrast and visibility of segments on the map
+    - Technical solution: identical, thicker and more opaque lines underneath
+13. ✅ **ADDITIONAL UX IMPROVEMENTS (January 2025)**:
+    - **Collapsible panel**: `DraggableScrollableSheet` allows collapsing for advanced users who want to zoom manually
+    - **Real stop icons**: Replaced colored circles with the original `stop_icon.png` with direction arrows (↑ green boarding, ↓ red alighting)
+    - **Z-order fixed**: Stops always appear above route lines at all zoom levels
+    - **State cleanup**: Preview is automatically cleared when cancelling and returning to the search phase
+    - **Panel fully expanded**: Starts 100% expanded for a better initial UX
+
+**Implemented Features**:
+
+- **Modern design**: Cards with visual selection (blue highlighting)
+- **Complete information**: Duration, arrival time, real-time ETA, walking distance
+- **Clear iconography**: Transport modes with visual connectors
+- **Responsive**: Automatic adaptation to small screens (< 700px)
+- **Automatic preview**: Shows the route from the first moment
+- **Intuitive navigation**: Allows free switching between options
+
+**Priority**: 🔴 CRITICAL
+**Status**: ✅ **COMPLETED**
+
+**Acceptance Criteria Met**:
+
+- ✅ Preview is shown automatically when loading options
+- ✅ User can navigate freely between options
+- ✅ Each option shows its route on the map with distinctive colors
+- ✅ UI is intuitive and "grandma-friendly"
+- ✅ Responsive layout works on different screen sizes
+- ✅ No concurrent modification errors
+- ✅ PageController synchronized correctly
 
 ---
 
-## 📋 PLAN DE IMPLEMENTACIÓN
+## 🎯 "GRANDMA-FRIENDLY" UX IMPROVEMENTS
 
-### Fase 1: Reparar Bugs Críticos (Esta Semana)
+### Improvement #1: Step-by-step active trip flow
 
-1. **[Bug #1]** Arreglar TypeAheadField para sugerencias en tiempo real
-2. **[Bug #2]** Implementar mapa único persistente
-3. **[Bug #3]** Crear carousel de opciones de ruta
+**Description**: In the active trip phase, guide step by step:
 
-### Fase 2: Mejorar UX (Próxima Semana)
+1. **Walk** → Zoom to the origin point + route to the first stop
+2. **Wait** → Focus on the stop + real-time bus (if available)
+3. **Ride** → Follow the bus from the origin stop to the destination
+4. **Arrive** → Zoom to the final destination
 
-1. **[Mejora #1]** Implementar flujo de viaje por pasos
-2. Revisar y aplicar styling del proyecto viejo
-3. Testing con usuarios reales ("abuelitas")
+**Features**:
+
+- Automatic step advancement when appropriate
+- Large, clear buttons for manual navigation
+- Instructions in simple language
+- Visual progress indicator
+
+**Priority**: 🟡 MEDIUM
+**Status**: ❌ PENDING
 
 ---
 
-## 🔧 NOTAS TÉCNICAS
+## 📋 IMPLEMENTATION PLAN
 
-### Mapa Único - Enfoque Propuesto:
+### Phase 1: Fix Critical Bugs (This Week)
+
+1. **[Bug #1]** Fix TypeAheadField for real-time suggestions
+2. **[Bug #2]** Implement a single persistent map
+3. **[Bug #3]** Create the route options carousel
+
+### Phase 2: Improve UX (Next Week)
+
+1. **[Improvement #1]** Implement step-by-step trip flow
+2. Review and apply the styling of the old project
+3. Testing with real users ("grandmas")
+
+---
+
+## 🔧 TECHNICAL NOTES
+
+### Single Map - Proposed Approach:
 
 ```dart
-// En AppHost - un solo MapWidget
+// In AppHost - a single MapWidget
 Stack(
   children: [
-    MapWidget(...), // Único mapa persistente
+    MapWidget(...), // Single persistent map
     if (faseActual == FaseApp.INICIAL_SIN_BUSQUEDA)
       InitialPhaseOverlay(),
     if (faseActual == FaseApp.MOSTRANDO_OPCIONES_RUTA)
@@ -196,235 +196,235 @@ Stack(
 )
 ```
 
-### TypeAheadField - Fix Propuesto:
+### TypeAheadField - Proposed Fix:
 
-- Usar `FutureBuilder` o `StreamBuilder` para reactividad
-- Trigger manual del `suggestionsCallback` cuando cambie el estado
-- Key dinámico para forzar rebuild cuando necesario
+- Use `FutureBuilder` or `StreamBuilder` for reactivity
+- Manual trigger of the `suggestionsCallback` when the state changes
+- Dynamic key to force a rebuild when necessary
 
-### Bordes de Líneas - Solución Implementada:
+### Line Borders - Implemented Solution:
 
-**Problema**: Las sombras transparentes en Mapbox causaban efectos de rendering extraños (bordes que comenzaban oscuros y se volvían claros).
+**Problem**: Transparent shadows in Mapbox caused strange rendering effects (borders that started dark and became light).
 
-**Solución**: Reemplazar sombras por líneas de borde sólidas:
+**Solution**: Replace shadows with solid border lines:
 
 ```dart
-// ANTES: Sombras transparentes problemáticas
+// BEFORE: Problematic transparent shadows
 'line-color': 0x66000000, // withOpacity(0.4)
-'line-opacity': 0.7, // Transparencias problemáticas
+'line-opacity': 0.7, // Problematic transparencies
 
-// DESPUÉS: Líneas de borde sólidas
-'line-color': 0xFF000000, // Negro completamente opaco
-'line-opacity': 1.0, // Sin transparencias
-'line-width': 8.0, // Más gruesa que línea principal (4-5px)
+// AFTER: Solid border lines
+'line-color': 0xFF000000, // Fully opaque black
+'line-opacity': 1.0, // No transparencies
+'line-width': 8.0, // Thicker than the main line (4-5px)
 ```
 
-**Ventajas**:
+**Advantages**:
 
-- Elimina problemas de rendering de transparencias
-- Bordes uniformes y consistentes
-- Mejor contraste visual
-- Más fácil de mantener
-
----
-
-## ✅ CRITERIOS DE ACEPTACIÓN
-
-**Para considerar "COMPLETADO":**
-
-- [x] Usuario puede escribir y ver sugerencias inmediatamente
-- [x] Navegación entre fases es fluida (mismo mapa)
-- [x] Carousel de opciones es intuitivo y funcional
-- [ ] App pasa el "test de la abuelita" (usable por personas no técnicas)
+- Eliminates transparency rendering problems
+- Uniform and consistent borders
+- Better visual contrast
+- Easier to maintain
 
 ---
 
-**Última actualización**: `2025-01-23 - Bug #3 completado + Mejoras UX adicionales (panel colapsable, iconos reales, z-order)`
-**Responsable**: Claude (AI Assistant)
-**Revisión siguiente**: Implementación de Mejora #1 (flujo step-by-step)
+## ✅ ACCEPTANCE CRITERIA
 
-## 🎨 MEJORAS UX RECIENTES (Enero 2025)
+**To consider "COMPLETED":**
 
-### Mejora #2: Rediseño completo de interfaz de viaje activo
-
-**Descripción**: Modernización total de la UI durante el viaje activo para experiencia más elegante y compacta.
-
-**Mejoras Implementadas**:
-
-- ✅ **Panel superior compacto**: Información de instrucciones más elegante con menos padding
-- ✅ **Botón de salida integrado**: Reemplazado botón "Finalizar Viaje" molesto por icono sutil en header
-- ✅ **Panel de navegación mejorado**: Controles de paso anterior/siguiente más intuitivos
-- ✅ **Espaciado optimizado**: Mejor aprovechamiento del espacio de pantalla
-- ✅ **Chips informativos compactos**: Tiempo, distancia y línea de bus en formato reducido
-- ✅ **Padding de mapa ajustado**: Evita que la ruta quede oculta detrás del panel de información
-
-**Ubicación**: `lib/ui/overlays/active_trip_overlay.dart`
-**Prioridad**: 🟢 MEJORA UX
-**Estado**: ✅ **COMPLETADO**
+- [x] User can type and see suggestions immediately
+- [x] Navigation between phases is fluid (same map)
+- [x] The options carousel is intuitive and functional
+- [ ] App passes the "grandma test" (usable by non-technical people)
 
 ---
 
-### Mejora #3: Sistema de animación de flechas flotantes
+**Last update**: `2025-01-23 - Bug #3 completed + additional UX improvements (collapsible panel, real icons, z-order)`
+**Owner**: Claude (AI Assistant)
+**Next review**: Implementation of Improvement #1 (step-by-step flow)
 
-**Descripción**: Implementación de animaciones suaves para las flechas de subida/bajada en paradas de bus.
+## 🎨 RECENT UX IMPROVEMENTS (January 2025)
 
-**Características Implementadas**:
+### Improvement #2: Complete redesign of the active trip interface
 
-- ✅ **Animación flotante sincronizada**: Flechas ↑↓ se mueven en coordinación perfecta
-- ✅ **Aplicado en ambas fases**: RouteOptionsOverlay (preview) y ActiveTripOverlay (viaje activo)
-- ✅ **Movimiento sutil**: Amplitud reducida (0.15) para elegancia sin distracción
-- ✅ **Velocidad optimizada**: 0.15 incremento de fase para fluidez ideal
-- ✅ **Flechas mejoradas**: Tamaño aumentado (28px) y mejor contraste (halo 1.2px)
-- ✅ **Sistema de limpieza**: Animaciones se detienen automáticamente al cambiar de fase
+**Description**: Full modernization of the UI during the active trip for a more elegant and compact experience.
 
-**Ubicación**:
+**Implemented Improvements**:
+
+- ✅ **Compact top panel**: More elegant trip instruction information with less padding
+- ✅ **Integrated exit button**: Replaced the annoying "Finalizar Viaje" ("End Trip") button with a subtle icon in the header
+- ✅ **Improved navigation panel**: Previous/next step controls are more intuitive
+- ✅ **Optimized spacing**: Better use of the screen space
+- ✅ **Compact info chips**: Time, distance and bus line in a reduced format
+- ✅ **Adjusted map padding**: Prevents the route from being hidden behind the information panel
+
+**Location**: `lib/ui/overlays/active_trip_overlay.dart`
+**Priority**: 🟢 UX IMPROVEMENT
+**Status**: ✅ **COMPLETED**
+
+---
+
+### Improvement #3: Floating arrow animation system
+
+**Description**: Implementation of smooth animations for the boarding/alighting arrows at bus stops.
+
+**Implemented Features**:
+
+- ✅ **Synchronized floating animation**: ↑↓ arrows move in perfect coordination
+- ✅ **Applied in both phases**: RouteOptionsOverlay (preview) and ActiveTripOverlay (active trip)
+- ✅ **Subtle movement**: Reduced amplitude (0.15) for elegance without distraction
+- ✅ **Optimized speed**: 0.15 phase increment for ideal fluidity
+- ✅ **Improved arrows**: Increased size (28px) and better contrast (1.2px halo)
+- ✅ **Cleanup system**: Animations stop automatically when changing phase
+
+**Location**:
 
 - `lib/ui/overlays/active_trip_overlay.dart`
 - `lib/ui/overlays/route_options_overlay.dart`
 
-**Prioridad**: 🟢 MEJORA UX
-**Estado**: ✅ **COMPLETADO**
+**Priority**: 🟢 UX IMPROVEMENT
+**Status**: ✅ **COMPLETED**
 
 ---
 
-### Mejora #4: Optimizaciones visuales del mapa
+### Improvement #4: Map visual optimizations
 
-**Descripción**: Mejoras en la visualización del mapa para evitar interferencias y mejor claridad.
+**Description**: Improvements to the map display to avoid interference and improve clarity.
 
-**Mejoras Implementadas**:
+**Implemented Improvements**:
 
-- ✅ **Labels de ciudades ocultos**: Eliminado texto "Montevideo" que tapaba información del panel
-- ✅ **Iconos de paradas completos**: Mostrar paradas de origen/destino en todos los tramos de bus
-- ✅ **Z-order corregido**: Paradas de bus siempre aparecen encima de líneas de ruta
-- ✅ **Carga de iconos mejorada**: Sistema robusto de carga de `stop_icon.png`
-- ✅ **Padding superior aumentado**: De 80px a 180px para evitar que rutas queden ocultas
+- ✅ **City labels hidden**: Removed the "Montevideo" text that covered information in the panel
+- ✅ **Complete stop icons**: Show origin/destination stops on all bus legs
+- ✅ **Z-order fixed**: Bus stops always appear above route lines
+- ✅ **Improved icon loading**: Robust loading system for `stop_icon.png`
+- ✅ **Increased top padding**: From 80px to 180px to prevent routes from being hidden
 
-**Ubicación**:
+**Location**:
 
-- `lib/ui/overlays/active_trip_overlay.dart` (métodos `_hideCityLabels`, `_addBusStopsForSegment`)
+- `lib/ui/overlays/active_trip_overlay.dart` (methods `_hideCityLabels`, `_addBusStopsForSegment`)
 - `lib/ui/overlays/route_options_overlay.dart`
 
-**Prioridad**: 🟢 MEJORA UX
-**Estado**: ✅ **COMPLETADO**
+**Priority**: 🟢 UX IMPROVEMENT
+**Status**: ✅ **COMPLETED**
 
 ---
 
-**Última actualización**: `2025-01-23 - Mejoras #2, #3, #4 completadas - UI modernizada + animaciones flotantes`
+**Last update**: `2025-01-23 - Improvements #2, #3, #4 completed - modernized UI + floating animations`
 
-### Mejora #5: Bus en tiempo real en el mapa (✅ COMPLETADO - Enero 2025)
+### Improvement #5: Real-time bus on the map (✅ COMPLETED - January 2025)
 
-**Descripción**: Implementación de visualización de buses en tiempo real durante el viaje activo, inspirado en la funcionalidad del proyecto viejo.
+**Description**: Implementation of real-time bus display during the active trip, inspired by the functionality of the old project.
 
-**Resultado Logrado**:
+**Achieved Result**:
 
-1. ✅ **En Preview de Rutas**: Muestra bus del PRIMER tramo de bus (más relevante para el usuario)
-2. ✅ **En Viaje Activo**: Muestra bus del PRÓXIMO tramo de bus según paso actual:
-   - Si estoy caminando → muestra bus del siguiente tramo de bus
-   - Si estoy esperando → muestra bus actual que espero
-   - Si estoy EN el bus → muestra bus del siguiente transbordo (si hay)
-   - Si es el último tramo de bus → detiene sondeo
-3. ✅ **Línea Verde de Aproximación**: Sigue la geometría real de la ruta del bus (NO línea recta)
-4. ✅ **Tooltip Flotante**: Widget overlay con ETA, línea, estado tiempo real
-5. ✅ **Actualización Periódica**: Sondeo cada 15 segundos para nuevas posiciones
+1. ✅ **In route preview**: Shows the bus of the FIRST bus leg (most relevant to the user)
+2. ✅ **In active trip**: Shows the bus of the NEXT bus leg according to the current step:
+   - If I'm walking → shows the bus of the next bus leg
+   - If I'm waiting → shows the current bus I'm waiting for
+   - If I'm ON the bus → shows the bus of the next transfer (if any)
+   - If it is the last bus leg → stops polling
+3. ✅ **Green approach line**: Follows the real geometry of the bus route (NOT a straight line)
+4. ✅ **Floating tooltip**: Overlay widget with ETA, line, real-time status
+5. ✅ **Periodic update**: Polling every 15 seconds for new positions
 
-**Implementaciones Completadas**:
+**Implementations Completed**:
 
-- ✅ **BusTooltipWidget**: Tooltip animado con información rica (línea, ETA, tiempo real/programado)
-- ✅ **ActiveTripOverlay Extensions**: Variables de estado, timer de 15s, conversión de coordenadas, SymbolLayer
-- ✅ **Preview en RouteOptionsOverlay**: Solo primer tramo de bus, lógica de ETA fallback
-- ✅ **Lógica de Tracking Inteligente**: Determina automáticamente qué tramo de bus trackear según paso actual
-- ✅ **Integración con AppLogicNotifier**: Lee datos de bus desde estado central (`posicionActualBusReal`, `minutosParaLlegadaBusReal`)
-- ✅ **Cleanup y Gestión de Estado**: Limpieza en dispose(), start/stop lógico
-- ✅ **Icono de Bus**: Renderizado usando `incoming_bus.png` con tamaño apropiado (0.6 para viaje activo, 0.5 para preview)
-- ✅ **Geometría Completa**: Línea verde sigue calles reales usando `shapeId` desde OTP GraphQL
-- ✅ **Carga de Shapes**: Sistema de carga de geometrías completas desde `assets/data/shapes.geojson`
+- ✅ **BusTooltipWidget**: Animated tooltip with rich information (line, ETA, real-time/scheduled)
+- ✅ **ActiveTripOverlay Extensions**: State variables, 15s timer, coordinate conversion, SymbolLayer
+- ✅ **Preview in RouteOptionsOverlay**: Only the first bus leg, ETA fallback logic
+- ✅ **Smart Tracking Logic**: Automatically determines which bus leg to track according to the current step
+- ✅ **Integration with AppLogicNotifier**: Reads bus data from the central state (`posicionActualBusReal`, `minutosParaLlegadaBusReal`)
+- ✅ **Cleanup and State Management**: Cleanup in dispose(), logical start/stop
+- ✅ **Bus Icon**: Rendered using `incoming_bus.png` with an appropriate size (0.6 for active trip, 0.5 for preview)
+- ✅ **Full Geometry**: Green line follows real streets using `shapeId` from OTP GraphQL
+- ✅ **Shape Loading**: System for loading full geometries from `assets/data/shapes.geojson`
 
-**🎉 PROBLEMA RESUELTO - Línea Verde de Aproximación**:
+**🎉 PROBLEM SOLVED - Green Approach Line**:
 
-**Solución Implementada**: La línea verde ahora sigue correctamente la geometría de la ruta del bus.
+**Implemented Solution**: The green line now correctly follows the geometry of the bus route.
 
-**Fix Técnico**:
+**Technical Fix**:
 
-- ✅ Modificada consulta GraphQL en OTP para incluir `shapeId` en objeto `trip`
-- ✅ Sistema de carga de geometrías completas desde `shapes.geojson`
-- ✅ Funciones `findClosestPointIndexOnShape()` y `getGeometrySegment()` funcionando
-- ✅ Lógica de fallback robusta cuando no hay `shapeId` disponible
+- ✅ Modified the GraphQL query in OTP to include `shapeId` in the `trip` object
+- ✅ System for loading full geometries from `shapes.geojson`
+- ✅ `findClosestPointIndexOnShape()` and `getGeometrySegment()` functions working
+- ✅ Robust fallback logic when no `shapeId` is available
 
-**Comportamiento Correcto Logrado**:
+**Correct Behavior Achieved**:
 
 ```
 Bus ────┐
-        │ (siguiendo calles)
-        ├─── Tramo de Calle A
-        ├─── Curva
-        ├─── Tramo de Calle B
-        └─── Parada 🚏
+        │ (following streets)
+        ├─── Street Segment A
+        ├─── Curve
+        ├─── Street Segment B
+        └─── Stop 🚏
 ```
 
-**Archivos Implementados**:
+**Implemented Files**:
 
-- `lib/utils/geometry_utils.dart` - Funciones de cálculo geométrico
-- `lib/ui/overlays/route_options_overlay.dart` - Preview con geometría correcta
-- `lib/ui/overlays/active_trip_overlay.dart` - Viaje activo con geometría correcta
-- `lib/backend/services/itinerary_planning_service_adapter.dart` - Query GraphQL mejorada
+- `lib/utils/geometry_utils.dart` - Geometric calculation functions
+- `lib/ui/overlays/route_options_overlay.dart` - Preview with correct geometry
+- `lib/ui/overlays/active_trip_overlay.dart` - Active trip with correct geometry
+- `lib/backend/services/itinerary_planning_service_adapter.dart` - Improved GraphQL query
 
-**Criterios de Aceptación Cumplidos**:
+**Acceptance Criteria Met**:
 
-- ✅ Línea verde sigue geometría real de la ruta (NO línea recta)
-- ✅ Bus se muestra solo en tramos relevantes según lógica de viaje
-- ✅ Tooltip aparece correctamente posicionado sobre el bus
-- ✅ Actualización periódica funciona sin errores
-- ✅ No hay pérdidas de memoria o recursos
-- ✅ Performance es fluida en dispositivos de gama media
+- ✅ Green line follows the real geometry of the route (NOT a straight line)
+- ✅ Bus is shown only on relevant legs according to trip logic
+- ✅ Tooltip appears correctly positioned over the bus
+- ✅ Periodic update works without errors
+- ✅ No memory or resource leaks
+- ✅ Performance is smooth on mid-range devices
 
-**Prioridad**: 🟢 **COMPLETADO**
-**Estado**: ✅ **COMPLETADO** - Funcionalidad completamente implementada y funcional
+**Priority**: 🟢 **COMPLETED**
+**Status**: ✅ **COMPLETED** - Functionality fully implemented and working
 
-**Ubicación**:
+**Location**:
 
-- `lib/ui/overlays/active_trip_overlay.dart` - Funcionalidad principal
-- `lib/ui/overlays/route_options_overlay.dart` - Preview de rutas
-- `lib/ui/widgets/bus_tooltip_widget.dart` - Tooltip del bus
-- `lib/utils/geometry_utils.dart` - Cálculos geométricos
+- `lib/ui/overlays/active_trip_overlay.dart` - Main functionality
+- `lib/ui/overlays/route_options_overlay.dart` - Route preview
+- `lib/ui/widgets/bus_tooltip_widget.dart` - Bus tooltip
+- `lib/utils/geometry_utils.dart` - Geometric calculations
 
 ---
 
-**Última actualización**: `2025-01-23 - Debugging línea verde de aproximación - funcionalidad base implementada`
+**Last update**: `2025-01-23 - Debugging green approach line - base functionality implemented`
 
-### Mejora #6: Estandarización de grosores de líneas (✅ COMPLETADO - Enero 2025)
+### Improvement #6: Standardization of line widths (✅ COMPLETED - January 2025)
 
-**Descripción**: Unificación de todos los grosores de líneas en el mapa para consistencia visual entre tramos de walk, bus, y tiempo real.
+**Description**: Unification of all line widths on the map for visual consistency across walk, bus, and real-time segments.
 
-**Problema Original**:
+**Original Problem**:
 
-- Líneas WALK (azul): 4.0px
-- Líneas BUS (naranja): 5.0px
-- Línea verde de aproximación del bus: 4.0px
-- Bordes variables: 6.0-8.0px
+- WALK lines (blue): 4.0px
+- BUS lines (orange): 5.0px
+- Bus green approach line: 4.0px
+- Variable borders: 6.0-8.0px
 
-**Solución Implementada**:
+**Implemented Solution**:
 
-- ✅ **Grosor estándar unificado**: Todas las líneas principales ahora usan **5.0px**
-- ✅ **Bordes estándar**: Todos los bordes ahora usan **8.0px**
-- ✅ **Opacidad de bordes unificada**: Todos los bordes ahora usan **opacity: 1.0** (antes la línea verde usaba 0.7-0.8)
-- ✅ **Estados highlighted**: Proporcionales (8.0px para líneas principales)
-- ✅ **Consistencia cross-overlay**: RouteOptionsOverlay, ActiveTripOverlay, y MapStyleConstants sincronizados
+- ✅ **Unified standard width**: All main lines now use **5.0px**
+- ✅ **Standard borders**: All borders now use **8.0px**
+- ✅ **Unified border opacity**: All borders now use **opacity: 1.0** (previously the green line used 0.7-0.8)
+- ✅ **Highlighted states**: Proportional (8.0px for main lines)
+- ✅ **Cross-overlay consistency**: RouteOptionsOverlay, ActiveTripOverlay, and MapStyleConstants in sync
 
-**Archivos Modificados**:
+**Modified Files**:
 
-- `lib/ui/map_style_constants.dart` - Constantes base actualizadas
-- `lib/ui/active_trip_view.dart` - Constantes locales actualizadas
-- `lib/ui/overlays/route_options_overlay.dart` - Línea verde de aproximación
-- `lib/ui/overlays/active_trip_overlay.dart` - Línea verde de aproximación
+- `lib/ui/map_style_constants.dart` - Base constants updated
+- `lib/ui/active_trip_view.dart` - Local constants updated
+- `lib/ui/overlays/route_options_overlay.dart` - Green approach line
+- `lib/ui/overlays/active_trip_overlay.dart` - Green approach line
 
-**Criterios de Aceptación Cumplidos**:
+**Acceptance Criteria Met**:
 
-- ✅ Todas las líneas tienen grosor visual consistente
-- ✅ Bordes proporcionalmente más gruesos para contraste
-- ✅ Estados highlighted mantienen proporciones
-- ✅ Experiencia visual uniforme en todas las fases
+- ✅ All lines have consistent visual width
+- ✅ Borders proportionally thicker for contrast
+- ✅ Highlighted states keep proportions
+- ✅ Uniform visual experience across all phases
 
-**Prioridad**: 🟢 **MEJORA UX**
-**Estado**: ✅ **COMPLETADO** - Visual consistency achieved
+**Priority**: 🟢 **UX IMPROVEMENT**
+**Status**: ✅ **COMPLETED** - Visual consistency achieved
 
 ---

@@ -1,8 +1,8 @@
-@map_drawing_functions.md con esta informacion quiero que hagas un nuevo archivo que sea como un mapa del flujo de informacion detallado paso a paso si el usuario realiza las siguientes acciones (respecto al mapa claro)
+Using @map_drawing_functions.md with this information, I want you to create a new file that is like a map of the information flow, detailed step by step, if the user performs the following actions (relative to the clear map)
 
-1. El usuario entra en la fase de opciones de viaje y ve la preview de la primera opcion de trip (con ETA)
-2. El usuario cambia a la segunda opcion (esta sin ETA)
-3. El usuario cambia a la tercera opcion (esta so tiene ETA)
-4. El usuario selecciona esta tercera opcion mostrada
+1. The user enters the trip options phase and sees the preview of the first trip option (with ETA)
+2. The user switches to the second option (this one has no ETA)
+3. The user switches to the third option (this one only has an ETA)
+4. The user selects this third option shown
 
-agrega una seccion explicando en lenguaje natural que es lo que sucede en el mapa en cada paso
+Add a section explaining in natural language what happens on the map in each step

@@ -1,26 +1,26 @@
-quiero que hagas una investigacion de todo el codigo relacionado a este flujo
+I want you to investigate all the code related to this flow.
 
-quiero hagas un archivo markdown con una lista de TODAS las funciones implicadas adhiriendote a la siguiente informacion unicamente
+I want you to create a markdown file with a list of ALL the functions involved, following only the information below:
 
-- Nombre de la funcion
-- Input que recibe esta funcion (cada parametro y sus types)
-- Si esta funcion llama a otra funcion o otras funciones, debes listar las funciones a las que llama y que input le envia a cada una de estas, para cada una de estas funciones debes indicar si es llamada el 100% de las veces, de lo contrario si esta llamada es bajo condicionales debes indicar de manera precisa sobre que condiciones, incluyendo si hay condiciones anidadas, quiero que conserves el 100% de la informacion sobre en que caso se llama a cada funcion
-- Por otra parte, si esta funcion no llama a ninguna otra funcion, debes indicarlo
+- Function name
+- Input this function receives (each parameter and its types)
+- If this function calls another function or other functions, you must list the functions it calls and what input it sends to each one. For each of these functions you must indicate whether it is called 100% of the time, or, if the call is under conditionals, you must state precisely under which conditions, including nested conditions. I want you to keep 100% of the information about the cases in which each function is called.
+- On the other hand, if this function does not call any other function, you must say so.
 
-el scope de la investigacion es todo el codigo dentro de la carpeta @lib 
+The scope of the investigation is all the code inside the @lib folder.
 
-1. El usuario entra en la fase de opciones de viaje y ve la preview de la primera opcion de trip (con ETA)
-2. El usuario cambia a la segunda opcion (esta sin ETA)
-3. El usuario cambia a la tercera opcion (esta so tiene ETA)
-4. El usuario selecciona esta tercera opcion mostrada
-5. Ahora el usuario en el active trip esta en el paso de walk hasta la parada
-6. Ahora el usuario en el active trip presiona el boton para pasar al siguiente paso que es esperar el bus en la parada
-7. Ahora el usuario en el active trip presiona el boton para pasar al siguiente paso que es ir hasta la parada de destino
-8. Ahora el usuario en el active trip presiona el boton para pasar al siguiente paso que es esperar el segundo bus en la parada
-9. Ahora el usuario en el active trip presiona el boton para pasar al siguiente paso que es caminar hasta el destino
+1. The user enters the trip options phase and sees the preview of the first trip option (with ETA)
+2. The user switches to the second option (this one has no ETA)
+3. The user switches to the third option (this one only has an ETA)
+4. The user selects this third option shown
+5. Now the user, in the active trip, is in the walk-to-stop step
+6. Now the user, in the active trip, presses the button to go to the next step, which is waiting for the bus at the stop
+7. Now the user, in the active trip, presses the button to go to the next step, which is going to the destination stop
+8. Now the user, in the active trip, presses the button to go to the next step, which is waiting for the second bus at the stop
+9. Now the user, in the active trip, presses the button to go to the next step, which is walking to the destination
 
-debes leer TODO el codigo de los archivos relacionados e ir construyendo el archivo mientras lees cada archivo, asi por pasos, hasta tener un escaneo/mapeo completo
+You must read ALL the code of the related files and build the file while you read each file, step by step, until you have a complete scan/map.
 
-recuerda apenas encuentres funciones que forman parte de este flujo en un archivo ya debes empezar a documentarlas, cada archivo que lees actualizar el archivo markdown con las funciones
+Remember, as soon as you find functions that are part of this flow in a file, you must start documenting them. For each file you read, update the markdown file with the functions.
 
-usa el comando cat para leer los archivos el IDE te va a dar el output, no tienes permitido usar otra cosa que cat en lo que dure esta task
+Use the cat command to read the files. The IDE will give you the output. You are not allowed to use anything other than cat for the duration of this task.

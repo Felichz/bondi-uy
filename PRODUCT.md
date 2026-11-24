@@ -13,7 +13,7 @@ Android/iOS; Windows desktop is used for headless widget tests only.)
 ## Users
 
 People in Montevideo who need to get from A to B by bus, including people who
-are not comfortable with technology ("abuelita first"). They use the app on the
+are not comfortable with technology ("grandma first"). They use the app on the
 street, often standing, in daylight, one hand busy, sometimes anxious about
 missing the bus or the stop. The job: know which bus to take, where to get on,
 when it arrives, and when to get off — without having to understand a transit
@@ -28,7 +28,7 @@ walk to the stop → wait for the bus (live position and ETA when available) →
 ride (the bus is drawn where the user is) → walk to the destination → arrival.
 
 Success: the user arrives without stress and never has to interpret the
-interface. The "test de la abuelita" is the acceptance criterion.
+interface. The "grandma test" is the acceptance criterion.
 
 ## Positioning
 
@@ -39,15 +39,15 @@ tracking from the Intendencia de Montevideo API fused with the user's own GPS
 
 ## Operating Context
 
-- Search: origin defaults to "Mi ubicación" and is editable; destination via
+- Search: origin defaults to "Mi ubicación" ("My location") and is editable; destination via
   place suggestions (Mapbox geocoding, Uruguay). Origin/destination can be swapped.
 - Options: a carousel with the recommended option preselected; moving through
   the carousel previews each trip on the map, including the live approaching
   bus and its green approach path when an ETA exists.
 - Active trip: automatic step navigation (GPS every ~5 s, bus polling every
-  ~10 s), with a discreet manual fallback on each step ("Ya subí",
-  "Ya llegué") for when detection fails.
-- Arrival: a brief "¡Llegaste!" confirmation, then back to search with a clean map.
+  ~10 s), with a discreet manual fallback on each step ("Ya subí" — "I got on",
+  "Ya llegué" — "I arrived") for when detection fails.
+- Arrival: a brief "¡Llegaste!" ("You arrived!") confirmation, then back to search with a clean map.
 - Explore (no trip): bus stops on the map; tapping one shows its upcoming arrivals.
 - Data sources: OTP 2.7 (GraphQL, local server with the MVD GTFS + Uruguay OSM),
   Montevideo `transporteRest/siguientesParada/{stop}` for ETAs and bus
@@ -61,7 +61,7 @@ tracking from the Intendencia de Montevideo API fused with the user's own GPS
   formats them. Mapbox (layers, camera, gestures) is a UI concern.
 - UI languages: Spanish (Uruguay, voseo) and English (2026-10-31, for the
   portfolio audience); device language by default, `?lang=` on the web, and
-  an ES/EN toggle. All copy lives in the UI layer (`lib/ui/textos/`).
+  an ES/EN toggle. All copy lives in the UI layer (`lib/ui/texts/`).
 - Demo mode (`BONDI_MODO=demo`, default on the web): five real OTP trips
   recorded from Malvín, simulated user and buses, adjustable time speed. No
   backend needed, so anyone can try it (web demo and APK).

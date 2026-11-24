@@ -1,152 +1,152 @@
-# Plan de Migración a Arquitectura Clean
-## Eliminar TramoViajeMostrable en favor de TripStep
+# Clean Architecture Migration Plan
+## Remove LegTripDisplayable in favor of TripStep
 
-**Fecha:** 2025-10-03
-**Estado:** Análisis de Complejidad
-**Versión Actual:** Usando adaptador temporal `journey_to_core_adapter.dart`
-
----
-
-## Resumen Ejecutivo
-
-**Problema:** Tenemos DOS modelos de datos paralelos:
-- `TramoViajeMostrable` (legacy) - Usado en toda la app
-- `TripStep` (core) - Arquitectura nueva, solo en tests
-
-**Solución Actual:** Adaptador que convierte entre ambos (temporal pero funcional)
-
-**Solución Clean:** Eliminar `TramoViajeMostrable` completamente, usar solo `TripStep`
-
-**Complejidad Estimada:**
-- **Tiempo:** 2-3 semanas (160-240 horas)
-- **Riesgo:** ALTO
-- **Archivos afectados:** 24 archivos
-- **Tests requeridos:** Extensivos
+**Date:** 2025-10-03
+**Status:** Complexity analysis
+**Current Version:** Using temporary adapter `journey_to_core_adapter.dart`
 
 ---
 
-## Análisis de Impacto
+## Executive Summary
 
-### 1. Archivos que Usan TramoViajeMostrable
+**Problem:** We have TWO parallel data models:
+- `LegTripDisplayable` (legacy) - Used throughout the app
+- `TripStep` (core) - New architecture, only in tests
 
-| Archivo | Ocurrencias | Complejidad | Horas Est. |
+**Current Solution:** An adapter that converts between both (temporary but functional)
+
+**Clean Solution:** Remove `LegTripDisplayable` completely, use only `TripStep`
+
+**Estimated Complexity:**
+- **Time:** 2-3 weeks (160-240 hours)
+- **Risk:** HIGH
+- **Affected files:** 24 files
+- **Required tests:** Extensive
+
+---
+
+## Impact Analysis
+
+### 1. Files That Use LegTripDisplayable
+
+| File | Occurrences | Complexity | Est. Hours |
 |---------|------------|-------------|------------|
-| `lib/ui/overlays/active_trip_overlay.dart` | 10 | ALTA | 20h |
-| `lib/map_manager/map_bus_realtime.dart` | 10 | ALTA | 16h |
-| `lib/journey/journey_manager.dart` | 8 | MEDIA | 12h |
-| `lib/map_manager/map_route_renderer.dart` | 6 | ALTA | 16h |
-| `lib/backend/contrato_ui/app_ui_state.dart` | 6 | CRÍTICA | 24h |
-| `lib/backend/services/itinerary_planning_service_adapter.dart` | 5 | CRÍTICA | 20h |
-| `lib/devtools/gps_playback_generator.dart` | 5 | MEDIA | 8h |
-| `lib/map_manager/map_camera_controller.dart` | 4 | MEDIA | 8h |
-| `lib/backend/providers/app_logic_provider.dart` | 3 | MEDIA | 8h |
-| Tests (4 archivos) | ~20 | MEDIA | 16h |
-| Otros (docs, scripts) | ~10 | BAJA | 8h |
+| `lib/ui/overlays/active_trip_overlay.dart` | 10 | HIGH | 20h |
+| `lib/map_manager/map_bus_realtime.dart` | 10 | HIGH | 16h |
+| `lib/journey/journey_manager.dart` | 8 | MEDIUM | 12h |
+| `lib/map_manager/map_route_renderer.dart` | 6 | HIGH | 16h |
+| `lib/backend/contrato_ui/app_ui_state.dart` | 6 | CRITICAL | 24h |
+| `lib/backend/services/itinerary_planning_service_adapter.dart` | 5 | CRITICAL | 20h |
+| `lib/devtools/gps_playback_generator.dart` | 5 | MEDIUM | 8h |
+| `lib/map_manager/map_camera_controller.dart` | 4 | MEDIUM | 8h |
+| `lib/backend/providers/app_logic_provider.dart` | 3 | MEDIUM | 8h |
+| Tests (4 files) | ~20 | MEDIUM | 16h |
+| Others (docs, scripts) | ~10 | LOW | 8h |
 | **TOTAL** | **87+** | - | **156h** |
 
-### 2. Estructuras que Requieren Refactorización
+### 2. Structures That Require Refactoring
 
 #### 2.1 OpcionDeRutaMostrable
 ```dart
 class OpcionDeRutaMostrable {
-  final List<TramoViajeMostrable> tramosParaPreview;  // ← CAMBIAR
-  // ... otros 10 campos
+  final List<LegTripDisplayable> tramosParaPreview;  // ← CHANGE
+  // ... 10 other fields
 }
 ```
 
-**Impacto:**
-- Usado en carousel de rutas (UI crítica)
-- Parser del API OTP lo construye
-- 15+ lugares lo referencian
+**Impact:**
+- Used in the route carousel (critical UI)
+- The OTP API parser builds it
+- Referenced in 15+ places
 
-**Cambios necesarios:**
+**Required changes:**
 ```dart
 class OpcionDeRutaMostrable {
-  final List<TripStep> tramosParaPreview;  // ✅ NUEVO
-  // ... resto igual
+  final List<TripStep> tramosParaPreview;  // ✅ NEW
+  // ... rest unchanged
 }
 ```
 
 #### 2.2 EstadoFaseViajeActivo
 ```dart
 class EstadoFaseViajeActivo {
-  final List<TramoViajeMostrable> tramosDelViaje;  // ← CAMBIAR
-  final OpcionDeRutaMostrable opcionDeRutaSeleccionada;  // También afectado
-  // ... otros campos
+  final List<LegTripDisplayable> tramosDelViaje;  // ← CHANGE
+  final OpcionDeRutaMostrable opcionDeRutaSeleccionada;  // Also affected
+  // ... other fields
 }
 ```
 
-**Impacto:**
-- Estado CENTRAL del viaje activo
-- Usado por JourneyManager, MapManager, UI
-- 30+ lugares lo referencian
+**Impact:**
+- CENTRAL state of the active trip
+- Used by JourneyManager, MapManager, UI
+- Referenced in 30+ places
 
 ---
 
-## Tareas de Refactorización
+## Refactoring Tasks
 
-### FASE 1: Modelo de Datos (40h)
+### PHASE 1: Data Model (40h)
 
-#### 1.1 Extender TripStep con Campos UI (8h)
-**Archivo:** `lib/journey/core/trip_step.dart`
+#### 1.1 Extend TripStep with UI Fields (8h)
+**File:** `lib/journey/core/trip_step.dart`
 
-**Cambios:**
+**Changes:**
 ```dart
 class TripStep {
-  // Campos existentes (arquitectura core)
+  // Existing fields (core architecture)
   final String id;
   final TripStepType type;
   final String description;
   final TripStepMetadata metadata;
 
-  // NUEVOS campos para compatibilidad UI
-  final List<Coordenada>? geometry;  // geometriaPolilinea
-  final Coordenada? pointPosition;   // posicionPunto
+  // NEW fields for UI compatibility
+  final List<Coordinate>? geometry;  // geometryPolyline
+  final Coordinate? pointPosition;   // positionPunto
   final int? estimatedDurationSeconds;
   final int? distanceMeters;
-  final String? destinationName;     // Para UI
+  final String? destinationName;     // For UI
   final String? busDestination;      // destinoFinalDelBus
   final String? shapeId;
   final int? estimatedBusArrivalMinutes;
   final bool? isRealTimeBus;
-  final Coordenada? currentBusPosition;
+  final Coordinate? currentBusPosition;
 
-  // ... resto
+  // ... rest
 }
 ```
 
-**Razón:** TripStep actual solo tiene metadata mínimo. UI necesita más información.
+**Reason:** The current TripStep only has minimal metadata. The UI needs more information.
 
-#### 1.2 Crear TripStepMetadataExtended (4h)
-**Archivo:** `lib/journey/core/trip_step.dart`
+#### 1.2 Create TripStepMetadataExtended (4h)
+**File:** `lib/journey/core/trip_step.dart`
 
 ```dart
 class TripStepMetadataExtended extends TripStepMetadata {
   final String? stopOriginName;
   final String? stopDestinationName;
-  final Coordenada? stopOriginCoords;
-  final Coordenada? stopDestinationCoords;
+  final Coordinate? stopOriginCoords;
+  final Coordinate? stopDestinationCoords;
   final String? busDestinationName;
 
-  // ... constructores
+  // ... constructors
 }
 ```
 
-#### 1.3 Refactorizar AppUiState (12h)
-**Archivo:** `lib/backend/contrato_ui/app_ui_state.dart`
+#### 1.3 Refactor AppUiState (12h)
+**File:** `lib/backend/contrato_ui/app_ui_state.dart`
 
-**Cambios:**
+**Changes:**
 ```dart
-// ANTES
+// BEFORE
 class OpcionDeRutaMostrable {
-  final List<TramoViajeMostrable> tramosParaPreview;
+  final List<LegTripDisplayable> tramosParaPreview;
 }
 
 class EstadoFaseViajeActivo {
-  final List<TramoViajeMostrable> tramosDelViaje;
+  final List<LegTripDisplayable> tramosDelViaje;
 }
 
-// DESPUÉS
+// AFTER
 class OpcionDeRutaMostrable {
   final List<TripStep> tramosParaPreview;  // ✅
 }
@@ -156,52 +156,52 @@ class EstadoFaseViajeActivo {
 }
 ```
 
-**Impacto en cascada:**
-- Todos los `copyWith()` deben actualizar tipo
-- Todos los constructores deben actualizar tipo
-- Serialización/deserialización si existe
+**Cascade impact:**
+- All `copyWith()` methods must update the type
+- All constructors must update the type
+- Serialization/deserialization if it exists
 
-#### 1.4 Eliminar TramoViajeMostrable (4h)
-**Archivo:** `lib/backend/contrato_ui/app_ui_state.dart`
+#### 1.4 Remove LegTripDisplayable (4h)
+**File:** `lib/backend/contrato_ui/app_ui_state.dart`
 
-- Eliminar clase completa (150 líneas)
-- Eliminar enum `TipoTramoViaje` → usar `TripStepType`
-- Actualizar imports en 24 archivos
+- Remove the entire class (150 lines)
+- Remove the `TypeLegTrip` enum → use `TripStepType`
+- Update imports in 24 files
 
-#### 1.5 Tests de Modelos (12h)
-- Test de TripStep extendido
-- Test de compatibilidad con UI
-- Test de serialización
+#### 1.5 Model Tests (12h)
+- Test of the extended TripStep
+- UI compatibility test
+- Serialization test
 
 ---
 
-### FASE 2: Parser del API OTP (24h)
+### PHASE 2: OTP API Parser (24h)
 
-#### 2.1 Refactorizar ItineraryPlanningServiceAdapter (16h)
-**Archivo:** `lib/backend/services/itinerary_planning_service_adapter.dart`
+#### 2.1 Refactor ItineraryPlanningServiceAdapter (16h)
+**File:** `lib/backend/services/itinerary_planning_service_adapter.dart`
 
-**Función crítica:** `_adaptOneOTPItineraryToMostrable()`
+**Critical function:** `_adaptOneOTPItineraryToMostrable()`
 
-**ANTES (actual):**
+**BEFORE (current):**
 ```dart
 tramosDelItinerario.add(
-  TramoViajeMostrable(
-    idTramo: _generateUniqueId("walk${itineraryOtpIndex}_$i"),
-    tipo: TipoTramoViaje.CAMINAR,
-    geometriaPolilinea: geometria,
-    descripcion: "Caminar hacia ${leg.to?.name}",
-    duracionEstimadaSegundos: legDurationSec,
-    distanciaMetros: legDistanceMet,
+  LegTripDisplayable(
+    idLeg: _generateUniqueId("walk${itineraryOtpIndex}_$i"),
+    type: TypeLegTrip.CAMINAR,
+    geometryPolyline: geometry,
+    description: "Caminar hacia ${leg.to?.name}",
+    durationEstimatedSeconds: legDurationSec,
+    distanceMeters: legDistanceMet,
   ),
 );
 ```
 
-**DESPUÉS (nuevo):**
+**AFTER (new):**
 ```dart
 tramosDelItinerario.add(
   TripStep(
     id: _generateUniqueId("walk${itineraryOtpIndex}_$i"),
-    type: TripStepType.walkToStop,  // Lógica de inferencia
+    type: TripStepType.walkToStop,  // Inference logic
     description: "Caminar hacia ${leg.to?.name}",
     metadata: TripStepMetadataExtended(
       totalDistanceMeters: legDistanceMet.toDouble(),
@@ -209,82 +209,82 @@ tramosDelItinerario.add(
       stopDestinationName: leg.to?.name,
       stopDestinationCoords: coordDestinoTramo,
     ),
-    geometry: geometria,
+    geometry: geometry,
     estimatedDurationSeconds: legDurationSec,
     distanceMeters: legDistanceMet,
   ),
 );
 ```
 
-**Desafíos:**
-1. **Inferencia de tipo:** Determinar `walkToStop` vs `walkToDestination`
-2. **Metadata completo:** Extraer todos los campos necesarios de OTP Leg
-3. **Bus route geometry:** Manejar shapeId y geometría completa
-4. **ETA parsing:** Convertir tiempo real del bus
+**Challenges:**
+1. **Type inference:** Determine `walkToStop` vs `walkToDestination`
+2. **Complete metadata:** Extract all the necessary fields from the OTP Leg
+3. **Bus route geometry:** Handle shapeId and the full geometry
+4. **ETA parsing:** Convert the bus's real-time data
 
-#### 2.2 Tests de Parsing (8h)
-- Test con respuestas reales de OTP
-- Test de edge cases (sin geometría, sin ETA, etc.)
-- Test de inferencia de tipos
+#### 2.2 Parsing Tests (8h)
+- Test with real OTP responses
+- Edge case tests (no geometry, no ETA, etc.)
+- Type inference test
 
 ---
 
-### FASE 3: UI Components (36h)
+### PHASE 3: UI Components (36h)
 
 #### 3.1 ActiveTripOverlay (12h)
-**Archivo:** `lib/ui/overlays/active_trip_overlay.dart`
+**File:** `lib/ui/overlays/active_trip_overlay.dart`
 
-**Cambios típicos:**
+**Typical changes:**
 ```dart
-// ANTES
-final TramoViajeMostrable tramo = tramosDelViaje[currentStepIndex];
-final String? busLine = tramo.nombreLineaBus;
-final Coordenada? stopCoords = tramo.coordenadasParadaOrigen;
+// BEFORE
+final LegTripDisplayable leg = tramosDelViaje[currentStepIndex];
+final String? busLine = leg.nameLineBus;
+final Coordinate? stopCoords = leg.coordenadasParadaOrigen;
 
-// DESPUÉS
+// AFTER
 final TripStep step = tramosDelViaje[currentStepIndex];
 final String? busLine = step.metadata.busLine;
-final Coordenada? stopCoords = step.metadata.stopOriginCoords;
+final Coordinate? stopCoords = step.metadata.stopOriginCoords;
 ```
 
-**10 ocurrencias** de acceso a campos → actualizar todas
+**10 occurrences** of field access → update all of them
 
 #### 3.2 Route Preview Carousel (8h)
-**Ubicación:** Donde se muestra `OpcionDeRutaMostrable.tramosParaPreview`
+**Location:** Where `OpcionDeRutaMostrable.tramosParaPreview` is displayed
 
-**Cambios:**
-- Acceso a campos de cada tramo
-- Iconos basados en `TripStepType` en vez de `TipoTramoViaje`
-- Formateo de duración/distancia
+**Changes:**
+- Field access for each leg
+- Icons based on `TripStepType` instead of `TypeLegTrip`
+- Duration/distance formatting
 
-#### 3.3 Otros Componentes UI (16h)
-- Indicadores de progreso
-- Instrucciones de navegación
-- Tooltips y labels
+#### 3.3 Other UI Components (16h)
+- Progress indicators
+- Navigation instructions
+- Tooltips and labels
 - Debugging panels
 
 ---
 
-### FASE 4: Mapa y Visualización (32h)
+### PHASE 4: Map and Visualization (32h)
 
 #### 4.1 MapRouteRenderer (12h)
-**Archivo:** `lib/map_manager/map_route_renderer.dart`
+**File:** `lib/map_manager/map_route_renderer.dart`
 
-**Función crítica:** `renderRoute(List<TramoViajeMostrable> tramos)`
+**Critical function:** `renderRoute(List<LegTripDisplayable> legs)`
 
-**Cambios:**
+**Changes:**
 ```dart
-// ANTES
-void renderRoute(List<TramoViajeMostrable> tramos) {
-  for (final tramo in tramos) {
-    if (tramo.tipo == TipoTramoViaje.CAMINAR) {
-      final geometry = tramo.geometriaPolilinea;
+// BEFORE
+void renderRoute(List<LegTripDisplayable> legs) {
+  for (final leg in legs) {
+    if (leg.type == TypeLegTrip.CAMINAR) {
+      final geometry = leg.geometryPolyline;
       // ...
     }
   }
 }
 
-// DESPUÉS
+// AFTER
 void renderRoute(List<TripStep> steps) {
   for (final step in steps) {
     if (step.type == TripStepType.walkToStop ||
@@ -297,198 +297,198 @@ void renderRoute(List<TripStep> steps) {
 ```
 
 #### 4.2 MapBusRealtime (12h)
-**Archivo:** `lib/map_manager/map_bus_realtime.dart`
+**File:** `lib/map_manager/map_bus_realtime.dart`
 
-- Acceso a geometría de bus
-- Extracción de stopIds
-- Manejo de ETA
+- Access to bus geometry
+- Extraction of stopIds
+- ETA handling
 
 #### 4.3 MapCameraController (8h)
-**Archivo:** `lib/map_manager/map_camera_controller.dart`
+**File:** `lib/map_manager/map_camera_controller.dart`
 
-- Cálculo de bounds desde steps
-- Zoom a segmentos específicos
+- Bounds calculation from steps
+- Zoom to specific segments
 
 ---
 
-### FASE 5: Journey Manager (16h)
+### PHASE 5: Journey Manager (16h)
 
-#### 5.1 Eliminar Adaptador (4h)
-**Archivo:** `lib/journey/adapters/journey_to_core_adapter.dart`
+#### 5.1 Remove the Adapter (4h)
+**File:** `lib/journey/adapters/journey_to_core_adapter.dart`
 
-- Eliminar archivo completo
-- Remover imports en JourneyManager
+- Delete the entire file
+- Remove imports in JourneyManager
 
-#### 5.2 JourneyManager Directo (8h)
-**Archivo:** `lib/journey/journey_manager.dart`
+#### 5.2 Direct JourneyManager (8h)
+**File:** `lib/journey/journey_manager.dart`
 
 ```dart
-// ANTES
+// BEFORE
 final steps = <TripStep>[];
-for (int i = 0; i < tramos.length; i++) {
-  steps.add(tramoToTripStep(tramos[i], i, tramos));  // Adaptador
+for (int i = 0; i < legs.length; i++) {
+  steps.add(tramoToTripStep(legs[i], i, legs));  // Adapter
 }
 
-// DESPUÉS
-// tramos ya son List<TripStep>, usar directamente
+// AFTER
+// legs are already List<TripStep>, use them directly
 _stateMachine = TripStateMachine(
   tripId: 'journey_${DateTime.now().millisecondsSinceEpoch}',
-  steps: tramos,  // Ya son TripSteps!
+  steps: legs,  // They are already TripSteps!
 );
 ```
 
-#### 5.3 Tests de Journey (4h)
-- Actualizar todos los mocks
-- Verificar transiciones
+#### 5.3 Journey Tests (4h)
+- Update all mocks
+- Verify transitions
 
 ---
 
-### FASE 6: DevTools y Simulador (12h)
+### PHASE 6: DevTools and Simulator (12h)
 
 #### 6.1 TripSimulator (4h)
-**Archivo:** `lib/devtools/trip_simulator.dart`
+**File:** `lib/devtools/trip_simulator.dart`
 
-- Cambiar referencia a tramos
-- Actualizar acceso a geometrías
+- Change the reference to legs
+- Update geometry access
 
 #### 6.2 GPSPlaybackGenerator (4h)
-**Archivo:** `lib/devtools/gps_playback_generator.dart`
+**File:** `lib/devtools/gps_playback_generator.dart`
 
-- Actualizar parsing de steps
-- Generar desde TripSteps
+- Update step parsing
+- Generate from TripSteps
 
-#### 6.3 Tests y Scripts (4h)
+#### 6.3 Tests and Scripts (4h)
 - `scripts/test_gps_generator.dart`
-- Tests de integración
+- Integration tests
 
 ---
 
-### FASE 7: Testing Integral (24h)
+### PHASE 7: Full Testing (24h)
 
-#### 7.1 Tests Unitarios (8h)
-- Todos los componentes modificados
+#### 7.1 Unit Tests (8h)
+- All modified components
 - Edge cases
 
-#### 7.2 Tests de Integración (12h)
-- Flujo completo: búsqueda → selección → journey
-- Simulador end-to-end
-- GPS real
+#### 7.2 Integration Tests (12h)
+- Full flow: search → selection → journey
+- End-to-end simulator
+- Real GPS
 
-#### 7.3 Testing Manual (4h)
-- QA en dispositivo real
-- Verificar UI no rompe
+#### 7.3 Manual Testing (4h)
+- QA on a real device
+- Verify the UI does not break
 - Performance
 
 ---
 
-## Riesgos y Mitigaciones
+## Risks and Mitigations
 
-### Riesgos ALTOS
+### HIGH Risks
 
-| Riesgo | Probabilidad | Impacto | Mitigación |
+| Risk | Probability | Impact | Mitigation |
 |--------|--------------|---------|------------|
-| **Breaking changes en UI** | ALTA | CRÍTICO | Feature flags, rollback plan |
-| **Parser OTP incorrecto** | MEDIA | CRÍTICO | Tests extensivos con data real |
-| **Pérdida de información** | MEDIA | ALTO | Audit de campos antes/después |
-| **Performance degradación** | BAJA | MEDIO | Benchmarks antes/después |
+| **Breaking changes in UI** | HIGH | CRITICAL | Feature flags, rollback plan |
+| **Incorrect OTP parser** | MEDIUM | CRITICAL | Extensive tests with real data |
+| **Information loss** | MEDIUM | HIGH | Field audit before/after |
+| **Performance degradation** | LOW | MEDIUM | Benchmarks before/after |
 
-### Riesgos MEDIOS
+### MEDIUM Risks
 
-| Riesgo | Probabilidad | Impacto | Mitigación |
+| Risk | Probability | Impact | Mitigation |
 |--------|--------------|---------|------------|
-| **Tests rotos** | ALTA | MEDIO | Actualizar incremental |
-| **Docs desactualizados** | ALTA | BAJO | Actualizar en cada fase |
-| **Regression bugs** | MEDIA | MEDIO | QA exhaustivo |
+| **Broken tests** | HIGH | MEDIUM | Update incrementally |
+| **Outdated docs** | HIGH | LOW | Update in each phase |
+| **Regression bugs** | MEDIUM | MEDIUM | Exhaustive QA |
 
 ---
 
-## Estrategia de Implementación
+## Implementation Strategy
 
-### Opción A: Big Bang (NO RECOMENDADA)
-- Refactorizar todo de una vez
-- **Riesgo:** EXTREMO
-- **Ventaja:** Rápido si sale bien
-- **Desventaja:** Si falla, todo falla
+### Option A: Big Bang (NOT RECOMMENDED)
+- Refactor everything at once
+- **Risk:** EXTREME
+- **Advantage:** Fast if it goes well
+- **Disadvantage:** If it fails, everything fails
 
-### Opción B: Incremental con Feature Flags ✅ RECOMENDADA
-1. **Semana 1-2:** Extender TripStep, mantener ambos modelos
-2. **Semana 2-3:** Parser dual (genera ambos), feature flag en UI
-3. **Semana 3-4:** Migrar UI componente por componente
-4. **Semana 4-5:** Testing, eliminar código viejo
+### Option B: Incremental with Feature Flags ✅ RECOMMENDED
+1. **Weeks 1-2:** Extend TripStep, keep both models
+2. **Weeks 2-3:** Dual parser (generates both), feature flag in UI
+3. **Weeks 3-4:** Migrate the UI component by component
+4. **Weeks 4-5:** Testing, remove old code
 
-**Ventajas:**
-- Rollback fácil en cada paso
-- Testing incremental
-- Menor riesgo
+**Advantages:**
+- Easy rollback at each step
+- Incremental testing
+- Lower risk
 
-### Opción C: Mantener Adaptador (ACTUAL) ✅ PRAGMÁTICA
-- Dejar adaptador como está
-- Refactorizar solo si hay tiempo
-- **Ventaja:** Funciona, bajo riesgo
-- **Desventaja:** Deuda técnica permanece
+### Option C: Keep the Adapter (CURRENT) ✅ PRAGMATIC
+- Leave the adapter as it is
+- Refactor only if there is time
+- **Advantage:** It works, low risk
+- **Disadvantage:** Technical debt remains
 
 ---
 
-## Estimación de Esfuerzo
+## Effort Estimate
 
-| Fase | Horas | Días (6h/día) |
+| Phase | Hours | Days (6h/day) |
 |------|-------|---------------|
-| 1. Modelo de Datos | 40h | 7 días |
-| 2. Parser OTP | 24h | 4 días |
-| 3. UI Components | 36h | 6 días |
-| 4. Mapa | 32h | 5 días |
-| 5. Journey Manager | 16h | 3 días |
-| 6. DevTools | 12h | 2 días |
-| 7. Testing | 24h | 4 días |
-| **Contingencia (20%)** | 37h | 6 días |
-| **TOTAL** | **221h** | **37 días** |
+| 1. Data Model | 40h | 7 days |
+| 2. OTP Parser | 24h | 4 days |
+| 3. UI Components | 36h | 6 days |
+| 4. Map | 32h | 5 days |
+| 5. Journey Manager | 16h | 3 days |
+| 6. DevTools | 12h | 2 days |
+| 7. Testing | 24h | 4 days |
+| **Contingency (20%)** | 37h | 6 days |
+| **TOTAL** | **221h** | **37 days** |
 
-**En semanas:** ~7.5 semanas (casi 2 meses) de trabajo full-time
-
----
-
-## Recomendación
-
-### Para AHORA: Opción C (Mantener Adaptador) ✅
-
-**Razones:**
-1. **Funciona:** El adaptador es válido y robusto
-2. **Bajo riesgo:** No rompe nada existente
-3. **Tiempo:** 2 meses es mucho para un refactor
-4. **ROI:** Beneficio marginal vs esfuerzo
-
-**El adaptador NO es un hack, es un patrón de diseño legítimo (Adapter Pattern)**
-
-### Para el FUTURO: Opción B (Incremental)
-
-**Cuándo hacerlo:**
-- Cuando haya 2+ meses disponibles
-- Cuando la app sea más estable
-- Cuando haya más tests automatizados
-- Como parte de una refactorización mayor
-
-**Señales para refactorizar:**
-- Se agregan muchos campos a TramoViajeMostrable
-- Performance issues por conversiones
-- Bugs recurrentes en el adaptador
-- Equipo crece y hay más recursos
+**In weeks:** ~7.5 weeks (almost 2 months) of full-time work
 
 ---
 
-## Conclusión
+## Recommendation
 
-**Solución Clean:** Eliminar TramoViajeMostrable completamente
+### For NOW: Option C (Keep the Adapter) ✅
 
-**Complejidad:**
-- ⏱️ **221 horas** (~2 meses)
-- 🎯 **24 archivos** afectados
-- ⚠️ **Riesgo ALTO**
-- 📊 **ROI: Bajo** (para el corto plazo)
+**Reasons:**
+1. **It works:** The adapter is valid and robust
+2. **Low risk:** It does not break anything existing
+3. **Time:** 2 months is a lot for a refactor
+4. **ROI:** Marginal benefit vs. effort
 
-**Recomendación:** Mantener adaptador actual, refactorizar en el futuro cuando haya más tiempo y recursos.
+**The adapter is NOT a hack, it is a legitimate design pattern (Adapter Pattern)**
+
+### For the FUTURE: Option B (Incremental)
+
+**When to do it:**
+- When there are 2+ months available
+- When the app is more stable
+- When there are more automated tests
+- As part of a larger refactoring
+
+**Signals to refactor:**
+- Many fields keep being added to LegTripDisplayable
+- Performance issues due to conversions
+- Recurring bugs in the adapter
+- The team grows and there are more resources
 
 ---
 
-**Autor:** Análisis generado durante integración de TripOrchestrator
-**Revisado por:** Pendiente
-**Próxima revisión:** Q1 2026
+## Conclusion
+
+**Clean Solution:** Remove LegTripDisplayable completely
+
+**Complexity:**
+- ⏱️ **221 hours** (~2 months)
+- 🎯 **24 files** affected
+- ⚠️ **HIGH risk**
+- 📊 **ROI: Low** (in the short term)
+
+**Recommendation:** Keep the current adapter, refactor in the future when there is more time and resources.
+
+---
+
+**Author:** Analysis generated during the TripOrchestrator integration
+**Reviewed by:** Pending
+**Next review:** Q1 2026

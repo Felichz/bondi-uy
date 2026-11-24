@@ -1,27 +1,27 @@
-# 🏗️ Nuevo Diseño de Flujo de Información
+# 🏗️ New Information Flow Design
 
-## 🎯 **Análisis: Flujo Actual vs Flujo Ideal**
+## 🎯 **Analysis: Current Flow vs Ideal Flow**
 
-### **Diferencias Principales:**
+### **Main Differences:**
 
-| Aspecto                    | Flujo Actual         | Flujo Ideal                         |
+| Aspect                     | Current Flow         | Ideal Flow                          |
 | -------------------------- | -------------------- | ----------------------------------- |
-| **Navegación entre pasos** | Manual (botones)     | Automática (basada en ubicación)    |
-| **Tracking de usuario**    | No implementado      | Cada 5 segundos con rutas dinámicas |
-| **Detección de llegadas**  | No existe            | Automática a paradas/destino        |
-| **Seguimiento de bus**     | Solo coordenadas API | Híbrido: API → Usuario cuando sube  |
-| **Actualización de rutas** | Estática             | Dinámica según ubicación actual     |
-| **Gestión de zoom**        | Manual por paso      | Inteligente y contextual            |
+| **Navigation between steps** | Manual (buttons)   | Automatic (location-based)          |
+| **User tracking**          | Not implemented      | Every 5 seconds with dynamic routes |
+| **Arrival detection**      | Does not exist       | Automatic at stops/destination      |
+| **Bus tracking**           | API coordinates only | Hybrid: API → User when boarding    |
+| **Route updates**          | Static               | Dynamic based on current location   |
+| **Zoom management**        | Manual per step      | Smart and contextual                |
 
-## 🏗️ **Arquitectura de Alto Nivel**
+## 🏗️ **High-Level Architecture**
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    USER JOURNEY ORCHESTRATOR                │
 ├─────────────────────────────────────────────────────────────┤
-│  • Detecta transiciones automáticas entre pasos             │
-│  • Coordina todos los subsistemas                          │
-│  • Mantiene estado del progreso del viaje                  │
+│  • Detects automatic transitions between steps              │
+│  • Coordinates all subsystems                              │
+│  • Keeps the trip progress state                           │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -29,48 +29,48 @@
 │   LOCATION       │   BUS TRACKING   │   ROUTE DYNAMIC  │   SMART CAMERA   │
 │   TRACKER        │   MANAGER        │   CALCULATOR     │   CONTROLLER     │
 ├──────────────────┼──────────────────┼──────────────────┼──────────────────┤
-│ • GPS cada 5s    │ • Sondeo API     │ • Rutas live     │ • Zoom contextual│
-│ • Detección      │ • Switch usuario │ • Distancias     │ • Focus dinámico │
-│   llegadas       │ • Estado híbrido │ • Progreso       │ • Elementos      │
-│ • Geofencing     │ • ETA management │ • Optimización   │   relevantes     │
+│ • GPS every 5s   │ • API polling    │ • Live routes    │ • Contextual zoom│
+│ • Arrival        │ • User switch    │ • Distances      │ • Dynamic focus  │
+│   detection      │ • Hybrid state   │ • Progress       │ • Relevant       │
+│ • Geofencing     │ • ETA management │ • Optimization   │   elements       │
 └──────────────────┴──────────────────┴──────────────────┴──────────────────┘
 ```
 
-## 📦 **Componentes del Sistema**
+## 📦 **System Components**
 
-### **1. Componente Central: UserJourneyOrchestrator**
+### **1. Central Component: UserJourneyOrchestrator**
 
 ```typescript
 class UserJourneyOrchestrator {
-  // Estado del viaje
+  // Trip state
   currentStep: JourneyStep
-  userLocation: Coordenada
+  userLocation: Coordinate
   journeyProgress: JourneyProgress
 
-  // Subsistemas
+  // Subsystems
   locationTracker: LocationTracker
   busTrackingManager: BusTrackingManager
   routeCalculator: RouteDynamicCalculator
   smartCamera: SmartCameraController
 
-  // Flujo principal
+  // Main flow
   async initializeJourney(selectedRoute: OpcionDeRuta) {
-    1. Configurar primer paso (WALKING_TO_STOP)
-    2. Iniciar location tracking
-    3. Calcular ruta inicial usuario → parada
-    4. Si hay ETA, iniciar bus tracking
-    5. Configurar geofences para detección automática
+    1. Set up first step (WALKING_TO_STOP)
+    2. Start location tracking
+    3. Calculate initial route user → stop
+    4. If there is an ETA, start bus tracking
+    5. Set up geofences for automatic detection
   }
 
-  // Timer principal cada 5 segundos
-  async onLocationUpdate(newLocation: Coordenada) {
-    1. Detectar si llegó a destino del paso actual
-    2. Si llegó → transición automática al siguiente paso
-    3. Si no → actualizar rutas y progreso dinámicamente
-    4. Coordinar zoom inteligente
+  // Main timer every 5 seconds
+  async onLocationUpdate(newLocation: Coordinate) {
+    1. Detect whether the user reached the destination of the current step
+    2. If reached → automatic transition to the next step
+    3. If not → update routes and progress dynamically
+    4. Coordinate smart zoom
   }
 
-  // Transiciones automáticas
+  // Automatic transitions
   async transitionToNextStep() {
     switch (currentStep.type) {
       case WALKING_TO_STOP → WAITING_FOR_BUS
@@ -82,96 +82,96 @@ class UserJourneyOrchestrator {
 }
 ```
 
-### **2. LocationTracker - Seguimiento Inteligente**
+### **2. LocationTracker - Smart Tracking**
 
 ```typescript
 class LocationTracker {
-  // Configuración
+  // Configuration
   private updateInterval = 5000ms
-  private arrivalThreshold = 50m // Distancia para considerar "llegada"
+  private arrivalThreshold = 50m // Distance to consider "arrival"
 
   async startTracking() {
     Timer.periodic(5000ms, () => {
-      1. Obtener ubicación GPS actual
-      2. Validar precisión y calidad
-      3. Detectar llegadas a destinos configurados
-      4. Notificar cambios al orchestrator
+      1. Get current GPS location
+      2. Validate accuracy and quality
+      3. Detect arrivals at configured destinations
+      4. Notify changes to the orchestrator
     })
   }
 
-  // Detección automática de llegadas
-  detectArrival(userLocation: Coordenada, destination: Coordenada): boolean {
+  // Automatic arrival detection
+  detectArrival(userLocation: Coordinate, destination: Coordinate): boolean {
     const distance = calculateDistance(userLocation, destination)
     return distance <= arrivalThreshold
   }
 
-  // Geofencing para optimización
-  setupGeofences(destinations: List<Coordenada>) {
-    // Configurar zonas de detección automática
-    // Optimizar batería usando geofences nativos
+  // Geofencing for optimization
+  setupGeofences(destinations: List<Coordinate>) {
+    // Set up automatic detection zones
+    // Optimize battery using native geofences
   }
 }
 ```
 
-### **3. BusTrackingManager - Sistema Híbrido**
+### **3. BusTrackingManager - Hybrid System**
 
 ```typescript
 class BusTrackingManager {
-  // Estados del tracking
+  // Tracking states
   trackingMode: 'API_REALTIME' | 'USER_LOCATION' | 'INACTIVE'
   currentBusLine: string
   etaInfo: EtaInfo
 
-  // Inicio del tracking (API)
+  // Start tracking (API)
   async startApiTracking(stopId: string, busLine: string) {
     trackingMode = 'API_REALTIME'
     Timer.periodic(10000ms, () => {
-      1. Sondear ETA desde API
-      2. Actualizar posición del bus en mapa
-      3. Calcular línea verde bus → parada
+      1. Poll ETA from the API
+      2. Update bus position on the map
+      3. Calculate green line bus → stop
     })
   }
 
-  // Transición a tracking del usuario
+  // Transition to user tracking
   async switchToUserTracking() {
     trackingMode = 'USER_LOCATION'
-    1. Detener sondeo de API
-    2. Usar ubicación del usuario como posición del bus
-    3. Renderizar bus icon en ubicación del usuario
-    4. Mantener enfoque: usuario → parada destino
+    1. Stop API polling
+    2. Use the user's location as the bus position
+    3. Render bus icon at the user's location
+    4. Keep focus: user → destination stop
   }
 
-  // Detección automática de subida al bus
-  detectBoardingBus(userLocation: Coordenada, busRoute: List<Coordenada>): boolean {
-    1. Verificar si usuario está en el corredor de la ruta del bus
-    2. Verificar velocidad de movimiento (>walking speed)
-    3. Verificar dirección de movimiento (coincide con bus route)
+  // Automatic detection of boarding the bus
+  detectBoardingBus(userLocation: Coordinate, busRoute: List<Coordinate>): boolean {
+    1. Check whether the user is in the corridor of the bus route
+    2. Check movement speed (> walking speed)
+    3. Check direction of movement (matches bus route)
     return allConditionsMet
   }
 }
 ```
 
-### **4. RouteDynamicCalculator - Rutas Vivas**
+### **4. RouteDynamicCalculator - Live Routes**
 
 ```typescript
 class RouteDynamicCalculator {
-  // Cálculo dinámico de rutas
+  // Dynamic route calculation
   async calculateOptimalRoute(
-    from: Coordenada,
-    to: Coordenada,
+    from: Coordinate,
+    to: Coordinate,
     mode: 'WALKING' | 'BUS'
   ): Promise<RouteInfo> {
-    1. Calcular ruta más eficiente
-    2. Obtener geometría de la ruta
-    3. Calcular distancia y tiempo estimado
-    4. Retornar información completa
+    1. Calculate the most efficient route
+    2. Get the route geometry
+    3. Calculate distance and estimated time
+    4. Return complete information
   }
 
-  // Progreso dinámico
+  // Dynamic progress
   calculateProgress(
-    startLocation: Coordenada,
-    currentLocation: Coordenada,
-    destination: Coordenada
+    startLocation: Coordinate,
+    currentLocation: Coordinate,
+    destination: Coordinate
   ): ProgressInfo {
     const totalDistance = distance(startLocation, destination)
     const remainingDistance = distance(currentLocation, destination)
@@ -187,11 +187,11 @@ class RouteDynamicCalculator {
 }
 ```
 
-### **5. SmartCameraController - Zoom Inteligente**
+### **5. SmartCameraController - Smart Zoom**
 
 ```typescript
 class SmartCameraController {
-  // Zoom contextual por tipo de paso
+  // Contextual zoom by step type
   async updateCameraForStep(step: JourneyStep, context: CameraContext) {
     switch (step.type) {
       case WALKING_TO_STOP:
@@ -212,125 +212,125 @@ class SmartCameraController {
     }
   }
 
-  // Actualización inteligente del zoom
-  async smartZoomUpdate(relevantPoints: List<Coordenada>, priority: ZoomPriority) {
-    1. Filtrar puntos por relevancia
-    2. Calcular bounds óptimos
-    3. Aplicar padding contextual
-    4. Animar suavemente hacia nueva vista
+  // Smart zoom update
+  async smartZoomUpdate(relevantPoints: List<Coordinate>, priority: ZoomPriority) {
+    1. Filter points by relevance
+    2. Calculate optimal bounds
+    3. Apply contextual padding
+    4. Animate smoothly to the new view
   }
 }
 ```
 
-## 🔄 **Flujo de Información Completo - Nuevo Diseño**
+## 🔄 **Complete Information Flow - New Design**
 
-### **Paso 1: Inicialización del Viaje**
+### **Step 1: Trip Initialization**
 
 ```
-Usuario confirma opción → UserJourneyOrchestrator.initializeJourney()
-├── 1. Configurar primer paso (WALKING_TO_STOP)
+User confirms option → UserJourneyOrchestrator.initializeJourney()
+├── 1. Set up first step (WALKING_TO_STOP)
 ├── 2. LocationTracker.startTracking()
-├── 3. RouteDynamicCalculator.calculateOptimalRoute(usuario → parada)
-├── 4. Si hay ETA → BusTrackingManager.startApiTracking()
+├── 3. RouteDynamicCalculator.calculateOptimalRoute(user → stop)
+├── 4. If ETA → BusTrackingManager.startApiTracking()
 ├── 5. SmartCameraController.updateCameraForStep()
-└── 6. UI muestra: paso actual, distancia, progreso, ETA del bus
+└── 6. UI shows: current step, distance, progress, bus ETA
 ```
 
-### **Paso 2: Loop Principal (cada 5 segundos)**
+### **Step 2: Main Loop (every 5 seconds)**
 
 ```
-LocationTracker detecta nueva ubicación
+LocationTracker detects new location
 ├── UserJourneyOrchestrator.onLocationUpdate()
-│   ├── ¿Usuario llegó al destino del paso?
-│   │   ├── SÍ → transitionToNextStep()
+│   ├── Did the user reach the step destination?
+│   │   ├── YES → transitionToNextStep()
 │   │   └── NO → updateCurrentStepProgress()
 │   │       ├── RouteDynamicCalculator.calculateProgress()
 │   │       ├── RouteDynamicCalculator.calculateOptimalRoute()
 │   │       ├── SmartCameraController.smartZoomUpdate()
-│   │       └── UI actualiza: distancia, progreso, tiempo restante
+│   │       └── UI updates: distance, progress, remaining time
 │   └── BusTrackingManager.updateBusTracking()
-└── MapRenderer actualiza: ruta azul, posición usuario, bus, zoom
+└── MapRenderer updates: blue route, user position, bus, zoom
 ```
 
-### **Paso 3: Transiciones Automáticas**
+### **Step 3: Automatic Transitions**
 
 ```
 WALKING_TO_STOP → WAITING_FOR_BUS
-├── Detectar llegada a parada (geofencing)
-├── Cambiar modo de tracking a bus
-├── Si hay ETA → mostrar bus en tiempo real
-├── Ajustar zoom: usuario + bus + parada
-└── UI: "Espera la línea X, llega en Y minutos"
+├── Detect arrival at stop (geofencing)
+├── Switch tracking mode to bus
+├── If ETA → show real-time bus
+├── Adjust zoom: user + bus + stop
+└── UI: "Wait for line X, arrives in Y minutes"
 
 WAITING_FOR_BUS → RIDING_BUS
-├── Detectar subida al bus (velocidad + dirección + corredor)
+├── Detect boarding the bus (speed + direction + corridor)
 ├── BusTrackingManager.switchToUserTracking()
-├── Renderizar bus icon en ubicación del usuario
-├── Ajustar zoom: usuario + parada destino
-└── UI: "En viaje hacia destino, baja en parada Z"
+├── Render bus icon at the user's location
+├── Adjust zoom: user + destination stop
+└── UI: "On the way to destination, get off at stop Z"
 
 RIDING_BUS → NEXT_STEP
-├── Detectar llegada a parada destino
-├── Determinar siguiente paso del itinerario
-├── Reconfigurar tracking según tipo de paso
-└── Continuar flujo recursivamente
+├── Detect arrival at destination stop
+├── Determine next step of the itinerary
+├── Reconfigure tracking according to the step type
+└── Continue flow recursively
 ```
 
-## 🎨 **Estados de la UI por Paso**
+## 🎨 **UI States per Step**
 
-### **Estado de Caminata**
-
-```
-┌─────────────────────────────────────┐
-│ 🚶‍♂️ Camina hacia la parada          │
-├─────────────────────────────────────┤
-│ 📍 150m restantes                   │
-│ ⏱️ 2 minutos                         │
-│ ⭕ 60% completado                    │
-│                                     │
-│ [Tramo azul dinámico en mapa]       │
-└─────────────────────────────────────┘
-```
-
-### **Estado de Espera con ETA**
+### **Walking State**
 
 ```
 ┌─────────────────────────────────────┐
-│ 🚌 Espera Línea 123                 │
+│ 🚶‍♂️ Walking to the stop              │
 ├─────────────────────────────────────┤
-│ 🟢 Bus llega en 3 minutos           │
-│ 📍 A 200m de la parada              │
+│ 📍 150m remaining                   │
+│ ⏱️ 2 minutes                         │
+│ ⭕ 60% completed                     │
 │                                     │
-│ [Bus + línea verde + parada]        │
+│ [Dynamic blue segment on map]       │
 └─────────────────────────────────────┘
 ```
 
-### **Estado de Viaje en Bus**
+### **Waiting State with ETA**
 
 ```
 ┌─────────────────────────────────────┐
-│ 🚌 En viaje - Línea 123             │
+│ 🚌 Waiting for Line 123             │
 ├─────────────────────────────────────┤
-│ 📍 Próxima parada: Av. Principal    │
-│ ⏱️ 5 minutos restantes               │
+│ 🟢 Bus arrives in 3 minutes         │
+│ 📍 200m from the stop               │
 │                                     │
-│ [Bus icon en usuario → parada]      │
+│ [Bus + green line + stop]           │
 └─────────────────────────────────────┘
 ```
 
-## 📊 **Ventajas del Nuevo Diseño**
+### **On the Bus State**
 
-1. **✅ Automatización Completa**: Sin intervención manual del usuario
-2. **✅ Experiencia Fluida**: Transiciones naturales y contextuales
-3. **✅ Información Relevante**: Datos dinámicos y actualizados
-4. **✅ Eficiencia de Batería**: Geofencing + timers optimizados
-5. **✅ Robustez**: Manejo de errores y fallbacks
-6. **✅ Escalabilidad**: Modular y extensible
-7. **✅ Precisión**: Tracking híbrido API + GPS del usuario
+```
+┌─────────────────────────────────────┐
+│ 🚌 On the way - Line 123            │
+├─────────────────────────────────────┤
+│ 📍 Next stop: Av. Principal         │
+│ ⏱️ 5 minutes remaining               │
+│                                     │
+│ [Bus icon at user → stop]           │
+└─────────────────────────────────────┘
+```
 
-## 🔧 **Detalles de Implementación**
+## 📊 **Advantages of the New Design**
 
-### **Tipos de Pasos del Viaje**
+1. **✅ Full Automation**: No manual user intervention
+2. **✅ Smooth Experience**: Natural and contextual transitions
+3. **✅ Relevant Information**: Dynamic and up-to-date data
+4. **✅ Battery Efficiency**: Geofencing + optimized timers
+5. **✅ Robustness**: Error handling and fallbacks
+6. **✅ Scalability**: Modular and extensible
+7. **✅ Precision**: Hybrid tracking API + user GPS
+
+## 🔧 **Implementation Details**
+
+### **Trip Step Types**
 
 ```typescript
 enum JourneyStepType {
@@ -343,8 +343,8 @@ enum JourneyStepType {
 
 interface JourneyStep {
   type: JourneyStepType;
-  startLocation: Coordenada;
-  targetLocation: Coordenada;
+  startLocation: Coordinate;
+  targetLocation: Coordinate;
   busLine?: string;
   stopId?: string;
   instructions: string;
@@ -352,7 +352,7 @@ interface JourneyStep {
 }
 ```
 
-### **Estados del Progreso**
+### **Progress States**
 
 ```typescript
 interface JourneyProgress {
@@ -367,28 +367,28 @@ interface JourneyProgress {
 }
 ```
 
-### **Información de Rutas Dinámicas**
+### **Dynamic Route Information**
 
 ```typescript
 interface RouteInfo {
-  geometry: List<Coordenada>;
+  geometry: List<Coordinate>;
   distance: number;
   duration: number;
   instructions: List<string>;
-  waypoints: List<Coordenada>;
+  waypoints: List<Coordinate>;
   isOptimal: boolean;
   lastCalculated: DateTime;
 }
 ```
 
-### **Configuración de Tracking**
+### **Tracking Configuration**
 
 ```typescript
 interface TrackingConfig {
   locationUpdateInterval: number; // 5000ms
   arrivalThreshold: number; // 50m
   busDetectionThreshold: number; // 100m
-  speedThreshold: number; // 5 km/h para detectar bus
+  speedThreshold: number; // 5 km/h to detect bus
   geofenceRadius: number; // 100m
 }
 ```

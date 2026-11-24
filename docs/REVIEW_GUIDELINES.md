@@ -1,95 +1,95 @@
-# Guía de Revisión de Alineamiento Arquitectónico - BondiUY
+# Architectural Alignment Review Guide - BondiUY
 
-## 1. Propósito
+## 1. Purpose
 
-Esta guía tiene como objetivo asegurar que todo el desarrollo de nuevas funcionalidades y la refactorización del código para la aplicación BondiUY se adhieran consistentemente a la arquitectura de separación de capas (UI vs. Lógica de Negocio) y a los principios de diseño establecidos. Su cumplimiento es crucial para mantener un codebase limpio, mantenible, testeable y alineado con la visión del producto.
+This guide aims to ensure that all new feature development and code refactoring for the BondiUY application consistently adhere to the layer separation architecture (UI vs. Business Logic) and to the established design principles. Compliance is crucial to keep a clean, maintainable, testable codebase aligned with the product vision.
 
-## 2. Principios Fundamentales
+## 2. Fundamental Principles
 
-### Separación Estricta de Capas
+### Strict Layer Separation
 
-- **Capa de UI (ui/)**:
+- **UI Layer (ui/)**:
 
-  - Exclusivamente responsable de la presentación y la interacción directa con el usuario
-  - Agnóstica a la lógica de negocio subyacente
+  - Exclusively responsible for presentation and direct interaction with the user
+  - Agnostic to the underlying business logic
 
-- **Capa de Lógica de Negocio (backend/)**:
-  - Contiene toda la lógica de negocio, orquestación de servicios, procesamiento de datos y gestión del estado de la aplicación
-  - Agnóstica a la implementación visual de la UI
+- **Business Logic Layer (backend/)**:
+  - Contains all business logic, service orchestration, data processing and application state management
+  - Agnostic to the visual implementation of the UI
 
-### Contrato UI-Lógica Único y Mínimo
+### Single and Minimal UI-Logic Contract
 
 ```dart
 // backend/contrato_ui/app_ui_state.dart
-AppUiState: // Única fuente de datos hacia la UI
-IAppLogic: // Único punto de entrada desde la UI
+AppUiState: // Only source of data towards the UI
+IAppLogic: // Only entry point from the UI
 ```
 
-## 3. Checklist de Revisión Detallado
+## 3. Detailed Review Checklist
 
-### A. Revisando la Capa de Lógica (backend/)
+### A. Reviewing the Logic Layer (backend/)
 
-- [ ] ¿Las modificaciones al AppUiState se realizan ÚNICAMENTE a través de su método copyWith?
-- [ ] ¿Los datos en AppUiState son crudos (numéricos/enums)?
+- [ ] Are changes to AppUiState made ONLY through its copyWith method?
+- [ ] Is the data in AppUiState raw (numeric/enums)?
 
-**Ejemplo incorrecto**:
+**Incorrect example**:
 
 ```dart
-// ❌ Evitar strings pre-formateados
+// ❌ Avoid pre-formatted strings
 duracionTotalTexto: "5 min"
 ```
 
-**Ejemplo correcto**:
+**Correct example**:
 
 ```dart
-// ✅ Usar datos crudos
+// ✅ Use raw data
 duracionTotalSegundos: 300
 ```
 
-### B. Revisando la Capa de UI (ui/)
+### B. Reviewing the UI Layer (ui/)
 
-- [ ] ¿Los widgets leen datos del estado global ÚNICAMENTE a través del AppUiState (obtenido vía ref.watch(appLogicProvider))?
-- [ ] ¿Las interacciones del usuario que requieren lógica de negocio o nuevos datos invocan ÚNICAMENTE los métodos públicos expuestos por AppLogicNotifier (obtenido vía ref.read(appLogicProvider.notifier).nombreAccion())?
-- [ ] ¿La UI no intenta modificar directamente el AppUiState?
+- [ ] Do widgets read global state ONLY through AppUiState (obtained via ref.watch(appLogicProvider))?
+- [ ] Do user interactions that require business logic or new data invoke ONLY the public methods exposed by AppLogicNotifier (obtained via ref.read(appLogicProvider.notifier).actionName())?
+- [ ] Does the UI avoid directly modifying AppUiState?
 
-### C. Revisando el Contrato (backend/contrato_ui/app_ui_state.dart)
+### C. Reviewing the Contract (backend/contrato_ui/app_ui_state.dart)
 
-- [ ] ¿Las definiciones de estado y sus campos son claras, concisas y representan la semántica de los datos sin ambigüedad?
-- [ ] ¿El contrato expone la mínima información necesaria para que la UI cumpla su función, evitando detalles de implementación interna de la lógica?
-- [ ] ¿Se evita la redundancia de datos?
-- [ ] ¿Los datos son verdaderamente "crudos" y no contienen elementos de presentación?
+- [ ] Are the state definitions and their fields clear, concise, and do they represent the semantics of the data without ambiguity?
+- [ ] Does the contract expose the minimum information necessary for the UI to fulfill its function, avoiding internal implementation details of the logic?
+- [ ] Is data redundancy avoided?
+- [ ] Is the data truly "raw" and free of presentation elements?
 
-## 4. Prioridades Durante la Revisión
+## 4. Review Priorities
 
-1. Cumplimiento estricto del contrato y separación de capas
-2. Agnosticismo de la lógica respecto a la presentación
-3. Autonomía de la UI en la presentación
-4. Claridad y Mantenibilidad: El código debe ser fácil de entender dentro de su capa y el contrato debe ser explícito.
+1. Strict compliance with the contract and layer separation
+2. Logic agnosticism with respect to presentation
+3. UI autonomy in presentation
+4. Clarity and Maintainability: the code must be easy to understand within its layer, and the contract must be explicit.
 
-## 5. Mini-Escenarios de Aplicación
+## 5. Mini Application Scenarios
 
-**Escenario**: Cambiar el ícono de paradas de bus  
-**Solución**:
+**Scenario**: Change the bus stop icon  
+**Solution**:
 
 ```dart
-// Modificar solo en capa UI
+// Modify only in the UI layer
 Marker(
-  icon: CustomBusStopIcon(), // Nuevo asset
+  icon: CustomBusStopIcon(), // New asset
 )
 ```
 
-**Escenario**: Añadir una nueva preferencia de usuario "Evitar peajes" en la planificación de rutas  
-**Análisis**: Es una nueva regla de negocio  
-**Capas Afectadas**:
+**Scenario**: Add a new user preference "Avoid tolls" in route planning  
+**Analysis**: It is a new business rule  
+**Affected layers**:
 
-- **Contrato**: IAppLogic podría necesitar un nuevo parámetro en iniciarBusquedaDeRutas. AppUiState podría necesitar un campo en PreferenciasUsuario si la UI debe mostrar el estado de esta preferencia.
-- **Lógica**: El AppLogicNotifier pasará esta preferencia al ItineraryPlanningService. El servicio de planificación deberá ser modificado para considerar esta opción al interactuar con el motor de rutas (OTP).
-- **UI**: Añadir un nuevo control (checkbox, switch) para que el usuario active/desactive la preferencia. Este control, al cambiar, llamará a una nueva acción en IAppLogic para actualizar la preferencia (ej. actualizarPreferenciaEvitarPeajes(bool activado)), lo que a su vez actualizaría el AppUiState.
+- **Contract**: IAppLogic might need a new parameter in iniciarBusquedaDeRutas. AppUiState might need a field in PreferenciasUsuario if the UI must show the state of this preference.
+- **Logic**: AppLogicNotifier will pass this preference to ItineraryPlanningService. The planning service must be modified to consider this option when interacting with the routing engine (OTP).
+- **UI**: Add a new control (checkbox, switch) so the user can enable/disable the preference. This control, when changed, will call a new action in IAppLogic to update the preference (e.g. actualizarPreferenciaEvitarPeajes(bool activado)), which in turn would update AppUiState.
 
-**Escenario**: El mapa debe centrarse automáticamente en la ubicación del usuario al iniciar la app si el permiso está concedido  
-**Análisis**: Implica obtener datos de geolocalización (lógica) y luego controlar el mapa (UI)  
-**Flujo**:
+**Scenario**: The map must automatically center on the user's location when the app starts, if permission is granted  
+**Analysis**: It involves getting geolocation data (logic) and then controlling the map (UI)  
+**Flow**:
 
-- **UI**: Al iniciar, (o cuando el widget del mapa esté listo), llama a appLogicProvider.notifier.obtenerUbicacionActualUsuarioParaInicio().
-- **Lógica**: Intenta obtener la ubicación.
-- **UI**: Observa AppUiState.zoomACoordenadaInicial. Si no es nulo, usa el SDK de Mapbox para animar la cámara a esa coordenada. También renderiza las paradas actualizadas.
+- **UI**: On start (or when the map widget is ready), calls appLogicProvider.notifier.obtenerUbicacionActualUsuarioParaInicio().
+- **Logic**: Tries to get the location.
+- **UI**: Watches AppUiState.zoomACoordenadaInicial. If it is not null, uses the Mapbox SDK to animate the camera to that coordinate. It also renders the updated stops.

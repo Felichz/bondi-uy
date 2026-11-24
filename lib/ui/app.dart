@@ -1,118 +1,116 @@
-// Raíz de la UI: un mapa persistente y, encima, el panel de la fase actual.
+// UI root: a persistent map with the current phase's panel on top.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../contract/app_state.dart';
-import '../contract/proveedores.dart';
-import 'avisos.dart';
-import 'busqueda/pantalla_busqueda.dart';
+import '../contract/providers.dart';
+import 'notices.dart';
+import 'search/search_screen.dart';
 import 'demo/demo.dart';
-import 'estado_ui.dart';
-import 'explorar/panel_explorar.dart';
-import 'mapa/encuadre.dart';
-import 'mapa/escena.dart';
-import 'mapa/mapa_bondi.dart';
-import 'opciones/panel_opciones.dart';
-import 'tema/preferencia_tema.dart';
-import 'textos/preferencia_idioma.dart';
-import 'textos/textos.dart';
-import 'tema/tema.dart';
-import 'viaje/panel_viaje.dart';
-import 'web/marco_web.dart';
+import 'ui_status.dart';
+import 'explore/explore_panel.dart';
+import 'map/framing.dart';
+import 'map/scene.dart';
+import 'map/bondi_map.dart';
+import 'options/options_panel.dart';
+import 'theme/theme_preference.dart';
+import 'texts/language_preference.dart';
+import 'texts/texts.dart';
+import 'theme/app_theme.dart';
+import 'trip/trip_panel.dart';
+import 'web/web_frame.dart';
 
 class BondiApp extends ConsumerWidget {
   const BondiApp({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final idioma = ref.watch(idiomaProvider);
-    fijarIdioma(idioma);
+    final language = ref.watch(languageProvider);
+    pinLanguage(language);
     return MaterialApp(
       title: 'BondiUY',
       debugShowCheckedModeBanner: false,
-      theme: temaBondi(Brightness.light),
-      darkTheme: temaBondi(Brightness.dark),
-      themeMode: ref.watch(preferenciaTemaProvider),
+      theme: themeBondi(Brightness.light),
+      darkTheme: themeBondi(Brightness.dark),
+      themeMode: ref.watch(preferenceThemeProvider),
       locale:
-          idioma == Idioma.es ? const Locale('es', 'UY') : const Locale('en'),
-      // Al cambiar de idioma se reconstruye todo con los textos nuevos (la
-      // lógica y su estado viven fuera, en los providers: no se pierde nada).
-      home: PantallaPrincipal(key: ValueKey(idioma)),
-      // En la web, en pantallas anchas, dentro de un teléfono.
+          language == Language.es
+              ? const Locale('es', 'UY')
+              : const Locale('en'),
+      // Changing language rebuilds everything with the new texts (the
+      // logic and its state live outside, in the providers: nothing is lost).
+      home: HomeScreen(key: ValueKey(language)),
+      // On the web, on wide screens, inside a phone frame.
       builder: (context, child) {
-        final forzado = ref.watch(marcoForzadoProvider);
-        return MarcoWeb(
-          forzar: forzado != null,
-          porDentro: forzado,
-          child: child!,
-        );
+        final forced = ref.watch(frameForcedProvider);
+        return WebFrame(force: forced != null, byInside: forced, child: child!);
       },
     );
   }
 }
 
-class PantallaPrincipal extends ConsumerStatefulWidget {
-  const PantallaPrincipal({super.key});
+class HomeScreen extends ConsumerStatefulWidget {
+  const HomeScreen({super.key});
 
   @override
-  ConsumerState<PantallaPrincipal> createState() => _PantallaPrincipalState();
+  ConsumerState<HomeScreen> createState() => _PantallaPrincipalState();
 }
 
-class _PantallaPrincipalState extends ConsumerState<PantallaPrincipal> {
+class _PantallaPrincipalState extends ConsumerState<HomeScreen> {
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(appActionsProvider).arrancar();
+      ref.read(appActionsProvider).start();
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    final estado = ref.watch(appStateProvider);
-    final buscando = ref.watch(busquedaAbiertaProvider);
-    final uiMapa = EstadoUiMapa(
-      opcionEnfocada: ref.watch(opcionEnfocadaProvider),
+    final status = ref.watch(appStateProvider);
+    final searching = ref.watch(searchOpenProvider);
+    final uiMap = MapUiStatus(
+      optionFocused: ref.watch(optionFocusedProvider),
       verBus: ref.watch(verBusProvider),
     );
-    // Cada viaje empieza siguiéndote a vos.
-    ref.listen<bool>(appStateProvider.select((s) => s.fase is FaseViaje), (
+    // Each trip starts by following you.
+    ref.listen<bool>(appStateProvider.select((s) => s.phase is TripPhase), (
       antes,
-      enViaje,
+      inTrip,
     ) {
-      if (enViaje && antes == false) {
+      if (inTrip && antes == false) {
         ref.read(verBusProvider.notifier).state = false;
       }
     });
-    final c = ColoresBondi.of(context);
-    final alto = MediaQuery.sizeOf(context).height;
-    final seguro = MediaQuery.paddingOf(context);
+    final c = BondiColors.of(context);
+    final height = MediaQuery.sizeOf(context).height;
+    final safe = MediaQuery.paddingOf(context);
 
-    // Zonas del mapa tapadas por los paneles de cada fase.
-    final margenes = switch (estado.fase) {
-      FaseExplorar() => EdgeInsets.only(
-        top: seguro.top + 84,
+    // Map areas covered by each phase's panels.
+    final margins = switch (status.phase) {
+      ExplorePhase() => EdgeInsets.only(
+        top: safe.top + 84,
         bottom:
-            estado.paradaConsultada != null
-                ? alto * 0.45
-                : estado.demo != null
-                ? seguro.bottom + 12 + ref.watch(altoTarjetaDemoProvider)
+            status.stopQueried != null
+                ? height * 0.45
+                : status.demo != null
+                ? safe.bottom + 12 + ref.watch(heightCardDemoProvider)
                 : 24,
       ),
-      FaseOpciones() => EdgeInsets.only(
-        top: seguro.top + 84,
-        bottom: seguro.bottom + 16 + ref.watch(altoHojaOpcionesProvider),
+      OptionsPhase() => EdgeInsets.only(
+        top: safe.top + 84,
+        bottom: safe.bottom + 16 + ref.watch(heightSheetOptionsProvider),
       ),
-      final FaseViaje v => EdgeInsets.only(
-        top: seguro.top + 8 + ref.watch(altoTarjetaViajeProvider),
-        bottom: v.estado == EstadoViaje.completado ? alto * 0.42 : 100,
+      final TripPhase v => EdgeInsets.only(
+        top: safe.top + 8 + ref.watch(heightCardTripProvider),
+        bottom: v.status == TripStatus.completed ? height * 0.42 : 100,
       ),
     };
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: (c.brillo == Brightness.dark
+      value: (c.glow == Brightness.dark
               ? SystemUiOverlayStyle.light
               : SystemUiOverlayStyle.dark)
           .copyWith(statusBarColor: Colors.transparent),
@@ -122,22 +120,22 @@ class _PantallaPrincipalState extends ConsumerState<PantallaPrincipal> {
           fit: StackFit.expand,
           children: [
             Positioned.fill(
-              child: MapaBondi(
+              child: BondiMap(
                 key: const ValueKey('mapa'),
-                escena: construirEscena(estado, uiMapa),
-                encuadre: encuadreDe(estado, uiMapa),
-                estilo: c.mapa,
-                margenes: margenes,
-                controlador: ref.watch(controladorMapaProvider),
-                fuente: ref.watch(fuenteTeselasProvider),
-                decodificarEnIsolate: ref.watch(teselasEnIsolateProvider),
-                onTocarParada:
-                    estado.fase is FaseExplorar
-                        ? ref.read(appActionsProvider).consultarParada
+                scene: buildScene(status, uiMap),
+                framing: framingOf(status, uiMap),
+                style: c.map,
+                margins: margins,
+                controller: ref.watch(controllerMapProvider),
+                source: ref.watch(sourceTilesProvider),
+                decodeInIsolate: ref.watch(tilesInIsolateProvider),
+                onTapStop:
+                    status.phase is ExplorePhase
+                        ? ref.read(appActionsProvider).queryStop
                         : null,
-                onTocarMapa:
-                    estado.paradaConsultada != null
-                        ? ref.read(appActionsProvider).cerrarParada
+                onTapMap:
+                    status.stopQueried != null
+                        ? ref.read(appActionsProvider).closeStop
                         : null,
               ),
             ),
@@ -157,22 +155,22 @@ class _PantallaPrincipalState extends ConsumerState<PantallaPrincipal> {
                         child: child,
                       ),
                     ),
-                child: switch (estado.fase) {
-                  FaseExplorar() => const PanelExplorar(
+                child: switch (status.phase) {
+                  ExplorePhase() => const ExplorePanel(
                     key: ValueKey('fase-explorar'),
                   ),
-                  FaseOpciones() => const PanelOpciones(
+                  OptionsPhase() => const OptionsPanel(
                     key: ValueKey('fase-opciones'),
                   ),
-                  FaseViaje() => const PanelViaje(key: ValueKey('fase-viaje')),
+                  TripPhase() => const TripPanel(key: ValueKey('fase-viaje')),
                 },
               ),
             ),
-            if (buscando != null)
+            if (searching != null)
               const Positioned.fill(
-                child: PantallaBusqueda(key: ValueKey('busqueda')),
+                child: SearchScreen(key: ValueKey('busqueda')),
               ),
-            const OyenteAvisos(),
+            const NoticeListener(),
           ],
         ),
       ),

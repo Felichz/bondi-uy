@@ -1,8 +1,8 @@
-// Implementación de AppActions: el "chef" de datos de la app.
+// Implementation of AppActions: the app's data "chef".
 //
-// Recibe intenciones de la UI, consulta los puertos (OTP, API de Montevideo,
-// geocoding, GPS, catálogo GTFS) y publica un AppState nuevo. No conoce
-// widgets, mapas, colores ni textos.
+// Receives intents from the UI, queries the ports (OTP, Montevideo API,
+// geocoding, GPS, GTFS catalog) and publishes a new AppState. It knows nothing
+// about widgets, maps, colors or texts.
 
 import 'dart:async';
 
@@ -10,258 +10,257 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../contract/app_actions.dart';
 import '../contract/app_state.dart';
-import '../contract/trazas.dart';
+import '../contract/traces.dart';
 import 'geo/geo.dart';
-import 'puertos.dart';
-import 'viaje/navegador.dart';
-import 'viaje/recomendador.dart';
-import 'viaje/seguidor_bus.dart';
+import 'ports.dart';
+import 'trip/trip_navigator.dart';
+import 'trip/recommender.dart';
+import 'trip/bus_tracker.dart';
 
-class ConfigLogica {
-  final Duration sondeoBus;
-  final Duration sondeoParada;
-  final Duration debounceSugerencias;
-  final ReglasNavegacion reglas;
+class LogicConfig {
+  final Duration pollBus;
+  final Duration pollStop;
+  final Duration debounceSuggestions;
+  final NavigationRules rules;
 
-  /// Paradas de las que se piden ETAs al mostrar opciones.
-  final int maxParadasEta;
+  /// Stops whose ETAs are requested when showing options.
+  final int maxStopsEta;
 
-  const ConfigLogica({
-    this.sondeoBus = const Duration(seconds: 10),
-    this.sondeoParada = const Duration(seconds: 20),
-    this.debounceSugerencias = const Duration(milliseconds: 350),
-    this.reglas = const ReglasNavegacion(),
-    this.maxParadasEta = 4,
+  const LogicConfig({
+    this.pollBus = const Duration(seconds: 10),
+    this.pollStop = const Duration(seconds: 20),
+    this.debounceSuggestions = const Duration(milliseconds: 350),
+    this.rules = const NavigationRules(),
+    this.maxStopsEta = 4,
   });
 }
 
 class AppController extends StateNotifier<AppState> implements AppActions {
-  final PlanificadorViajes _planificador;
-  final FuenteLlegadas _llegadas;
-  final BuscadorLugares _lugares;
-  final CatalogoRed _catalogo;
-  final FuenteUbicacion _ubicacion;
-  final Reloj _ahora;
-  final ConfigLogica config;
+  final TripPlanner _planner;
+  final SourceArrivals _arrivals;
+  final PlaceSearcher _places;
+  final CatalogRed _catalog;
+  final LocationSource _location;
+  final Clock _now;
+  final LogicConfig config;
 
-  /// Ganchos para el modo demo (simulación de GPS sobre el viaje elegido).
-  final void Function(OpcionViaje opcion)? alIniciarViaje;
-  final void Function()? alTerminarViaje;
+  /// Hooks for demo mode (GPS simulation over the chosen trip).
+  final void Function(TripOption option)? onStartTrip;
+  final void Function()? onFinishTrip;
 
-  /// Al llegar al destino (si no se indica, se usa [alTerminarViaje]).
-  final void Function()? alLlegar;
+  /// On arrival at the destination (if not given, [onFinishTrip] is used).
+  final void Function()? onArrive;
 
-  /// Informa las llamadas a las piezas del núcleo (la demo web las muestra).
-  final Trazas? trazas;
+  /// Reports calls to the core pieces (the web demo shows them).
+  final Traces? traces;
 
   AppController({
-    required PlanificadorViajes planificador,
-    required FuenteLlegadas llegadas,
-    required BuscadorLugares lugares,
-    required CatalogoRed catalogo,
-    required FuenteUbicacion ubicacion,
-    Reloj? reloj,
-    this.config = const ConfigLogica(),
-    this.alIniciarViaje,
-    this.alTerminarViaje,
-    this.alLlegar,
-    this.trazas,
+    required TripPlanner planner,
+    required SourceArrivals arrivals,
+    required PlaceSearcher places,
+    required CatalogRed catalog,
+    required LocationSource location,
+    Clock? clock,
+    this.config = const LogicConfig(),
+    this.onStartTrip,
+    this.onFinishTrip,
+    this.onArrive,
+    this.traces,
     ControlDemo? demo,
-    AppState? estadoInicial,
-  }) : _planificador = planificador,
-       _llegadas = llegadas,
-       _lugares = lugares,
-       _catalogo = catalogo,
-       _ubicacion = ubicacion,
-       _ahora = reloj ?? DateTime.now,
+    AppState? statusInitial,
+  }) : _planner = planner,
+       _arrivals = arrivals,
+       _places = places,
+       _catalog = catalog,
+       _location = location,
+       _now = clock ?? DateTime.now,
        super(
-         (estadoInicial ?? AppState.inicial()).copyWith(
-           demo: demo == null ? null : Demo(destinos: demo.destinos),
+         (statusInitial ?? AppState.initial()).copyWith(
+           demo: demo == null ? null : Demo(destinations: demo.destinations),
          ),
        );
 
-
-  // --- estado interno (no visible para la UI) ---
+  // --- internal state (not visible to the UI) ---
   bool _arrancado = false;
-  StreamSubscription<MuestraUbicacion>? _gps;
+  StreamSubscription<LocationSample>? _gps;
   Timer? _debounce;
-  int _secConsulta = 0;
-  int _secBusqueda = 0;
-  int _secAviso = 0;
+  int _secQuery = 0;
+  int _secSearch = 0;
+  int _secNotice = 0;
 
-  final Map<String, ViajePlanificado> _planificados = {};
-  final Map<String, SeguidorBus> _seguidoresOpcion = {};
-  Timer? _timerOpciones;
-  String? _opcionEnfocada;
+  final Map<String, PlannedTrip> _planned = {};
+  final Map<String, BusTracker> _seguidoresOpcion = {};
+  Timer? _timerOptions;
+  String? _optionFocused;
 
-  Navegador? _nav;
-  Timer? _timerViaje;
-  SeguidorBus? _seguidorViaje;
+  TripNavigator? _nav;
+  Timer? _timerTrip;
+  BusTracker? _trackerTrip;
   int? _esperaSeguida;
-  int _secViaje = 0;
+  int _secTrip = 0;
   final Set<String> _avisosDados = {};
 
-  Timer? _timerParada;
-  int _secParada = 0;
+  Timer? _timerStop;
+  int _secStop = 0;
 
   // =====================================================================
-  // Arranque y ubicación
+  // Startup and location
   // =====================================================================
 
   @override
-  void arrancar() {
+  void start() {
     if (_arrancado) return;
     _arrancado = true;
-    unawaited(_cargarParadas());
-    unawaited(_iniciarUbicacion());
+    unawaited(_loadStops());
+    unawaited(_startLocation());
   }
 
-  Future<void> _cargarParadas() async {
+  Future<void> _loadStops() async {
     try {
-      final paradas = await _catalogo.paradas();
-      if (mounted) state = state.copyWith(paradas: paradas);
+      final stops = await _catalog.stops();
+      if (mounted) state = state.copyWith(stops: stops);
     } catch (_) {
-      // Sin red de paradas la app sigue funcionando (solo no se muestran).
+      // Without the stops network the app keeps working (stops just aren't shown).
     }
   }
 
   @override
-  void reintentarUbicacion() => unawaited(_iniciarUbicacion());
+  void retryLocation() => unawaited(_startLocation());
 
-  Future<void> _iniciarUbicacion() async {
-    _publicarUbicacion(EstadoUbicacion.buscando, state.ubicacion.coordenada);
-    final PermisoUbicacion permiso;
+  Future<void> _startLocation() async {
+    _publicarUbicacion(LocationStatus.searching, state.location.coordinate);
+    final LocationPermissionState permission;
     try {
-      permiso = await _ubicacion.asegurarPermiso();
+      permission = await _location.ensurePermission();
     } catch (_) {
-      _publicarUbicacion(EstadoUbicacion.error, null);
+      _publicarUbicacion(LocationStatus.error, null);
       return;
     }
     if (!mounted) return;
-    switch (permiso) {
-      case PermisoUbicacion.concedido:
+    switch (permission) {
+      case LocationPermissionState.granted:
         break;
-      case PermisoUbicacion.servicioApagado:
-        _publicarUbicacion(EstadoUbicacion.desactivada, null);
+      case LocationPermissionState.serviceOff:
+        _publicarUbicacion(LocationStatus.disabled, null);
         return;
-      case PermisoUbicacion.denegado:
-      case PermisoUbicacion.denegadoParaSiempre:
-        _publicarUbicacion(EstadoUbicacion.sinPermiso, null);
+      case LocationPermissionState.denied:
+      case LocationPermissionState.deniedParaAlways:
+        _publicarUbicacion(LocationStatus.withoutPermission, null);
         return;
     }
     await _gps?.cancel();
-    _gps = _ubicacion.seguir().listen(_alRecibirMuestra, onError: (_) {});
-    final primera = await _ubicacion.actual();
+    _gps = _location.follow().listen(_alRecibirMuestra, onError: (_) {});
+    final primera = await _location.actual();
     if (!mounted) return;
     if (primera != null) {
       _alRecibirMuestra(primera);
-    } else if (state.ubicacion.coordenada == null) {
-      _publicarUbicacion(EstadoUbicacion.error, null);
+    } else if (state.location.coordinate == null) {
+      _publicarUbicacion(LocationStatus.error, null);
     }
   }
 
-  void _publicarUbicacion(EstadoUbicacion estado, Coordenada? c) {
+  void _publicarUbicacion(LocationStatus status, Coordinate? c) {
     if (!mounted) return;
     state = state.copyWith(
-      ubicacion: UbicacionUsuario(estado: estado, coordenada: c),
+      location: UserLocation(status: status, coordinate: c),
     );
   }
 
-  void _alRecibirMuestra(MuestraUbicacion m) {
+  void _alRecibirMuestra(LocationSample m) {
     if (!mounted) return;
-    final previa = state.ubicacion.coordenada;
-    final fase = state.fase;
-    final moverse =
-        previa == null ||
-        distancia(previa, m.coordenada) > 2 ||
-        state.ubicacion.estado != EstadoUbicacion.disponible;
+    final previous = state.location.coordinate;
+    final phase = state.phase;
+    final move =
+        previous == null ||
+        distance(previous, m.coordinate) > 2 ||
+        state.location.status != LocationStatus.available;
 
-    if (fase is FaseViaje &&
-        fase.estado == EstadoViaje.enCurso &&
+    if (phase is TripPhase &&
+        phase.status == TripStatus.inProgress &&
         _nav != null) {
-      final r = _nav!.procesar(m);
-      trazas?.emitir(
-        Pieza.controlador,
-        Pieza.navegador,
+      final r = _nav!.process(m);
+      traces?.emit(
+        Piece.controller,
+        Piece.navigator,
         'procesar(muestra)',
-        resultado: _resumenPaso(r),
+        result: _summaryStep(r),
       );
-      var nueva = fase.copyWith(
-        pasoActual: r.paso,
-        progreso: r.progreso,
-        usuario: m.coordenada,
-        origenAvance: r.avanzo ? OrigenAvance.automatico : null,
+      var fresh = phase.copyWith(
+        stepActual: r.step,
+        progress: r.progress,
+        user: m.coordinate,
+        originAdvance: r.advanced ? OriginAdvance.automatic : null,
       );
-      if (r.completado) {
-        nueva = nueva.copyWith(estado: EstadoViaje.completado, fin: _ahora());
+      if (r.completed) {
+        fresh = fresh.copyWith(status: TripStatus.completed, fin: _now());
       }
       state = state.copyWith(
-        ubicacion: UbicacionUsuario(
-          estado: EstadoUbicacion.disponible,
-          coordenada: m.coordenada,
+        location: UserLocation(
+          status: LocationStatus.available,
+          coordinate: m.coordinate,
         ),
-        fase: nueva,
+        phase: fresh,
       );
-      if (r.avanzo || r.completado) _alCambiarPaso();
-      _sondearSiSeVa();
-      _avisosDeProgreso();
+      if (r.advanced || r.completed) _onCambiarStep();
+      _pollIfLeaving();
+      _noticesOfProgress();
       return;
     }
-    if (moverse) {
-      _publicarUbicacion(EstadoUbicacion.disponible, m.coordenada);
+    if (move) {
+      _publicarUbicacion(LocationStatus.available, m.coordinate);
     }
   }
 
   // =====================================================================
-  // Búsqueda
+  // Search
   // =====================================================================
 
   @override
-  void escribirConsulta(CampoBusqueda campo, String texto) {
-    final t = texto.trim();
-    final seq = ++_secConsulta;
+  void writeQuery(SearchField field, String text) {
+    final t = text.trim();
+    final seq = ++_secQuery;
     _debounce?.cancel();
     if (t.length < 2) {
       state = state.copyWith(
-        busqueda: state.busqueda.conConsulta(
-          campo: campo,
-          texto: texto,
-          sugerencias: const [],
-          estado: EstadoSugerencias.inactivo,
+        search: state.search.withQuery(
+          field: field,
+          text: text,
+          suggestions: const [],
+          status: SuggestionsStatus.inactive,
         ),
       );
       return;
     }
     state = state.copyWith(
-      busqueda: state.busqueda.conConsulta(
-        campo: campo,
-        texto: texto,
-        estado: EstadoSugerencias.cargando,
+      search: state.search.withQuery(
+        field: field,
+        text: text,
+        status: SuggestionsStatus.loading,
       ),
     );
-    _debounce = Timer(config.debounceSugerencias, () async {
+    _debounce = Timer(config.debounceSuggestions, () async {
       try {
-        final res = await _lugares.sugerencias(
+        final res = await _places.suggestions(
           t,
-          cerca: state.ubicacion.coordenada,
+          near: state.location.coordinate,
         );
-        if (!mounted || seq != _secConsulta) return;
+        if (!mounted || seq != _secQuery) return;
         state = state.copyWith(
-          busqueda: state.busqueda.conConsulta(
-            campo: campo,
-            texto: texto,
-            sugerencias: res,
-            estado: EstadoSugerencias.listo,
+          search: state.search.withQuery(
+            field: field,
+            text: text,
+            suggestions: res,
+            status: SuggestionsStatus.ready,
           ),
         );
       } catch (_) {
-        if (!mounted || seq != _secConsulta) return;
+        if (!mounted || seq != _secQuery) return;
         state = state.copyWith(
-          busqueda: state.busqueda.conConsulta(
-            campo: campo,
-            texto: texto,
-            sugerencias: const [],
-            estado: EstadoSugerencias.error,
+          search: state.search.withQuery(
+            field: field,
+            text: text,
+            suggestions: const [],
+            status: SuggestionsStatus.error,
           ),
         );
       }
@@ -269,642 +268,630 @@ class AppController extends StateNotifier<AppState> implements AppActions {
   }
 
   @override
-  void cancelarConsulta() {
+  void cancelarQuery() {
     _debounce?.cancel();
-    _secConsulta++;
-    state = state.copyWith(busqueda: state.busqueda.sinConsulta());
+    _secQuery++;
+    state = state.copyWith(search: state.search.withoutQuery());
   }
 
   @override
-  void elegirLugar(CampoBusqueda campo, Lugar lugar) {
+  void choosePlace(SearchField field, Place place) {
     _debounce?.cancel();
-    _secConsulta++;
+    _secQuery++;
     state = state.copyWith(
-      busqueda: state.busqueda.conPunto(campo, LugarElegido(lugar)),
+      search: state.search.withPoint(field, ChosenPlace(place)),
     );
   }
 
   @override
-  void usarMiUbicacion(CampoBusqueda campo) {
-    _secConsulta++;
-    final actual = state.busqueda;
-    // "Mi ubicación" no puede ser origen y destino a la vez.
-    if (campo == CampoBusqueda.destino && actual.origen is MiUbicacion) {
-      state = state.copyWith(busqueda: actual.sinConsulta());
+  void useMyLocation(SearchField field) {
+    _secQuery++;
+    final actual = state.search;
+    // "Mi ubicación" can't be both origin and destination at the same time.
+    if (field == SearchField.destination && actual.origin is MyLocation) {
+      state = state.copyWith(search: actual.withoutQuery());
       return;
     }
-    var b = actual.conPunto(campo, const MiUbicacion());
-    if (campo == CampoBusqueda.origen && b.destino is MiUbicacion) {
-      b = b.conPunto(CampoBusqueda.destino, null);
+    var b = actual.withPoint(field, const MyLocation());
+    if (field == SearchField.origin && b.destination is MyLocation) {
+      b = b.withPoint(SearchField.destination, null);
     }
-    state = state.copyWith(busqueda: b);
-    if (state.ubicacion.coordenada == null) reintentarUbicacion();
+    state = state.copyWith(search: b);
+    if (state.location.coordinate == null) retryLocation();
   }
 
   @override
-  void limpiarCampo(CampoBusqueda campo) {
-    _secConsulta++;
-    state = state.copyWith(busqueda: state.busqueda.conPunto(campo, null));
+  void cleanField(SearchField field) {
+    _secQuery++;
+    state = state.copyWith(search: state.search.withPoint(field, null));
   }
 
   @override
-  void intercambiarOrigenYDestino() {
-    final b = state.busqueda;
-    if (b.destino == null) return;
+  void swapOriginYDestination() {
+    final b = state.search;
+    if (b.destination == null) return;
     state = state.copyWith(
-      busqueda: Busqueda(origen: b.destino!, destino: b.origen),
+      search: Search(origin: b.destination!, destination: b.origin),
     );
   }
 
-  Coordenada? _resolver(PuntoBusqueda? p) => switch (p) {
-    MiUbicacion() => state.ubicacion.coordenada,
-    LugarElegido(:final lugar) => lugar.coordenada,
+  Coordinate? _resolver(SearchPoint? p) => switch (p) {
+    MyLocation() => state.location.coordinate,
+    ChosenPlace(:final place) => place.coordinate,
     null => null,
   };
 
   @override
-  void buscarViajes() => unawaited(_buscarViajes());
+  void searchTrips() => unawaited(_searchTrips());
 
-  Future<void> _buscarViajes() async {
-    final b = state.busqueda;
-    if (b.destino == null) {
-      _avisar(TipoAviso.faltaDestino);
+  Future<void> _searchTrips() async {
+    final b = state.search;
+    if (b.destination == null) {
+      _avisar(NoticeType.missingDestination);
       return;
     }
-    final origen = _resolver(b.origen);
-    final destino = _resolver(b.destino);
-    if (origen == null || destino == null) {
-      _avisar(TipoAviso.sinUbicacion);
-      if (state.ubicacion.coordenada == null) reintentarUbicacion();
+    final origin = _resolver(b.origin);
+    final destination = _resolver(b.destination);
+    if (origin == null || destination == null) {
+      _avisar(NoticeType.withoutLocation);
+      if (state.location.coordinate == null) retryLocation();
       return;
     }
-    final seq = ++_secBusqueda;
-    _detenerOpciones();
-    _planificados.clear();
+    final seq = ++_secSearch;
+    _stopOptions();
+    _planned.clear();
     state = state.copyWith(
-      busqueda: b.sinConsulta(),
-      limpiarParadaConsultada: true,
-      fase: FaseOpciones(
-        estado: EstadoOpciones.cargando,
-        origen: origen,
-        destino: destino,
+      search: b.withoutQuery(),
+      cleanStopQueried: true,
+      phase: OptionsPhase(
+        status: OptionsStatus.loading,
+        origin: origin,
+        destination: destination,
       ),
     );
-    _cerrarParadaInterno();
+    _closeStopInternal();
 
-    final List<ViajePlanificado> viajes;
+    final List<PlannedTrip> trips;
     try {
-      final crudos = await _planificador.planificar(
-        origen: origen,
-        destino: destino,
-        salida: _ahora(),
+      final raw = await _planner.plan(
+        origin: origin,
+        destination: destination,
+        exit: _now(),
       );
-      viajes = ordenarYRecomendar(crudos, _ahora());
-      trazas?.emitir(
-        Pieza.controlador,
-        Pieza.recomendador,
-        'ordenarYRecomendar(${crudos.length} viajes)',
-        resultado:
-            viajes.isEmpty
+      trips = sortYRecommend(raw, _now());
+      traces?.emit(
+        Piece.controller,
+        Piece.recommender,
+        'ordenarYRecomendar(${raw.length} viajes)',
+        result:
+            trips.isEmpty
                 ? 'sin opciones'
-                : '${viajes.length} opciones, una recomendada',
+                : '${trips.length} opciones, una recomendada',
       );
     } catch (_) {
-      if (!mounted || seq != _secBusqueda) return;
+      if (!mounted || seq != _secSearch) return;
       state = state.copyWith(
-        fase: FaseOpciones(
-          estado: EstadoOpciones.error,
-          origen: origen,
-          destino: destino,
+        phase: OptionsPhase(
+          status: OptionsStatus.error,
+          origin: origin,
+          destination: destination,
         ),
       );
-      // La fase de opciones en estado `error` ya lo comunica: sin aviso extra.
+      // The options phase in `error` state already conveys this: no extra notice.
       return;
     }
-    if (!mounted || seq != _secBusqueda || state.fase is! FaseOpciones) return;
-    for (final v in viajes) {
-      _planificados[v.opcion.id] = v;
+    if (!mounted || seq != _secSearch || state.phase is! OptionsPhase) return;
+    for (final v in trips) {
+      _planned[v.option.id] = v;
     }
     state = state.copyWith(
-      fase: FaseOpciones(
-        estado:
-            viajes.isEmpty
-                ? EstadoOpciones.sinResultados
-                : EstadoOpciones.listo,
-        origen: origen,
-        destino: destino,
-        opciones: [
-          for (final v in viajes)
-            v.opcion.conProximoBus(null, aviso: avisoDeOpcion(v.opcion)),
+      phase: OptionsPhase(
+        status:
+            trips.isEmpty ? OptionsStatus.withoutResults : OptionsStatus.ready,
+        origin: origin,
+        destination: destination,
+        options: [
+          for (final v in trips)
+            v.option.withNextBus(null, notice: noticeOfOption(v.option)),
         ],
       ),
     );
-    if (viajes.isNotEmpty) unawaited(_etasDeOpciones(seq));
+    if (trips.isNotEmpty) unawaited(_etasDeOpciones(seq));
   }
 
-  /// Pide ETAs de la parada de subida del primer bus de cada opción.
+  /// Requests ETAs for the boarding stop of each option's first bus.
   Future<void> _etasDeOpciones(int seq) async {
-    final fase = state.fase;
-    if (fase is! FaseOpciones) return;
-    final paradas = <String>{};
-    for (final o in fase.opciones) {
-      final b = o.primerBus;
-      if (b != null && paradas.length < config.maxParadasEta)
-        paradas.add(b.subida.id);
+    final phase = state.phase;
+    if (phase is! OptionsPhase) return;
+    final stops = <String>{};
+    for (final o in phase.options) {
+      final b = o.firstBus;
+      if (b != null && stops.length < config.maxStopsEta)
+        stops.add(b.boarding.id);
     }
-    final resultados = <String, List<LlegadaEnParada>>{};
+    final results = <String, List<StopArrival>>{};
     await Future.wait([
-      for (final id in paradas)
-        _llegadas
-            .llegadas(id)
-            .then((l) => resultados[id] = l)
-            .catchError((_) => const <LlegadaEnParada>[]),
+      for (final id in stops)
+        _arrivals
+            .arrivals(id)
+            .then((l) => results[id] = l)
+            .catchError((_) => const <StopArrival>[]),
     ]);
-    if (!mounted || seq != _secBusqueda) return;
-    final actual = state.fase;
-    if (actual is! FaseOpciones) return;
-    final opciones = <OpcionViaje>[];
-    for (final o in actual.opciones) {
-      final b = o.primerBus;
-      final lista = b == null ? null : resultados[b.subida.id];
-      if (b == null || lista == null) {
-        opciones.add(o);
+    if (!mounted || seq != _secSearch) return;
+    final actual = state.phase;
+    if (actual is! OptionsPhase) return;
+    final options = <TripOption>[];
+    for (final o in actual.options) {
+      final b = o.firstBus;
+      final list = b == null ? null : results[b.boarding.id];
+      if (b == null || list == null) {
+        options.add(o);
         continue;
       }
-      final seg = _seguidorOpcion(o.id);
-      final bus = (await seg)?.elegir(lista, retener: false);
-      _trazarEleccion(lista, bus);
-      final llegada =
+      final seg = _trackerOption(o.id);
+      final bus = (await seg)?.choose(list, retain: false);
+      _trazarEleccion(list, bus);
+      final arrival =
           bus == null
               ? null
-              : LlegadaBus(
-                linea: bus.linea,
-                minutos: bus.minutos,
-                enVivo: bus.enVivo,
-                posicion: bus.posicion,
+              : BusArrival(
+                line: bus.line,
+                minutes: bus.minutes,
+                live: bus.live,
+                position: bus.position,
               );
-      opciones.add(
-        o.conProximoBus(
-          llegada,
-          aviso:
-              avisoDeOpcion(o, proximo: llegada) ??
-              (llegada == null || !llegada.enVivo
-                  ? AvisoOpcion.sinDatosEnVivoPrimerBus
+      options.add(
+        o.withNextBus(
+          arrival,
+          notice:
+              noticeOfOption(o, next: arrival) ??
+              (arrival == null || !arrival.live
+                  ? NoticeOption.withoutLiveDataFirstBus
                   : null),
         ),
       );
-      if (bus != null && bus.posicion != null) {
+      if (bus != null && bus.position != null) {
         _ponerBusOpcion(o.id, bus);
       }
     }
-    final f = state.fase;
-    if (!mounted || seq != _secBusqueda || f is! FaseOpciones) return;
-    state = state.copyWith(fase: f.copyWith(opciones: opciones));
+    final f = state.phase;
+    if (!mounted || seq != _secSearch || f is! OptionsPhase) return;
+    state = state.copyWith(phase: f.copyWith(options: options));
   }
 
-  void _ponerBusOpcion(String id, BusEnCamino bus) {
-    final f = state.fase;
-    if (f is! FaseOpciones) return;
+  void _ponerBusOpcion(String id, BusInPath bus) {
+    final f = state.phase;
+    if (f is! OptionsPhase) return;
     state = state.copyWith(
-      fase: f.copyWith(busesEnVivo: {...f.busesEnVivo, id: bus}),
+      phase: f.copyWith(busesInVivo: {...f.busesInVivo, id: bus}),
     );
   }
 
-  final Map<String, Future<SeguidorBus?>> _seguidoresOpcionFut = {};
+  final Map<String, Future<BusTracker?>> _seguidoresOpcionFut = {};
 
-  Future<SeguidorBus?> _seguidorOpcion(String idOpcion) {
-    return _seguidoresOpcionFut[idOpcion] ??= () async {
-      final v = _planificados[idOpcion];
-      final bus = v?.opcion.primerBus;
+  Future<BusTracker?> _trackerOption(String idOption) {
+    return _seguidoresOpcionFut[idOption] ??= () async {
+      final v = _planned[idOption];
+      final bus = v?.option.firstBus;
       if (v == null || bus == null) return null;
-      final seg = SeguidorBus(
-        linea: bus.linea,
-        recorrido: await _recorrido(v, bus),
-        reloj: _ahora,
+      final seg = BusTracker(
+        line: bus.line,
+        route: await _route(v, bus),
+        clock: _now,
       );
-      _seguidoresOpcion[idOpcion] = seg;
+      _seguidoresOpcion[idOption] = seg;
       return seg;
     }();
   }
 
-  Future<RecorridoLinea?> _recorrido(ViajePlanificado v, TramoBus bus) async {
-    final shapeId = v.shapePorTramo[bus.id];
-    List<Coordenada>? shape;
+  Future<RouteLine?> _route(PlannedTrip v, BusLeg bus) async {
+    final shapeId = v.shapeByLeg[bus.id];
+    List<Coordinate>? shape;
     if (shapeId != null) {
       try {
-        shape = await _catalogo.shape(shapeId);
+        shape = await _catalog.shape(shapeId);
       } catch (_) {}
     }
-    return RecorridoLinea.deTramo(bus, shape);
+    return RouteLine.ofLeg(bus, shape);
   }
 
   @override
-  void enfocarOpcion(String idOpcion) {
-    if (state.fase is! FaseOpciones) return;
-    if (_opcionEnfocada == idOpcion && _timerOpciones != null) return;
-    _opcionEnfocada = idOpcion;
-    _timerOpciones?.cancel();
-    final seq = _secBusqueda;
-    unawaited(_sondearOpcion(idOpcion, seq));
-    _timerOpciones = Timer.periodic(
-      config.sondeoBus,
-      (_) => _sondearOpcion(idOpcion, seq),
+  void focusOption(String idOption) {
+    if (state.phase is! OptionsPhase) return;
+    if (_optionFocused == idOption && _timerOptions != null) return;
+    _optionFocused = idOption;
+    _timerOptions?.cancel();
+    final seq = _secSearch;
+    unawaited(_pollOption(idOption, seq));
+    _timerOptions = Timer.periodic(
+      config.pollBus,
+      (_) => _pollOption(idOption, seq),
     );
   }
 
-  Future<void> _sondearOpcion(String idOpcion, int seq) async {
-    final v = _planificados[idOpcion];
-    final bus = v?.opcion.primerBus;
+  Future<void> _pollOption(String idOption, int seq) async {
+    final v = _planned[idOption];
+    final bus = v?.option.firstBus;
     if (v == null || bus == null) return;
-    final List<LlegadaEnParada> lista;
+    final List<StopArrival> list;
     try {
-      lista = await _llegadas.llegadas(bus.subida.id);
+      list = await _arrivals.arrivals(bus.boarding.id);
     } catch (_) {
       return;
     }
-    final seg = await _seguidorOpcion(idOpcion);
-    if (!mounted || seq != _secBusqueda || _opcionEnfocada != idOpcion) return;
-    // En la vista previa nadie espera en la parada: el bus que pasó deja
-    // lugar al próximo.
-    final elegido = seg?.elegir(lista, retener: false);
-    _trazarEleccion(lista, elegido);
-    final f = state.fase;
-    if (f is! FaseOpciones) return;
-    final buses = Map.of(f.busesEnVivo);
-    if (elegido == null || elegido.posicion == null) {
-      buses.remove(idOpcion);
+    final seg = await _trackerOption(idOption);
+    if (!mounted || seq != _secSearch || _optionFocused != idOption) return;
+    // In the preview nobody waits at the stop: the bus that passed makes room
+    // for the next one.
+    final chosen = seg?.choose(list, retain: false);
+    _trazarEleccion(list, chosen);
+    final f = state.phase;
+    if (f is! OptionsPhase) return;
+    final buses = Map.of(f.busesInVivo);
+    if (chosen == null || chosen.position == null) {
+      buses.remove(idOption);
     } else {
-      buses[idOpcion] = elegido;
+      buses[idOption] = chosen;
     }
-    final opciones = [
-      for (final o in f.opciones)
-        if (o.id == idOpcion && elegido != null)
-          o.conProximoBus(
-            LlegadaBus(
-              linea: elegido.linea,
-              minutos: elegido.minutos,
-              enVivo: elegido.enVivo,
-              posicion: elegido.posicion,
+    final options = [
+      for (final o in f.options)
+        if (o.id == idOption && chosen != null)
+          o.withNextBus(
+            BusArrival(
+              line: chosen.line,
+              minutes: chosen.minutes,
+              live: chosen.live,
+              position: chosen.position,
             ),
           )
         else
           o,
     ];
     state = state.copyWith(
-      fase: f.copyWith(opciones: opciones, busesEnVivo: buses),
+      phase: f.copyWith(options: options, busesInVivo: buses),
     );
   }
 
-  void _detenerOpciones() {
-    _timerOpciones?.cancel();
-    _timerOpciones = null;
-    _opcionEnfocada = null;
+  void _stopOptions() {
+    _timerOptions?.cancel();
+    _timerOptions = null;
+    _optionFocused = null;
     _seguidoresOpcion.clear();
     _seguidoresOpcionFut.clear();
   }
 
   @override
-  void cerrarOpciones() {
-    _secBusqueda++;
-    _detenerOpciones();
-    state = state.copyWith(fase: const FaseExplorar());
+  void closeOptions() {
+    _secSearch++;
+    _stopOptions();
+    state = state.copyWith(phase: const ExplorePhase());
   }
 
   // =====================================================================
-  // Viaje activo
+  // Active trip
   // =====================================================================
 
   @override
-  void iniciarViaje(String idOpcion) {
-    final f = state.fase;
-    if (f is! FaseOpciones) return;
-    OpcionViaje? opcion;
-    for (final o in f.opciones) {
-      if (o.id == idOpcion) opcion = o;
+  void startTrip(String idOption) {
+    final f = state.phase;
+    if (f is! OptionsPhase) return;
+    TripOption? option;
+    for (final o in f.options) {
+      if (o.id == idOption) option = o;
     }
-    if (opcion == null) return;
-    _detenerOpciones();
-    _secViaje++;
+    if (option == null) return;
+    _stopOptions();
+    _secTrip++;
     _avisosDados.clear();
-    _nav = Navegador(opcion, reglas: config.reglas);
-    final usuario = state.ubicacion.coordenada;
-    var fase = FaseViaje(
-      opcion: opcion,
-      pasoActual: 0,
-      origenAvance: OrigenAvance.inicio,
-      progreso: ProgresoPaso.vacio,
-      estado: EstadoViaje.enCurso,
-      inicio: _ahora(),
-      usuario: usuario,
-      // El bus del primer tramo ya lo veníamos siguiendo en la vista previa.
-      busEsperado: f.busesEnVivo[idOpcion],
+    _nav = TripNavigator(option, rules: config.rules);
+    final user = state.location.coordinate;
+    var phase = TripPhase(
+      option: option,
+      stepActual: 0,
+      originAdvance: OriginAdvance.inicio,
+      progress: ProgressStep.empty,
+      status: TripStatus.inProgress,
+      inicio: _now(),
+      user: user,
+      // We were already following the first leg's bus in the preview.
+      busExpected: f.busesInVivo[idOption],
     );
-    if (usuario != null) {
-      final r = _nav!.procesar(
-        MuestraUbicacion(coordenada: usuario, momento: _ahora()),
-      );
-      fase = fase.copyWith(pasoActual: r.paso, progreso: r.progreso);
+    if (user != null) {
+      final r = _nav!.process(LocationSample(coordinate: user, moment: _now()));
+      phase = phase.copyWith(stepActual: r.step, progress: r.progress);
     }
-    state = state.copyWith(fase: fase);
-    _alCambiarPaso();
-    alIniciarViaje?.call(opcion);
+    state = state.copyWith(phase: phase);
+    _onCambiarStep();
+    onStartTrip?.call(option);
   }
 
   @override
-  void confirmarPasoActual() {
-    final f = state.fase;
-    if (f is! FaseViaje || f.estado != EstadoViaje.enCurso || _nav == null)
+  void confirmStepActual() {
+    final f = state.phase;
+    if (f is! TripPhase || f.status != TripStatus.inProgress || _nav == null)
       return;
-    final r = _nav!.confirmarPaso();
-    var nueva = f.copyWith(
-      pasoActual: r.paso,
-      progreso: r.progreso,
-      origenAvance: OrigenAvance.manual,
+    final r = _nav!.confirmStep();
+    var fresh = f.copyWith(
+      stepActual: r.step,
+      progress: r.progress,
+      originAdvance: OriginAdvance.manual,
     );
-    if (r.completado) {
-      nueva = nueva.copyWith(estado: EstadoViaje.completado, fin: _ahora());
+    if (r.completed) {
+      fresh = fresh.copyWith(status: TripStatus.completed, fin: _now());
     }
-    state = state.copyWith(fase: nueva);
-    _alCambiarPaso();
+    state = state.copyWith(phase: fresh);
+    _onCambiarStep();
   }
 
   @override
-  void terminarViaje() {
-    if (state.fase is! FaseViaje) return;
-    _detenerViaje();
-    state = state.copyWith(fase: const FaseExplorar());
+  void finishTrip() {
+    if (state.phase is! TripPhase) return;
+    _stopTrip();
+    state = state.copyWith(phase: const ExplorePhase());
   }
 
   @override
-  void cerrarLlegada() {
-    final f = state.fase;
-    if (f is! FaseViaje) return;
-    _detenerViaje();
-    state = state.copyWith(
-      fase: const FaseExplorar(),
-      busqueda: const Busqueda(),
-    );
+  void closeArrival() {
+    final f = state.phase;
+    if (f is! TripPhase) return;
+    _stopTrip();
+    state = state.copyWith(phase: const ExplorePhase(), search: const Search());
   }
 
-  void _detenerViaje() {
-    _secViaje++;
-    _timerViaje?.cancel();
-    _timerViaje = null;
-    _seguidorViaje = null;
+  void _stopTrip() {
+    _secTrip++;
+    _timerTrip?.cancel();
+    _timerTrip = null;
+    _trackerTrip = null;
     _esperaSeguida = null;
     _nav = null;
-    alTerminarViaje?.call();
-    // Dónde quedó el usuario, ya (la demo lo vuelve a casa): la fase que
-    // sigue no espera a la próxima lectura del GPS para mostrarlo.
+    onFinishTrip?.call();
+    // Where the user is right now (the demo sends them home): the next phase
+    // doesn't wait for the next GPS reading to show it.
     unawaited(
-      _ubicacion.actual().then((m) {
+      _location.actual().then((m) {
         if (m != null) _alRecibirMuestra(m);
       }, onError: (_) {}),
     );
   }
 
-  /// Reconfigura el seguimiento del bus según el paso actual.
-  void _alCambiarPaso() {
-    final f = state.fase;
-    if (f is! FaseViaje) return;
-    if (f.estado == EstadoViaje.completado) {
-      _timerViaje?.cancel();
-      _timerViaje = null;
-      _seguidorViaje = null;
+  /// Reconfigures bus tracking for the current step.
+  void _onCambiarStep() {
+    final f = state.phase;
+    if (f is! TripPhase) return;
+    if (f.status == TripStatus.completed) {
+      _timerTrip?.cancel();
+      _timerTrip = null;
+      _trackerTrip = null;
       _esperaSeguida = null;
-      if (f.busEsperado != null) {
-        state = state.copyWith(fase: f.copyWith(limpiarBusEsperado: true));
+      if (f.busExpected != null) {
+        state = state.copyWith(phase: f.copyWith(cleanBusExpected: true));
       }
-      (alLlegar ?? alTerminarViaje)?.call();
+      (onArrive ?? onFinishTrip)?.call();
       return;
     }
-    final espera = _esperaASeguir(f);
-    if (espera == _esperaSeguida) return;
-    _esperaSeguida = espera;
-    _timerViaje?.cancel();
-    _timerViaje = null;
-    _seguidorViaje = null;
-    final seq = ++_secViaje;
-    // Arriba del bus (o sin más buses) no hay bus que esperar: el bus es el
-    // usuario. Se limpia de inmediato para no mostrar datos de otra etapa.
-    final mantener =
-        espera != null &&
-        f.busEsperado != null &&
-        f.busEsperado!.linea == (f.opcion.tramos[espera] as TramoEsperar).linea;
+    final wait = _waitToFollow(f);
+    if (wait == _esperaSeguida) return;
+    _esperaSeguida = wait;
+    _timerTrip?.cancel();
+    _timerTrip = null;
+    _trackerTrip = null;
+    final seq = ++_secTrip;
+    // On the bus (or with no more buses) there is no bus to wait for: the bus
+    // is the user. It's cleared right away so no data from another stage shows.
+    final keep =
+        wait != null &&
+        f.busExpected != null &&
+        f.busExpected!.line == (f.option.legs[wait] as WaitLeg).line;
     state = state.copyWith(
-      fase: f.copyWith(limpiarBusEsperado: !mantener, sinDatosEnVivo: false),
+      phase: f.copyWith(cleanBusExpected: !keep, withoutLiveData: false),
     );
-    if (espera == null) return;
+    if (wait == null) return;
     unawaited(() async {
-      final bus = f.opcion.tramos[espera + 1] as TramoBus;
-      final v = _planificados[f.opcion.id] ?? ViajePlanificado(f.opcion);
-      final recorrido = await _recorrido(v, bus);
-      if (!mounted || seq != _secViaje) return;
-      _seguidorViaje = SeguidorBus(
-        linea: bus.linea,
-        recorrido: recorrido,
-        reloj: _ahora,
-      );
-      await _sondearViaje(seq);
-      if (!mounted || seq != _secViaje) return;
-      _timerViaje = Timer.periodic(config.sondeoBus, (_) => _sondearViaje(seq));
+      final bus = f.option.legs[wait + 1] as BusLeg;
+      final v = _planned[f.option.id] ?? PlannedTrip(f.option);
+      final route = await _route(v, bus);
+      if (!mounted || seq != _secTrip) return;
+      _trackerTrip = BusTracker(line: bus.line, route: route, clock: _now);
+      await _pollTrip(seq);
+      if (!mounted || seq != _secTrip) return;
+      _timerTrip = Timer.periodic(config.pollBus, (_) => _pollTrip(seq));
     }());
   }
 
-  /// Índice del próximo tramo de espera a seguir, o null si se está en el bus.
-  int? _esperaASeguir(FaseViaje f) {
-    for (var i = f.pasoActual; i < f.opcion.tramos.length; i++) {
-      final t = f.opcion.tramos[i];
-      if (t is TramoBus) return null;
-      if (t is TramoEsperar) return i;
+  /// Index of the next wait leg to follow, or null if already on the bus.
+  int? _waitToFollow(TripPhase f) {
+    for (var i = f.stepActual; i < f.option.legs.length; i++) {
+      final t = f.option.legs[i];
+      if (t is BusLeg) return null;
+      if (t is WaitLeg) return i;
     }
     return null;
   }
 
-  /// Esperando el bus: si el usuario se aleja de la parada (se va con el
-  /// bus), se pregunta por el bus enseguida, sin esperar al próximo sondeo,
-  /// para que el bus y el usuario no se vean separados.
-  void _sondearSiSeVa() {
-    final f = state.fase;
-    if (f is! FaseViaje || f.estado != EstadoViaje.enCurso) return;
-    if (f.tramoActual is! TramoEsperar) return;
-    if ((f.progreso.metrosRestantes ?? 0) < 10) return;
-    final bus = f.busEsperado;
-    if (bus != null && bus.minutos == 0 && (bus.metrosHastaParada ?? 0) <= 30) {
+  /// Waiting for the bus: if the user walks away from the stop (leaving with
+  /// the bus), the bus is queried right away, without waiting for the next
+  /// poll, so the bus and the user don't look separated.
+  void _pollIfLeaving() {
+    final f = state.phase;
+    if (f is! TripPhase || f.status != TripStatus.inProgress) return;
+    if (f.legActual is! WaitLeg) return;
+    if ((f.progress.metersRestantes ?? 0) < 10) return;
+    final bus = f.busExpected;
+    if (bus != null && bus.minutes == 0 && (bus.metersUntilStop ?? 0) <= 30) {
       return;
     }
-    final ultimo = _ultimoSondeoViaje;
-    if (ultimo != null &&
-        _ahora().difference(ultimo) < const Duration(seconds: 5)) {
+    final last = _lastPollTrip;
+    if (last != null && _now().difference(last) < const Duration(seconds: 5)) {
       return;
     }
-    unawaited(_sondearViaje(_secViaje));
+    unawaited(_pollTrip(_secTrip));
   }
 
-  DateTime? _ultimoSondeoViaje;
+  DateTime? _lastPollTrip;
 
-  Future<void> _sondearViaje(int seq) async {
-    _ultimoSondeoViaje = _ahora();
-    final f0 = state.fase;
-    final seg = _seguidorViaje;
-    final espera = _esperaSeguida;
-    if (f0 is! FaseViaje || seg == null || espera == null) return;
-    final parada = (f0.opcion.tramos[espera] as TramoEsperar).parada;
-    List<LlegadaEnParada>? lista;
+  Future<void> _pollTrip(int seq) async {
+    _lastPollTrip = _now();
+    final f0 = state.phase;
+    final seg = _trackerTrip;
+    final wait = _esperaSeguida;
+    if (f0 is! TripPhase || seg == null || wait == null) return;
+    final stop = (f0.option.legs[wait] as WaitLeg).stop;
+    List<StopArrival>? list;
     try {
-      lista = await _llegadas.llegadas(parada.id);
+      list = await _arrivals.arrivals(stop.id);
     } catch (_) {
-      lista = null;
+      list = null;
     }
-    if (!mounted || seq != _secViaje) return;
-    final f = state.fase;
-    if (f is! FaseViaje || f.estado != EstadoViaje.enCurso) return;
-    if (lista == null) return; // error de red: se conserva lo último
-    // Retiene el bus que llegó solo si el usuario lo espera en la parada;
-    // caminando hacia ella, el que ya pasó no le sirve.
-    final esperando = f.tramoActual is TramoEsperar;
-    final bus = seg.elegir(
-      lista,
-      retener: esperando,
-      // A la espera, el progreso es la distancia a la parada.
-      usuarioEnLaParada: esperando && (f.progreso.metrosRestantes ?? 99) <= 15,
-      usuario: f.usuario,
+    if (!mounted || seq != _secTrip) return;
+    final f = state.phase;
+    if (f is! TripPhase || f.status != TripStatus.inProgress) return;
+    if (list == null) return; // network error: the last value is kept
+    // Keeps the bus that arrived only if the user is waiting for it at the
+    // stop; while walking toward it, one that already passed is of no use.
+    final waiting = f.legActual is WaitLeg;
+    final bus = seg.choose(
+      list,
+      retain: waiting,
+      // While waiting, progress is the distance to the stop.
+      userInTheStop: waiting && (f.progress.metersRestantes ?? 99) <= 15,
+      user: f.user,
     );
-    _trazarEleccion(lista, bus);
+    _trazarEleccion(list, bus);
     state = state.copyWith(
-      fase: f.copyWith(
-        busEsperado: bus,
-        limpiarBusEsperado: bus == null,
-        sinDatosEnVivo: bus == null || !bus.enVivo,
+      phase: f.copyWith(
+        busExpected: bus,
+        cleanBusExpected: bus == null,
+        withoutLiveData: bus == null || !bus.live,
       ),
     );
-    _avisosDeProgreso();
+    _noticesOfProgress();
   }
 
-  /// Hitos que merecen un aviso (una sola vez por paso).
-  void _avisosDeProgreso() {
-    final f = state.fase;
-    if (f is! FaseViaje || f.estado != EstadoViaje.enCurso) return;
-    final t = f.tramoActual;
-    if (t is TramoBus &&
-        f.progreso.paradasRestantes == 0 &&
+  /// Milestones that deserve a notice (once per step only).
+  void _noticesOfProgress() {
+    final f = state.phase;
+    if (f is! TripPhase || f.status != TripStatus.inProgress) return;
+    final t = f.legActual;
+    if (t is BusLeg &&
+        f.progress.stopsRestantes == 0 &&
         _avisosDados.add('bajate-${t.id}')) {
-      _avisar(TipoAviso.bajateEnLaProxima);
+      _avisar(NoticeType.getOffAtNext);
     }
-    final bus = f.busEsperado;
-    if (t is TramoEsperar &&
+    final bus = f.busExpected;
+    if (t is WaitLeg &&
         bus != null &&
-        bus.enVivo &&
-        bus.minutos <= 1 &&
+        bus.live &&
+        bus.minutes <= 1 &&
         _avisosDados.add('llega-${t.id}')) {
-      _avisar(TipoAviso.busLlegando);
+      _avisar(NoticeType.busArriving);
     }
   }
 
   // =====================================================================
-  // Paradas
+  // Stops
   // =====================================================================
 
   @override
-  void consultarParada(String idParada) {
-    if (state.fase is! FaseExplorar) return;
-    ParadaDeRed? red;
-    for (final p in state.paradas) {
-      if (p.parada.id == idParada) red = p;
+  void queryStop(String idStop) {
+    if (state.phase is! ExplorePhase) return;
+    NetworkStop? red;
+    for (final p in state.stops) {
+      if (p.stop.id == idStop) red = p;
     }
     if (red == null) return;
-    final seq = ++_secParada;
-    _timerParada?.cancel();
+    final seq = ++_secStop;
+    _timerStop?.cancel();
     state = state.copyWith(
-      paradaConsultada: ConsultaParada(
-        parada: red.parada,
-        lineas: red.lineas,
-        estado: EstadoConsulta.cargando,
+      stopQueried: StopQuery(
+        stop: red.stop,
+        lines: red.lines,
+        status: QueryStatus.loading,
       ),
     );
     final r = red;
-    Future<void> sondear() async {
+    Future<void> poll() async {
       try {
-        final l = await _llegadas.llegadas(idParada);
-        if (!mounted || seq != _secParada) return;
-        final llegadas = [for (final x in l) x.datos]
-          ..sort((a, b) => a.minutos.compareTo(b.minutos));
+        final l = await _arrivals.arrivals(idStop);
+        if (!mounted || seq != _secStop) return;
+        final arrivals = [for (final x in l) x.data]
+          ..sort((a, b) => a.minutes.compareTo(b.minutes));
         state = state.copyWith(
-          paradaConsultada: ConsultaParada(
-            parada: r.parada,
-            lineas: r.lineas,
-            estado: EstadoConsulta.listo,
-            llegadas: llegadas,
+          stopQueried: StopQuery(
+            stop: r.stop,
+            lines: r.lines,
+            status: QueryStatus.ready,
+            arrivals: arrivals,
           ),
         );
       } catch (_) {
-        if (!mounted || seq != _secParada) return;
-        final previa = state.paradaConsultada;
-        if (previa != null && previa.estado == EstadoConsulta.listo) return;
+        if (!mounted || seq != _secStop) return;
+        final previous = state.stopQueried;
+        if (previous != null && previous.status == QueryStatus.ready) return;
         state = state.copyWith(
-          paradaConsultada: ConsultaParada(
-            parada: r.parada,
-            lineas: r.lineas,
-            estado: EstadoConsulta.error,
+          stopQueried: StopQuery(
+            stop: r.stop,
+            lines: r.lines,
+            status: QueryStatus.error,
           ),
         );
       }
     }
 
-    unawaited(sondear());
-    _timerParada = Timer.periodic(config.sondeoParada, (_) => sondear());
+    unawaited(poll());
+    _timerStop = Timer.periodic(config.pollStop, (_) => poll());
   }
 
   @override
-  void cerrarParada() {
-    _cerrarParadaInterno();
-    state = state.copyWith(limpiarParadaConsultada: true);
+  void closeStop() {
+    _closeStopInternal();
+    state = state.copyWith(cleanStopQueried: true);
   }
 
-  void _cerrarParadaInterno() {
-    _secParada++;
-    _timerParada?.cancel();
-    _timerParada = null;
+  void _closeStopInternal() {
+    _secStop++;
+    _timerStop?.cancel();
+    _timerStop = null;
   }
 
   // =====================================================================
-  // Avisos
+  // Notices
   // =====================================================================
 
-  void _avisar(TipoAviso tipo) {
+  void _avisar(NoticeType type) {
     if (!mounted) return;
-    state = state.copyWith(aviso: Aviso(++_secAviso, tipo));
+    state = state.copyWith(notice: Notice(++_secNotice, type));
   }
 
   @override
-  void descartarAviso(int idAviso) {
-    if (state.aviso?.id == idAviso) {
-      state = state.copyWith(limpiarAviso: true);
+  void descartarNotice(int idNotice) {
+    if (state.notice?.id == idNotice) {
+      state = state.copyWith(cleanNotice: true);
     }
   }
 
   // =====================================================================
-  // Trazas
+  // Traces
   // =====================================================================
 
-  String _resumenPaso(EstadoNavegacion r) {
-    if (r.completado) return 'llegó';
-    final m = r.progreso.metrosRestantes;
-    return 'paso ${r.paso + 1}${m == null ? '' : ', faltan $m m'}';
+  String _summaryStep(NavigationStatus r) {
+    if (r.completed) return 'llegó';
+    final m = r.progress.metersRestantes;
+    return 'paso ${r.step + 1}${m == null ? '' : ', faltan $m m'}';
   }
 
-  void _trazarEleccion(List<LlegadaEnParada> lista, BusEnCamino? bus) {
-    final t = trazas;
+  void _trazarEleccion(List<StopArrival> list, BusInPath? bus) {
+    final t = traces;
     if (t == null) return;
-    t.emitir(
-      Pieza.controlador,
-      Pieza.seguidor,
-      'elegir(${lista.length} llegadas)',
-      resultado:
+    t.emit(
+      Piece.controller,
+      Piece.tracker,
+      'elegir(${list.length} llegadas)',
+      result:
           bus == null
               ? 'ninguno viene'
-              : '${bus.linea} a ${bus.minutos} min'
-                  '${bus.metrosHastaParada == null ? '' : ', ${bus.metrosHastaParada} m'}',
+              : '${bus.line} a ${bus.minutes} min'
+                  '${bus.metersUntilStop == null ? '' : ', ${bus.metersUntilStop} m'}',
     );
   }
 
@@ -912,9 +899,9 @@ class AppController extends StateNotifier<AppState> implements AppActions {
   void dispose() {
     _gps?.cancel();
     _debounce?.cancel();
-    _timerOpciones?.cancel();
-    _timerViaje?.cancel();
-    _timerParada?.cancel();
+    _timerOptions?.cancel();
+    _timerTrip?.cancel();
+    _timerStop?.cancel();
     super.dispose();
   }
 }

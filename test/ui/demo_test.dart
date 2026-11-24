@@ -1,191 +1,188 @@
-// Modo demo, como lo usa un visitante del portfolio: sin servidores, elige
-// un destino con un toque, acelera el tiempo, hace el viaje entero, vuelve a
-// casa y hace otro.
+// Demo mode, as a visitor to the portfolio uses it: no servers, picks a
+// destination with a tap, speeds up time, takes the whole trip, goes back
+// home and takes another one.
 
 import 'package:bondi_uy/contract/app_state.dart';
-import 'package:bondi_uy/logic/simulacion/demo.dart';
-import 'package:bondi_uy/ui/textos/textos.dart';
+import 'package:bondi_uy/logic/simulation/demo.dart';
+import 'package:bondi_uy/ui/texts/texts.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'arnes.dart';
+import 'harness.dart';
 
 void main() {
   testWidgets('dos viajes seguidos desde la tarjeta de la demo', (
     tester,
   ) async {
-    final a = await Arnes.montar(
-      tester,
-      prefijo: 'demo',
-      demo: true,
-    );
-    await a.esperar(const Duration(seconds: 2));
+    final a = await Harness.mount(tester, prefix: 'demo', demo: true);
+    await a.wait(const Duration(seconds: 2));
     expect(find.byKey(const ValueKey('demo-tarjeta')), findsOneWidget);
     expect(find.text('Terminal Tres Cruces'), findsOneWidget);
-    await a.capturar('inicio');
+    await a.capture('inicio');
 
-    Future<void> viaje(String destino) async {
-      // La fila de destinos se desliza: se busca el destino como lo haría
-      // una persona.
+    Future<void> trip(String destination) async {
+      // The destinations row scrolls: the destination is looked for the way
+      // a person would.
       await tester.dragUntilVisible(
-        find.byKey(ValueKey('demo-destino-$destino')),
+        find.byKey(ValueKey('demo-destino-$destination')),
         find.byKey(const ValueKey('demo-destinos')),
         const Offset(-160, 0),
       );
-      await a.esperar(const Duration(milliseconds: 300));
-      await a.tocar('demo-destino-$destino');
-      await a.hasta(
+      await a.wait(const Duration(milliseconds: 300));
+      await a.tocar('demo-destino-$destination');
+      await a.until(
         () =>
-            a.fase is FaseOpciones &&
-            (a.fase as FaseOpciones).estado == EstadoOpciones.listo,
-        razon: 'opciones de $destino',
+            a.phase is OptionsPhase &&
+            (a.phase as OptionsPhase).status == OptionsStatus.ready,
+        reason: 'opciones de $destination',
       );
-      final opciones = (a.fase as FaseOpciones).opciones;
-      expect(opciones.where((o) => o.recomendada), hasLength(1));
-      await a.esperar(const Duration(seconds: 1));
-      await a.capturar('opciones_$destino');
+      final options = (a.phase as OptionsPhase).options;
+      expect(options.where((o) => o.recommended), hasLength(1));
+      await a.wait(const Duration(seconds: 1));
+      await a.capture('opciones_$destination');
       await a.tocar('empezar-viaje');
-      expect(a.fase, isA<FaseViaje>());
-      await a.hasta(
-        () => (a.fase as FaseViaje).estado == EstadoViaje.completado,
-        maximo: const Duration(minutes: 8),
-        razon: 'llegar a $destino',
+      expect(a.phase, isA<TripPhase>());
+      await a.until(
+        () => (a.phase as TripPhase).status == TripStatus.completed,
+        max: const Duration(minutes: 8),
+        reason: 'llegar a $destination',
       );
-      await a.esperar(const Duration(seconds: 1));
+      await a.wait(const Duration(seconds: 1));
       expect(find.text('¡Llegaste!'), findsOneWidget);
-      await a.capturar('llegada_$destino');
+      await a.capture('llegada_$destination');
       await a.tocar('viaje-listo');
-      expect(a.fase, isA<FaseExplorar>());
+      expect(a.phase, isA<ExplorePhase>());
     }
 
-    await viaje('tres-cruces');
-    // De vuelta en casa, de donde sale el próximo viaje.
-    await a.esperar(const Duration(seconds: 2));
-    final ubicacion = a.controlador.state.ubicacion.coordenada!;
-    expect((ubicacion.lat - casaDemo.lat).abs(), lessThan(0.001));
-    expect((ubicacion.lng - casaDemo.lng).abs(), lessThan(0.001));
-    await viaje('mercado-puerto');
-    await a.cerrar();
+    await trip('tres-cruces');
+    // Back home, where the next trip starts from.
+    await a.wait(const Duration(seconds: 2));
+    final location = a.controller.state.location.coordinate!;
+    expect((location.lat - houseDemo.lat).abs(), lessThan(0.001));
+    expect((location.lng - houseDemo.lng).abs(), lessThan(0.001));
+    await trip('mercado-puerto');
+    await a.close();
   });
 
   testWidgets('en inglés: los textos y los formatos cambian', (tester) async {
-    final a = await Arnes.montar(
+    final a = await Harness.mount(
       tester,
-      prefijo: 'demo_en',
+      prefix: 'demo_en',
       demo: true,
-      idioma: Idioma.en,
+      language: Language.en,
     );
-    await a.esperar(const Duration(seconds: 2));
+    await a.wait(const Duration(seconds: 2));
     expect(find.text('Try a trip'), findsOneWidget);
     expect(find.text('Where to?'), findsOneWidget);
-    await a.capturar('inicio');
+    await a.capture('inicio');
     await a.tocar('demo-destino-tres-cruces');
-    await a.hasta(
+    await a.until(
       () =>
-          a.fase is FaseOpciones &&
-          (a.fase as FaseOpciones).estado == EstadoOpciones.listo,
+          a.phase is OptionsPhase &&
+          (a.phase as OptionsPhase).status == OptionsStatus.ready,
     );
-    await a.esperar(const Duration(seconds: 1));
+    await a.wait(const Duration(seconds: 1));
     expect(find.text('Recommended'), findsOneWidget);
     expect(find.text('Start trip'), findsOneWidget);
-    await a.capturar('opciones');
+    await a.capture('opciones');
     await a.tocar('empezar-viaje');
-    await a.esperar(const Duration(seconds: 2));
+    await a.wait(const Duration(seconds: 2));
     expect(find.textContaining('Step 1 of'), findsOneWidget);
     expect(find.text('Walk to the stop'), findsOneWidget);
-    await a.capturar('caminando');
-    await a.hastaPaso(2);
-    await a.esperar(const Duration(seconds: 2));
+    await a.capture('caminando');
+    await a.untilStep(2);
+    await a.wait(const Duration(seconds: 2));
     expect(find.textContaining('Ride the'), findsOneWidget);
-    // La cifra cambia con un fundido: por un instante están la vieja y la
-    // nueva.
+    // The figure changes with a fade: for a moment both the old and the new
+    // one are there.
     expect(find.textContaining('to go'), findsWidgets);
-    await a.capturar('en_bus');
-    await a.cerrar();
+    await a.capture('en_bus');
+    await a.close();
   });
   testWidgets('al subir, el aviso de que el bus llega se va', (tester) async {
-    final a = await Arnes.montar(
+    final a = await Harness.mount(
       tester,
-      prefijo: 'demo_aviso',
+      prefix: 'demo_aviso',
       demo: true,
-      velocidad: 30,
+      velocity: 30,
     );
-    await a.esperar(const Duration(seconds: 2));
-    // Con trasbordo: en la segunda espera nada más tapa el aviso al subir.
+    await a.wait(const Duration(seconds: 2));
+    // With a transfer: at the second wait, nothing else covers the notice
+    // when boarding.
     await tester.dragUntilVisible(
       find.byKey(const ValueKey('demo-destino-punta-carretas')),
       find.byKey(const ValueKey('demo-destinos')),
       const Offset(-160, 0),
     );
-    await a.esperar(const Duration(milliseconds: 300));
+    await a.wait(const Duration(milliseconds: 300));
     await a.tocar('demo-destino-punta-carretas');
-    await a.hasta(
+    await a.until(
       () =>
-          a.fase is FaseOpciones &&
-          (a.fase as FaseOpciones).estado == EstadoOpciones.listo,
+          a.phase is OptionsPhase &&
+          (a.phase as OptionsPhase).status == OptionsStatus.ready,
     );
     await a.tocar('empezar-viaje');
-    final aviso = find.byKey(const ValueKey('aviso-busLlegando'));
-    // Esperando el segundo bus, avisa que llega (a 30x, segundos antes de
-    // subir: el aviso dura más que eso).
-    await a.hasta(
+    final notice = find.byKey(const ValueKey('aviso-busArriving'));
+    // Waiting for the second bus, it warns that it is arriving (at 30x, seconds
+    // before boarding: the notice lasts longer than that).
+    await a.until(
       () =>
-          a.fase is FaseViaje &&
-          (a.fase as FaseViaje).pasoActual == 3 &&
-          aviso.evaluate().isNotEmpty,
-      paso: const Duration(milliseconds: 100),
-      razon: 'aviso de que el segundo bus llega',
+          a.phase is TripPhase &&
+          (a.phase as TripPhase).stepActual == 3 &&
+          notice.evaluate().isNotEmpty,
+      step: const Duration(milliseconds: 100),
+      reason: 'aviso de que el segundo bus llega',
     );
-    await a.hastaPaso(4);
-    await a.esperar(const Duration(seconds: 1));
-    expect(aviso, findsNothing, reason: 'ya subió: el aviso quedó viejo');
-    await a.cerrar();
+    await a.untilStep(4);
+    await a.wait(const Duration(seconds: 1));
+    expect(notice, findsNothing, reason: 'ya subió: el aviso quedó viejo');
+    await a.close();
   });
 
-  // En inglés las cifras son más largas ("Arrives in 1 min" contra "Llega en
-  // 1 min"): en una pantalla angosta la cifra no puede partirse en dos líneas,
-  // porque con maxLines: 1 la segunda (el número) se pierde.
+  // In English the figures are longer ("Arrives in 1 min" vs "Llega en
+  // 1 min"): on a narrow screen the figure cannot break across two lines,
+  // because with maxLines: 1 the second one (the number) gets lost.
   testWidgets('en inglés y en pantalla angosta: la cifra se ve entera', (
     tester,
   ) async {
-    final a = await Arnes.montar(
+    final a = await Harness.mount(
       tester,
-      prefijo: 'demo_en_angosta',
+      prefix: 'demo_en_angosta',
       demo: true,
-      idioma: Idioma.en,
-      tam: const Size(360, 780),
+      language: Language.en,
+      size: const Size(360, 780),
     );
-    await a.esperar(const Duration(seconds: 2));
+    await a.wait(const Duration(seconds: 2));
     await a.tocar('demo-destino-plaza-independencia');
-    await a.hasta(
+    await a.until(
       () =>
-          a.fase is FaseOpciones &&
-          (a.fase as FaseOpciones).estado == EstadoOpciones.listo,
+          a.phase is OptionsPhase &&
+          (a.phase as OptionsPhase).status == OptionsStatus.ready,
     );
-    await a.esperar(const Duration(seconds: 1));
+    await a.wait(const Duration(seconds: 1));
     await a.tocar('empezar-viaje');
-    await a.hastaPaso(1);
-    await a.esperar(const Duration(seconds: 1));
+    await a.untilStep(1);
+    await a.wait(const Duration(seconds: 1));
 
-    void entera(Finder texto) {
-      expect(texto, findsWidgets);
-      for (final e in texto.evaluate()) {
-        final parrafo = e.renderObject! as RenderParagraph;
+    void whole(Finder text) {
+      expect(text, findsWidgets);
+      for (final e in text.evaluate()) {
+        final paragraph = e.renderObject! as RenderParagraph;
         expect(
-          parrafo.didExceedMaxLines,
+          paragraph.didExceedMaxLines,
           isFalse,
-          reason: '"${parrafo.text.toPlainText()}" no entra en una línea',
+          reason: '"${paragraph.text.toPlainText()}" no entra en una línea',
         );
       }
     }
 
-    entera(find.textContaining('Arrives in'));
-    await a.capturar('esperando');
-    await a.hastaPaso(2);
-    await a.esperar(const Duration(seconds: 2));
-    entera(find.textContaining('to go'));
-    await a.capturar('en_bus');
-    await a.cerrar();
+    whole(find.textContaining('Arrives in'));
+    await a.capture('esperando');
+    await a.untilStep(2);
+    await a.wait(const Duration(seconds: 2));
+    whole(find.textContaining('to go'));
+    await a.capture('en_bus');
+    await a.close();
   });
 }

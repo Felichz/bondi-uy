@@ -1,71 +1,68 @@
-// Estado que la capa de lógica entrega a la UI. Es la ÚNICA entrada de la UI.
+// State the logic layer hands to the UI. It is the ONLY input to the UI.
 //
-// La app vive en una de tres fases (explorar, opciones, viaje). Cada fase
-// trae solo lo que la UI necesita para dibujarla; lo que es puramente
-// presentacional (qué tarjeta del carrusel está enfocada, si el buscador está
-// abierto, a qué encuadra la cámara) NO está acá: es estado de la UI.
+// The app lives in one of three phases (explore, options, trip). Each phase
+// carries only what the UI needs to draw it; what is purely presentational
+// (which card of the carousel is focused, whether the search box is open,
+// what the camera frames) is NOT here: it is UI state.
 
 import 'package:flutter/foundation.dart' show immutable;
 
-import 'modelo.dart';
+import 'model.dart';
 
-export 'modelo.dart';
+export 'model.dart';
 
 @immutable
 class AppState {
-  final UbicacionUsuario ubicacion;
-  final Busqueda busqueda;
-  final Fase fase;
+  final UserLocation location;
+  final Search search;
+  final Phase phase;
 
-  /// Red de paradas para el mapa de exploración (se carga una vez).
-  final List<ParadaDeRed> paradas;
+  /// Network of stops for the exploration map (loaded once).
+  final List<NetworkStop> stops;
 
-  /// Parada que el usuario tocó en el mapa (solo en fase explorar).
-  final ConsultaParada? paradaConsultada;
+  /// Stop the user tapped on the map (only in the explore phase).
+  final StopQuery? stopQueried;
 
-  /// Aviso transitorio. [Aviso.id] cambia en cada aviso nuevo.
-  final Aviso? aviso;
+  /// Transient notice. [Aviso.id] changes with each new notice.
+  final Notice? notice;
 
-  /// Solo en modo demo (viajes grabados y mundo simulado); null en uso real.
+  /// Only in demo mode (recorded trips and simulated world); null in real use.
   final Demo? demo;
 
   const AppState({
-    required this.ubicacion,
-    required this.busqueda,
-    required this.fase,
-    this.paradas = const [],
-    this.paradaConsultada,
-    this.aviso,
+    required this.location,
+    required this.search,
+    required this.phase,
+    this.stops = const [],
+    this.stopQueried,
+    this.notice,
     this.demo,
   });
 
-  factory AppState.inicial() => const AppState(
-    ubicacion: UbicacionUsuario(estado: EstadoUbicacion.buscando),
-    busqueda: Busqueda(),
-    fase: FaseExplorar(),
+  factory AppState.initial() => const AppState(
+    location: UserLocation(status: LocationStatus.searching),
+    search: Search(),
+    phase: ExplorePhase(),
   );
 
   AppState copyWith({
-    UbicacionUsuario? ubicacion,
-    Busqueda? busqueda,
-    Fase? fase,
-    List<ParadaDeRed>? paradas,
-    ConsultaParada? paradaConsultada,
-    bool limpiarParadaConsultada = false,
-    Aviso? aviso,
-    bool limpiarAviso = false,
+    UserLocation? location,
+    Search? search,
+    Phase? phase,
+    List<NetworkStop>? stops,
+    StopQuery? stopQueried,
+    bool cleanStopQueried = false,
+    Notice? notice,
+    bool cleanNotice = false,
     Demo? demo,
   }) {
     return AppState(
-      ubicacion: ubicacion ?? this.ubicacion,
-      busqueda: busqueda ?? this.busqueda,
-      fase: fase ?? this.fase,
-      paradas: paradas ?? this.paradas,
-      paradaConsultada:
-          limpiarParadaConsultada
-              ? null
-              : (paradaConsultada ?? this.paradaConsultada),
-      aviso: limpiarAviso ? null : (aviso ?? this.aviso),
+      location: location ?? this.location,
+      search: search ?? this.search,
+      phase: phase ?? this.phase,
+      stops: stops ?? this.stops,
+      stopQueried: cleanStopQueried ? null : (stopQueried ?? this.stopQueried),
+      notice: cleanNotice ? null : (notice ?? this.notice),
       demo: demo ?? this.demo,
     );
   }
@@ -75,323 +72,322 @@ class AppState {
 // Demo
 // ---------------------------------------------------------------------------
 
-/// Modo demo: el usuario y los buses se mueven solos por Montevideo, sobre
-/// viajes reales grabados, a una velocidad que se puede cambiar.
+/// Demo mode: the user and the buses move on their own around Montevideo, over
+/// real recorded trips, at a speed that can be changed.
 @immutable
 class Demo {
-  /// Destinos con viaje grabado: los que se pueden probar.
-  final List<Lugar> destinos;
+  /// Destinations with a recorded trip: the ones that can be tried.
+  final List<Place> destinations;
 
-  const Demo({required this.destinos});
+  const Demo({required this.destinations});
 }
 
 // ---------------------------------------------------------------------------
-// Ubicación
+// Location
 // ---------------------------------------------------------------------------
 
-enum EstadoUbicacion { buscando, disponible, sinPermiso, desactivada, error }
+enum LocationStatus { searching, available, withoutPermission, disabled, error }
 
 @immutable
-class UbicacionUsuario {
-  final EstadoUbicacion estado;
-  final Coordenada? coordenada;
+class UserLocation {
+  final LocationStatus status;
+  final Coordinate? coordinate;
 
-  const UbicacionUsuario({required this.estado, this.coordenada});
+  const UserLocation({required this.status, this.coordinate});
 
-  bool get disponible => coordenada != null;
+  bool get available => coordinate != null;
 }
 
 // ---------------------------------------------------------------------------
-// Búsqueda (origen / destino)
+// Search (origin / destination)
 // ---------------------------------------------------------------------------
 
-enum CampoBusqueda { origen, destino }
+enum SearchField { origin, destination }
 
-enum EstadoSugerencias { inactivo, cargando, listo, error }
+enum SuggestionsStatus { inactive, loading, ready, error }
 
-/// Un extremo del viaje: la ubicación del usuario o un lugar elegido.
+/// One end of the trip: the user's location or a chosen place.
 @immutable
-sealed class PuntoBusqueda {
-  const PuntoBusqueda();
+sealed class SearchPoint {
+  const SearchPoint();
 }
 
-class MiUbicacion extends PuntoBusqueda {
-  const MiUbicacion();
+class MyLocation extends SearchPoint {
+  const MyLocation();
 
   @override
-  bool operator ==(Object other) => other is MiUbicacion;
+  bool operator ==(Object other) => other is MyLocation;
 
   @override
   int get hashCode => 1;
 }
 
-class LugarElegido extends PuntoBusqueda {
-  final Lugar lugar;
-  const LugarElegido(this.lugar);
+class ChosenPlace extends SearchPoint {
+  final Place place;
+  const ChosenPlace(this.place);
 
   @override
   bool operator ==(Object other) =>
-      other is LugarElegido && other.lugar == lugar;
+      other is ChosenPlace && other.place == place;
 
   @override
-  int get hashCode => lugar.hashCode;
+  int get hashCode => place.hashCode;
 }
 
 @immutable
-class Busqueda {
-  /// Por defecto "Mi ubicación".
-  final PuntoBusqueda origen;
+class Search {
+  /// Defaults to "Mi ubicación" (My location).
+  final SearchPoint origin;
 
-  /// null = todavía no elegido.
-  final PuntoBusqueda? destino;
+  /// null = not chosen yet.
+  final SearchPoint? destination;
 
-  /// Campo cuyo texto está siendo consultado ahora mismo.
-  final CampoBusqueda? campoConsultado;
-  final String consulta;
-  final List<Lugar> sugerencias;
-  final EstadoSugerencias estadoSugerencias;
+  /// Field whose text is being queried right now.
+  final SearchField? fieldQueried;
+  final String query;
+  final List<Place> suggestions;
+  final SuggestionsStatus statusSuggestions;
 
-  const Busqueda({
-    this.origen = const MiUbicacion(),
-    this.destino,
-    this.campoConsultado,
-    this.consulta = '',
-    this.sugerencias = const [],
-    this.estadoSugerencias = EstadoSugerencias.inactivo,
+  const Search({
+    this.origin = const MyLocation(),
+    this.destination,
+    this.fieldQueried,
+    this.query = '',
+    this.suggestions = const [],
+    this.statusSuggestions = SuggestionsStatus.inactive,
   });
 
-  bool get completa => destino != null && origen != destino;
+  bool get complete => destination != null && origin != destination;
 
-  PuntoBusqueda? punto(CampoBusqueda campo) =>
-      campo == CampoBusqueda.origen ? origen : destino;
+  SearchPoint? punto(SearchField field) =>
+      field == SearchField.origin ? origin : destination;
 
-  Busqueda conPunto(CampoBusqueda campo, PuntoBusqueda? punto) => Busqueda(
-    origen:
-        campo == CampoBusqueda.origen ? (punto ?? const MiUbicacion()) : origen,
-    destino: campo == CampoBusqueda.destino ? punto : destino,
+  Search withPoint(SearchField field, SearchPoint? punto) => Search(
+    origin:
+        field == SearchField.origin ? (punto ?? const MyLocation()) : origin,
+    destination: field == SearchField.destination ? punto : destination,
   );
 
-  Busqueda conConsulta({
-    required CampoBusqueda campo,
-    required String texto,
-    List<Lugar>? sugerencias,
-    required EstadoSugerencias estado,
-  }) => Busqueda(
-    origen: origen,
-    destino: destino,
-    campoConsultado: campo,
-    consulta: texto,
-    sugerencias: sugerencias ?? this.sugerencias,
-    estadoSugerencias: estado,
+  Search withQuery({
+    required SearchField field,
+    required String text,
+    List<Place>? suggestions,
+    required SuggestionsStatus status,
+  }) => Search(
+    origin: origin,
+    destination: destination,
+    fieldQueried: field,
+    query: text,
+    suggestions: suggestions ?? this.suggestions,
+    statusSuggestions: status,
   );
 
-  Busqueda sinConsulta() => Busqueda(origen: origen, destino: destino);
+  Search withoutQuery() => Search(origin: origin, destination: destination);
 }
 
 // ---------------------------------------------------------------------------
-// Fases
+// Phases
 // ---------------------------------------------------------------------------
 
 @immutable
-sealed class Fase {
-  const Fase();
+sealed class Phase {
+  const Phase();
 }
 
-/// Sin viaje: el usuario mira el mapa, las paradas y puede buscar.
-class FaseExplorar extends Fase {
-  const FaseExplorar();
+/// No trip: the user looks at the map and the stops, and can search.
+class ExplorePhase extends Phase {
+  const ExplorePhase();
 }
 
-enum EstadoOpciones { cargando, listo, sinResultados, error }
+enum OptionsStatus { loading, ready, withoutResults, error }
 
-/// Opciones de viaje calculadas para origen -> destino.
-class FaseOpciones extends Fase {
-  final EstadoOpciones estado;
+/// Trip options computed for origin -> destination.
+class OptionsPhase extends Phase {
+  final OptionsStatus status;
 
-  /// Punto de partida efectivamente usado para planificar.
-  final Coordenada? origen;
-  final Coordenada? destino;
+  /// Starting point actually used for planning.
+  final Coordinate? origin;
+  final Coordinate? destination;
 
-  /// Ordenadas por la lógica; exactamente una es `recomendada` cuando hay.
-  final List<OpcionViaje> opciones;
+  /// Sorted by the logic; exactly one is `recomendada` when there are any.
+  final List<TripOption> options;
 
-  /// Bus en vivo del primer tramo de bus de cada opción que la UI pidió
-  /// seguir (ver `AppActions.enfocarOpcion`). Clave: id de la opción.
-  final Map<String, BusEnCamino> busesEnVivo;
+  /// Live bus on the first bus leg of each option that the UI asked to
+  /// follow (see `AppActions.enfocarOpcion`). Key: option id.
+  final Map<String, BusInPath> busesInVivo;
 
-  const FaseOpciones({
-    required this.estado,
-    this.origen,
-    this.destino,
-    this.opciones = const [],
-    this.busesEnVivo = const {},
+  const OptionsPhase({
+    required this.status,
+    this.origin,
+    this.destination,
+    this.options = const [],
+    this.busesInVivo = const {},
   });
 
-  FaseOpciones copyWith({
-    EstadoOpciones? estado,
-    List<OpcionViaje>? opciones,
-    Map<String, BusEnCamino>? busesEnVivo,
+  OptionsPhase copyWith({
+    OptionsStatus? status,
+    List<TripOption>? options,
+    Map<String, BusInPath>? busesInVivo,
   }) {
-    return FaseOpciones(
-      estado: estado ?? this.estado,
-      origen: origen,
-      destino: destino,
-      opciones: opciones ?? this.opciones,
-      busesEnVivo: busesEnVivo ?? this.busesEnVivo,
+    return OptionsPhase(
+      status: status ?? this.status,
+      origin: origin,
+      destination: destination,
+      options: options ?? this.options,
+      busesInVivo: busesInVivo ?? this.busesInVivo,
     );
   }
 }
 
-enum EstadoViaje { enCurso, completado }
+enum TripStatus { inProgress, completed }
 
-/// Cómo se detectó el avance al paso actual.
-enum OrigenAvance { inicio, automatico, manual }
+/// How the advance to the current step was detected.
+enum OriginAdvance { inicio, automatic, manual }
 
-/// Viaje activo, guiado paso a paso.
-class FaseViaje extends Fase {
-  final OpcionViaje opcion;
+/// Active trip, guided step by step.
+class TripPhase extends Phase {
+  final TripOption option;
 
-  /// Índice en `opcion.tramos` del paso en curso (lo detecta la lógica por GPS
-  /// o por confirmación manual).
-  final int pasoActual;
-  final OrigenAvance origenAvance;
-  final ProgresoPaso progreso;
-  final EstadoViaje estado;
+  /// Index in `opcion.tramos` of the step in progress (the logic detects it through GPS
+  /// or manual confirmation).
+  final int stepActual;
+  final OriginAdvance originAdvance;
+  final ProgressStep progress;
+  final TripStatus status;
 
-  /// Última ubicación conocida del usuario.
-  final Coordenada? usuario;
+  /// Last known location of the user.
+  final Coordinate? user;
 
-  /// Bus en vivo que viene a la parada del paso de espera actual o del
-  /// próximo. Siempre null mientras se viaja arriba del bus: ahí el bus ES
-  /// el usuario.
-  final BusEnCamino? busEsperado;
+  /// Live bus heading to the stop of the current waiting step, or of the
+  /// next one. Always null while traveling on the bus: there the bus IS
+  /// the user.
+  final BusInPath? busExpected;
 
-  /// true si la fuente en vivo respondió sin un bus utilizable para la línea.
-  final bool sinDatosEnVivo;
+  /// true if the live source answered without a usable bus for the line.
+  final bool withoutLiveData;
 
   final DateTime inicio;
   final DateTime? fin;
 
-  const FaseViaje({
-    required this.opcion,
-    required this.pasoActual,
-    required this.origenAvance,
-    required this.progreso,
-    required this.estado,
+  const TripPhase({
+    required this.option,
+    required this.stepActual,
+    required this.originAdvance,
+    required this.progress,
+    required this.status,
     required this.inicio,
-    this.usuario,
-    this.busEsperado,
-    this.sinDatosEnVivo = false,
+    this.user,
+    this.busExpected,
+    this.withoutLiveData = false,
     this.fin,
   });
 
-  Tramo get tramoActual => opcion.tramos[pasoActual];
-  int get totalPasos => opcion.tramos.length;
+  Leg get legActual => option.legs[stepActual];
+  int get totalSteps => option.legs.length;
 
-  FaseViaje copyWith({
-    int? pasoActual,
-    OrigenAvance? origenAvance,
-    ProgresoPaso? progreso,
-    EstadoViaje? estado,
-    Coordenada? usuario,
-    BusEnCamino? busEsperado,
-    bool limpiarBusEsperado = false,
-    bool? sinDatosEnVivo,
+  TripPhase copyWith({
+    int? stepActual,
+    OriginAdvance? originAdvance,
+    ProgressStep? progress,
+    TripStatus? status,
+    Coordinate? user,
+    BusInPath? busExpected,
+    bool cleanBusExpected = false,
+    bool? withoutLiveData,
     DateTime? fin,
   }) {
-    return FaseViaje(
-      opcion: opcion,
-      pasoActual: pasoActual ?? this.pasoActual,
-      origenAvance: origenAvance ?? this.origenAvance,
-      progreso: progreso ?? this.progreso,
-      estado: estado ?? this.estado,
+    return TripPhase(
+      option: option,
+      stepActual: stepActual ?? this.stepActual,
+      originAdvance: originAdvance ?? this.originAdvance,
+      progress: progress ?? this.progress,
+      status: status ?? this.status,
       inicio: inicio,
-      usuario: usuario ?? this.usuario,
-      busEsperado:
-          limpiarBusEsperado ? null : (busEsperado ?? this.busEsperado),
-      sinDatosEnVivo: sinDatosEnVivo ?? this.sinDatosEnVivo,
+      user: user ?? this.user,
+      busExpected: cleanBusExpected ? null : (busExpected ?? this.busExpected),
+      withoutLiveData: withoutLiveData ?? this.withoutLiveData,
       fin: fin ?? this.fin,
     );
   }
 }
 
-/// Progreso numérico del paso en curso. Todos los campos son opcionales
-/// porque dependen de tener ubicación.
+/// Numeric progress of the step in progress. All fields are optional
+/// because they depend on having a location.
 @immutable
-class ProgresoPaso {
-  /// Caminar / bus: metros que faltan por la geometría.
-  final int? metrosRestantes;
+class ProgressStep {
+  /// Walking / bus: meters still missing, from the geometry.
+  final int? metersRestantes;
 
-  /// Metros del paso al comenzarlo (para calcular el avance).
-  final int? metrosTotales;
+  /// Meters of the step when it started (to compute progress).
+  final int? metersTotals;
 
-  /// Caminar: recorrido restante por la calle, desde el usuario.
-  final List<Coordenada>? recorridoRestante;
+  /// Walking: remaining route along the street, from the user.
+  final List<Coordinate>? routeRemaining;
 
-  /// Bus: paradas que faltan antes de la de bajada (0 = bajate en la próxima).
-  final int? paradasRestantes;
+  /// Bus: stops remaining before the alighting one (0 = get off at the next one).
+  final int? stopsRestantes;
 
-  /// Bus: próxima parada por la que pasa el bus.
-  final Parada? proximaParada;
+  /// Bus: next stop the bus passes.
+  final Stop? nextStop;
 
-  const ProgresoPaso({
-    this.metrosRestantes,
-    this.metrosTotales,
-    this.recorridoRestante,
-    this.paradasRestantes,
-    this.proximaParada,
+  const ProgressStep({
+    this.metersRestantes,
+    this.metersTotals,
+    this.routeRemaining,
+    this.stopsRestantes,
+    this.nextStop,
   });
 
-  static const vacio = ProgresoPaso();
+  static const empty = ProgressStep();
 
-  /// 0..1, o null si no se puede calcular.
-  double? get fraccion {
-    final total = metrosTotales, resto = metrosRestantes;
-    if (total == null || resto == null || total <= 0) return null;
-    return (1 - resto / total).clamp(0.0, 1.0);
+  /// 0..1, or null if it cannot be computed.
+  double? get fraction {
+    final total = metersTotals, rest = metersRestantes;
+    if (total == null || rest == null || total <= 0) return null;
+    return (1 - rest / total).clamp(0.0, 1.0);
   }
 }
 
 // ---------------------------------------------------------------------------
-// Parada consultada
+// Queried stop
 // ---------------------------------------------------------------------------
 
-enum EstadoConsulta { cargando, listo, error }
+enum QueryStatus { loading, ready, error }
 
 @immutable
-class ConsultaParada {
-  final Parada parada;
-  final List<String> lineas;
-  final EstadoConsulta estado;
-  final List<LlegadaBus> llegadas;
+class StopQuery {
+  final Stop stop;
+  final List<String> lines;
+  final QueryStatus status;
+  final List<BusArrival> arrivals;
 
-  const ConsultaParada({
-    required this.parada,
-    required this.lineas,
-    required this.estado,
-    this.llegadas = const [],
+  const StopQuery({
+    required this.stop,
+    required this.lines,
+    required this.status,
+    this.arrivals = const [],
   });
 }
 
 // ---------------------------------------------------------------------------
-// Avisos
+// Notices
 // ---------------------------------------------------------------------------
 
-/// Tipos de aviso. La UI decide texto e ícono.
-enum TipoAviso {
-  sinUbicacion,
-  sinConexion,
-  errorPlanificacion,
-  errorSugerencias,
-  errorParada,
-  faltaDestino,
-  bajateEnLaProxima,
-  busLlegando,
+/// Notice types. The UI decides the text and icon.
+enum NoticeType {
+  withoutLocation,
+  withoutConnection,
+  errorPlanning,
+  errorSuggestions,
+  errorStop,
+  missingDestination,
+  getOffAtNext,
+  busArriving,
 }
 
 @immutable
-class Aviso {
+class Notice {
   final int id;
-  final TipoAviso tipo;
-  const Aviso(this.id, this.tipo);
+  final NoticeType type;
+  const Notice(this.id, this.type);
 }

@@ -1,5 +1,5 @@
-/// Script simple para probar el generador de GPS sintético
-/// Ejecutar con: dart run scripts/test_gps_generator.dart
+/// Simple script to test the synthetic GPS generator
+/// Run with: dart run scripts/test_gps_generator.dart
 
 import 'dart:convert';
 import 'dart:io';
@@ -11,7 +11,7 @@ void main() async {
   print('🎬 TEST: Generador de GPS Sintético');
   print('🎬 ========================================\n');
 
-  // Leer fixture
+  // Read fixture
   final file = File('test/fixtures/trip_test_synthetic.json');
   final contents = await file.readAsString();
   final json = jsonDecode(contents) as Map<String, dynamic>;
@@ -26,47 +26,47 @@ void main() async {
   print('   • Segments: ${segments.length}');
   print('');
 
-  // Construir tramos
-  final tramos = <TramoViajeMostrable>[];
+  // Build legs
+  final legs = <DisplayableTripLeg>[];
   final stops = (route['stops'] as List?) ?? [];
 
   for (final segment in segments) {
-    final tipo = TipoTramoViaje.values.firstWhere(
+    final type = TripLegType.values.firstWhere(
       (t) => t.name == segment['type'],
     );
 
     final geometryList = segment['geometry'] as List?;
     final geometry = geometryList != null
         ? geometryList
-            .map((g) => Coordenada(
-                  latitud: (g['lat'] as num).toDouble(),
-                  longitud: (g['lng'] as num).toDouble(),
+            .map((g) => Coordinate(
+                  latitude: (g['lat'] as num).toDouble(),
+                  longitude: (g['lng'] as num).toDouble(),
                 ))
             .toList()
-        : <Coordenada>[];
+        : <Coordinate>[];
 
-    Coordenada? posicionPunto;
+    Coordinate? pointPosition;
     if (segment['at'] != null && stops.isNotEmpty) {
       try {
         final stopData = stops.firstWhere((s) => s['stopId'] == segment['at']);
-        posicionPunto = Coordenada(
-          latitud: (stopData['lat'] as num).toDouble(),
-          longitud: (stopData['lng'] as num).toDouble(),
+        pointPosition = Coordinate(
+          latitude: (stopData['lat'] as num).toDouble(),
+          longitude: (stopData['lng'] as num).toDouble(),
         );
       } catch (e) {
-        // Stop no encontrado, continuar
+        // Stop not found, continue
       }
     }
 
-    tramos.add(TramoViajeMostrable(
-      idTramo: 'tramo_${tramos.length}',
-      tipo: tipo,
-      geometriaPolilinea: geometry.isNotEmpty ? geometry : null,
-      posicionPunto: posicionPunto,
-      descripcion: segment['description'] as String,
-      duracionEstimadaSegundos: segment['duration'] as int,
-      distanciaMetros: (segment['distance'] as int?) ?? 0,
-      nombreLineaBus: segment['busLine'] as String?,
+    legs.add(DisplayableTripLeg(
+      idLeg: 'tramo_${legs.length}',
+      type: type,
+      geometryPolyline: geometry.isNotEmpty ? geometry : null,
+      pointPosition: pointPosition,
+      description: segment['description'] as String,
+      durationEstimatedSeconds: segment['duration'] as int,
+      distanceMeters: (segment['distance'] as int?) ?? 0,
+      busLineName: segment['busLine'] as String?,
     ));
   }
 
@@ -75,17 +75,17 @@ void main() async {
 
   print('🎬 Generando GPS playback sintético...\n');
 
-  // Generar GPS playback
+  // Generate the GPS playback
   final gpsPlayback = GpsPlaybackGenerator.generateFromRoute(
-    origin: Coordenada(
-      latitud: (origin['lat'] as num).toDouble(),
-      longitud: (origin['lng'] as num).toDouble(),
+    origin: Coordinate(
+      latitude: (origin['lat'] as num).toDouble(),
+      longitude: (origin['lng'] as num).toDouble(),
     ),
-    destination: Coordenada(
-      latitud: (destination['lat'] as num).toDouble(),
-      longitud: (destination['lng'] as num).toDouble(),
+    destination: Coordinate(
+      latitude: (destination['lat'] as num).toDouble(),
+      longitude: (destination['lng'] as num).toDouble(),
     ),
-    tramos: tramos,
+    legs: legs,
     speedMultiplier: 1.0,
   );
 
@@ -96,7 +96,7 @@ void main() async {
     print('   • Último punto: t=${gpsPlayback.last['timestamp']}s');
     print('   • Duración total: ${gpsPlayback.last['timestamp']}s');
 
-    // Mostrar algunos puntos de ejemplo
+    // Show a few sample points
     print('\n📍 Primeros 5 puntos:');
     for (int i = 0; i < 5 && i < gpsPlayback.length; i++) {
       final p = gpsPlayback[i];
@@ -108,9 +108,9 @@ void main() async {
 
   print('🎯 Generando checkpoints automáticos...\n');
 
-  // Generar checkpoints
+  // Generate checkpoints
   final checkpoints = GpsPlaybackGenerator.generateCheckpoints(
-    tramos: tramos,
+    legs: legs,
     gpsPlayback: gpsPlayback,
   );
 

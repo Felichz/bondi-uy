@@ -13,7 +13,7 @@
       "concern": "Complete location data pipeline coordination with real-time visualization",
 
       "flow": {
-        "in": "Coordenada from LocationTracker every 5 seconds",
+        "in": "Coordinate from LocationTracker every 5 seconds",
         "does": "validatePhase → updateMapLocation → calculateProgress → handleBusTracking → updateUI → checkTransitions",
         "out": "Visual user location on map + automatic journey progression + UI updates"
       },
@@ -37,7 +37,7 @@
       "inputs": [
         {
           "name": "newLocation",
-          "type": "Coordenada",
+          "type": "Coordinate",
           "description": "Fresh GPS coordinates from LocationTracker",
           "source": "LocationTracker.onLocationUpdate callback"
         }
@@ -82,7 +82,7 @@
           "concern": "Location visualization coordination between app logic and map rendering",
 
           "flow": {
-            "in": "Coordenada from location orchestrator",
+            "in": "Coordinate from location orchestrator",
             "does": "getMapManager → validateMapManager → callUpdateUserLocationClean → logResult",
             "out": "User location rendered on map as blue circle"
           },
@@ -123,7 +123,7 @@
               "concern": "Simplified user location visualization without complex debugging",
 
               "flow": {
-                "in": "Coordenada coordinates",
+                "in": "Coordinate coordinates",
                 "does": "validateConditions → validateCoords → createGeoJSON → updateOrCreateSource → renderResult",
                 "out": "Blue circle marker on map at user location"
               },

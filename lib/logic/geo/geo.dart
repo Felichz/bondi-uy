@@ -1,18 +1,18 @@
-// Geometría sobre la superficie terrestre, a escala urbana.
+// Geometry on the Earth's surface, at city scale.
 //
-// Proyecciones locales equirectangulares: a escala de una ciudad el error es
-// despreciable y el cálculo es barato y determinista.
+// Local equirectangular projections: at city scale the error is
+// negligible, and the calculation is cheap and deterministic.
 
 import 'dart:math' as math;
 
-import '../../contract/modelo.dart';
+import '../../contract/model.dart';
 
-const double _radioTierra = 6371000.0;
+const double _radioLand = 6371000.0;
 
 double _rad(double g) => g * math.pi / 180.0;
 
-/// Distancia haversine en metros.
-double distancia(Coordenada a, Coordenada b) {
+/// Haversine distance in meters.
+double distance(Coordinate a, Coordinate b) {
   final dLat = _rad(b.lat - a.lat);
   final dLng = _rad(b.lng - a.lng);
   final h =
@@ -21,143 +21,143 @@ double distancia(Coordenada a, Coordenada b) {
           math.cos(_rad(b.lat)) *
           math.sin(dLng / 2) *
           math.sin(dLng / 2);
-  return 2 * _radioTierra * math.atan2(math.sqrt(h), math.sqrt(1 - h));
+  return 2 * _radioLand * math.atan2(math.sqrt(h), math.sqrt(1 - h));
 }
 
-/// Largo de una polilínea en metros.
-double largo(List<Coordenada> linea) {
+/// Length of a polyline in meters.
+double long(List<Coordinate> line) {
   var total = 0.0;
-  for (var i = 1; i < linea.length; i++) {
-    total += distancia(linea[i - 1], linea[i]);
+  for (var i = 1; i < line.length; i++) {
+    total += distance(line[i - 1], line[i]);
   }
   return total;
 }
 
-/// Punto de una polilínea más cercano a una coordenada.
-class Proyeccion {
-  /// Índice del segmento [i, i+1] donde cae la proyección.
-  final int segmento;
+/// Point on a polyline closest to a coordinate.
+class Projection {
+  /// Index of the segment [i, i+1] where the projection falls.
+  final int segment;
 
-  /// Posición dentro del segmento (0..1).
+  /// Position within the segment (0..1).
   final double t;
-  final Coordenada punto;
+  final Coordinate punto;
 
-  /// Distancia perpendicular de la coordenada a la polilínea.
-  final double distanciaLateral;
+  /// Perpendicular distance from the coordinate to the polyline.
+  final double distanceLateral;
 
-  /// Metros recorridos desde el inicio de la polilínea hasta [punto].
-  final double recorrido;
+  /// Meters traveled from the start of the polyline to [punto].
+  final double route;
 
-  const Proyeccion({
-    required this.segmento,
+  const Projection({
+    required this.segment,
     required this.t,
     required this.punto,
-    required this.distanciaLateral,
-    required this.recorrido,
+    required this.distanceLateral,
+    required this.route,
   });
 }
 
-/// Polilínea con las distancias acumuladas precalculadas.
-class Polilinea {
-  final List<Coordenada> puntos;
-  final List<double> _acumulado;
+/// Polyline with precomputed cumulative distances.
+class Polyline {
+  final List<Coordinate> points;
+  final List<double> _accumulated;
 
-  Polilinea(this.puntos)
-    : assert(puntos.length >= 2, 'una polilínea necesita 2 puntos'),
-      _acumulado = _acumular(puntos);
+  Polyline(this.points)
+    : assert(points.length >= 2, 'una polilínea necesita 2 puntos'),
+      _accumulated = _acumular(points);
 
-  static List<double> _acumular(List<Coordenada> p) {
+  static List<double> _acumular(List<Coordinate> p) {
     final acc = List<double>.filled(p.length, 0);
     for (var i = 1; i < p.length; i++) {
-      acc[i] = acc[i - 1] + distancia(p[i - 1], p[i]);
+      acc[i] = acc[i - 1] + distance(p[i - 1], p[i]);
     }
     return acc;
   }
 
-  double get largo => _acumulado.last;
+  double get long => _accumulated.last;
 
-  /// Proyecta [c] sobre la polilínea. Si se da [desde]/[hasta] (metros
-  /// recorridos), solo se consideran los segmentos que tocan esa ventana:
-  /// sirve para shapes que pasan dos veces cerca del mismo lugar.
-  Proyeccion proyectar(Coordenada c, {double? desde, double? hasta}) {
-    Proyeccion? mejor;
-    for (var i = 0; i < puntos.length - 1; i++) {
-      if (desde != null && _acumulado[i + 1] < desde) continue;
-      if (hasta != null && _acumulado[i] > hasta) break;
-      final p = _proyectarEnSegmento(c, i);
-      if (mejor == null || p.distanciaLateral < mejor.distanciaLateral) {
-        mejor = p;
+  /// Projects [c] onto the polyline. If [desde]/[hasta] (meters traveled) is
+  /// given, only the segments touching that window are considered: this is
+  /// useful for shapes that pass twice near the same place.
+  Projection project(Coordinate c, {double? from, double? until}) {
+    Projection? best;
+    for (var i = 0; i < points.length - 1; i++) {
+      if (from != null && _accumulated[i + 1] < from) continue;
+      if (until != null && _accumulated[i] > until) break;
+      final p = _projectInSegment(c, i);
+      if (best == null || p.distanceLateral < best.distanceLateral) {
+        best = p;
       }
     }
-    return mejor ?? _proyectarEnSegmento(c, 0);
+    return best ?? _projectInSegment(c, 0);
   }
 
-  Proyeccion _proyectarEnSegmento(Coordenada c, int i) {
-    final a = puntos[i], b = puntos[i + 1];
-    // Plano local centrado en a (metros).
+  Projection _projectInSegment(Coordinate c, int i) {
+    final a = points[i], b = points[i + 1];
+    // Local plane centered on a (meters).
     final cosLat = math.cos(_rad(a.lat));
-    double x(Coordenada p) => _rad(p.lng - a.lng) * cosLat * _radioTierra;
-    double y(Coordenada p) => _rad(p.lat - a.lat) * _radioTierra;
+    double x(Coordinate p) => _rad(p.lng - a.lng) * cosLat * _radioLand;
+    double y(Coordinate p) => _rad(p.lat - a.lat) * _radioLand;
     final bx = x(b), by = y(b), cx = x(c), cy = y(c);
     final len2 = bx * bx + by * by;
     var t = len2 == 0 ? 0.0 : (cx * bx + cy * by) / len2;
     t = t.clamp(0.0, 1.0);
-    final punto = Coordenada(
+    final punto = Coordinate(
       a.lat + (b.lat - a.lat) * t,
       a.lng + (b.lng - a.lng) * t,
     );
-    final seg = _acumulado[i + 1] - _acumulado[i];
-    return Proyeccion(
-      segmento: i,
+    final seg = _accumulated[i + 1] - _accumulated[i];
+    return Projection(
+      segment: i,
       t: t,
       punto: punto,
-      distanciaLateral: distancia(c, punto),
-      recorrido: _acumulado[i] + seg * t,
+      distanceLateral: distance(c, punto),
+      route: _accumulated[i] + seg * t,
     );
   }
 
-  /// Sub-polilínea entre dos distancias recorridas (desde < hasta).
-  List<Coordenada> tramo(double desde, double hasta) {
-    assert(desde <= hasta);
-    final res = <Coordenada>[puntoEn(desde)];
-    for (var i = 0; i < puntos.length; i++) {
-      if (_acumulado[i] > desde && _acumulado[i] < hasta) {
-        _agregarSinDuplicar(res, puntos[i]);
+  /// Sub-polyline between two traveled distances (desde < hasta).
+  List<Coordinate> leg(double from, double until) {
+    assert(from <= until);
+    final res = <Coordinate>[pointAt(from)];
+    for (var i = 0; i < points.length; i++) {
+      if (_accumulated[i] > from && _accumulated[i] < until) {
+        _agregarSinDuplicar(res, points[i]);
       }
     }
-    _agregarSinDuplicar(res, puntoEn(hasta));
+    _agregarSinDuplicar(res, pointAt(until));
     if (res.length == 1) res.add(res.first);
     return res;
   }
 
-  /// Coordenada a [metros] del inicio.
-  Coordenada puntoEn(double metros) {
-    if (metros <= 0) return puntos.first;
-    if (metros >= largo) return puntos.last;
+  /// Coordinate at [metros] from the start.
+  Coordinate pointAt(double meters) {
+    if (meters <= 0) return points.first;
+    if (meters >= long) return points.last;
     var i = 0;
-    while (i < _acumulado.length - 2 && _acumulado[i + 1] < metros) {
+    while (i < _accumulated.length - 2 && _accumulated[i + 1] < meters) {
       i++;
     }
-    final seg = _acumulado[i + 1] - _acumulado[i];
-    final t = seg == 0 ? 0.0 : (metros - _acumulado[i]) / seg;
-    final a = puntos[i], b = puntos[i + 1];
-    return Coordenada(a.lat + (b.lat - a.lat) * t, a.lng + (b.lng - a.lng) * t);
+    final seg = _accumulated[i + 1] - _accumulated[i];
+    final t = seg == 0 ? 0.0 : (meters - _accumulated[i]) / seg;
+    final a = points[i], b = points[i + 1];
+    return Coordinate(a.lat + (b.lat - a.lat) * t, a.lng + (b.lng - a.lng) * t);
   }
 
-  /// Rumbo aproximado (grados, 0 = norte) en [metros].
-  double rumboEn(double metros) {
-    final a = puntoEn(math.max(0, metros - 5));
-    final b = puntoEn(math.min(largo, metros + 5));
-    return rumbo(a, b);
+  /// Approximate heading (degrees, 0 = north) at [metros].
+  double headingIn(double meters) {
+    final a = pointAt(math.max(0, meters - 5));
+    final b = pointAt(math.min(long, meters + 5));
+    return heading(a, b);
   }
 }
 
-void _agregarSinDuplicar(List<Coordenada> lista, Coordenada c) {
-  if (lista.isEmpty || distancia(lista.last, c) > 0.25) lista.add(c);
+void _agregarSinDuplicar(List<Coordinate> list, Coordinate c) {
+  if (list.isEmpty || distance(list.last, c) > 0.25) list.add(c);
 }
 
-/// Rumbo inicial de a hacia b en grados (0..360, 0 = norte).
-double rumbo(Coordenada a, Coordenada b) {
+/// Initial heading from a to b in degrees (0..360, 0 = north).
+double heading(Coordinate a, Coordinate b) {
   final y = math.sin(_rad(b.lng - a.lng)) * math.cos(_rad(b.lat));
   final x =
       math.cos(_rad(a.lat)) * math.sin(_rad(b.lat)) -
@@ -167,20 +167,20 @@ double rumbo(Coordenada a, Coordenada b) {
   return (math.atan2(y, x) * 180 / math.pi + 360) % 360;
 }
 
-/// Decodifica una polilínea codificada (algoritmo de Google, precisión 5).
-List<Coordenada> decodificarPolilinea(String codificada) {
-  final res = <Coordenada>[];
+/// Decodes an encoded polyline (Google algorithm, precision 5).
+List<Coordinate> decodePolyline(String encoded) {
+  final res = <Coordinate>[];
   var index = 0, lat = 0, lng = 0;
-  while (index < codificada.length) {
+  while (index < encoded.length) {
     for (var k = 0; k < 2; k++) {
-      // Con aritmética común, no con operadores de bits: en web estos
-      // devuelven enteros sin signo y `~x` da un número enorme.
+      // Using plain arithmetic, not bit operators: on web these
+      // return unsigned integers and `~x` gives a huge number.
       var mult = 1, result = 0, b = 0;
       do {
-        b = codificada.codeUnitAt(index++) - 63;
+        b = encoded.codeUnitAt(index++) - 63;
         result += (b % 32) * mult;
         mult *= 32;
-      } while (b >= 0x20 && index < codificada.length);
+      } while (b >= 0x20 && index < encoded.length);
       final delta = result.isOdd ? -(result ~/ 2) - 1 : result ~/ 2;
       if (k == 0) {
         lat += delta;
@@ -188,7 +188,7 @@ List<Coordenada> decodificarPolilinea(String codificada) {
         lng += delta;
       }
     }
-    res.add(Coordenada(lat / 1e5, lng / 1e5));
+    res.add(Coordinate(lat / 1e5, lng / 1e5));
   }
   return res;
 }

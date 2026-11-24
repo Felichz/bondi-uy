@@ -168,7 +168,7 @@
                     "triggers bus tracking mode changes"
                   ],
                   
-                  "flowNotes": "Core state machine implementing the exact transitions: Llegada a parada → Esperar bus → Subir al bus → En el bus → Llegar a parada destino → Siguiente paso"
+                  "flowNotes": "Core state machine implementing the exact transitions: Arrive at stop → Wait for bus → Board bus → On the bus → Arrive at destination stop → Next step"
                 },
                 
                 "bus_boarding_detector": {
@@ -201,7 +201,7 @@
                   
                   "inputs": [{
                     "name": "userLocation",
-                    "type": "Coordenada",
+                    "type": "Coordinate",
                     "description": "Current user GPS position",
                     "source": "LocationTracker"
                   }, {
@@ -271,7 +271,7 @@
                     "prevents unnecessary API calls during bus riding"
                   ],
                   
-                  "flowNotes": "Implements the exact flow requirement: 'Stop sondeo ETA' when user transitions to riding bus, and 'Usuario = ubicación bus' mode switching"
+                  "flowNotes": "Implements the exact flow requirement: 'Stop ETA polling' when user transitions to riding bus, and 'User = bus location' mode switching"
                 },
                 
                 "location_tracker": {
@@ -304,14 +304,14 @@
                   
                   "inputs": [{
                     "name": "destinations",
-                    "type": "List<Coordenada>",
+                    "type": "List<Coordinate>",
                     "description": "Target locations for geofence setup", 
                     "source": "journey management"
                   }],
                   
                   "outputs": [{
                     "name": "locationUpdate",
-                    "type": "Coordenada",
+                    "type": "Coordinate",
                     "description": "Current user location with speed",
                     "destination": "onLocationUpdate callback"
                   }, {
@@ -384,7 +384,7 @@
                   
                   "inputs": [{
                     "name": "coordinates",
-                    "type": "List<Coordenada>",
+                    "type": "List<Coordinate>",
                     "description": "Points to include in viewport (stop + bus)",
                     "source": "journey leg data + bus tracking"
                   }],
@@ -398,7 +398,7 @@
                   
                   "sideEffects": ["animates map camera to optimal zoom level"],
                   
-                  "flowNotes": "Implements the exact requirement 'zoom dinámico parada-bus' by calculating optimal viewport to show both bus stop and approaching bus simultaneously"
+                  "flowNotes": "Implements the exact requirement 'dynamic stop-bus zoom' by calculating optimal viewport to show both bus stop and approaching bus simultaneously"
                 },
                 
                 "map_bus_realtime": {
@@ -450,7 +450,7 @@
                     "coordinates with ETA polling lifecycle"
                   ],
                   
-                  "flowNotes": "Implements hybrid tracking where bus position comes from API when waiting, but switches to user location when riding, fulfilling 'Usuario = ubicación bus' requirement"
+                  "flowNotes": "Implements hybrid tracking where bus position comes from API when waiting, but switches to user location when riding, fulfilling 'User = bus location' requirement"
                 }
               }
             },

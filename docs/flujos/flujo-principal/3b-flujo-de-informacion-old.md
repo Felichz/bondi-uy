@@ -1,525 +1,525 @@
-# Flujo de Información Completo - Navegación de Usuario (9 Pasos)
+# Complete Information Flow - User Navigation (9 Steps)
 
-## Paso 1: Usuario entra en la fase de opciones de viaje y ve la preview de la primera opción (con ETA)
+## Step 1: User enters the trip options phase and sees the preview of the first option (with ETA)
 
-### Acción del Usuario
+### User Action
 
-El usuario llega a la pantalla de opciones de ruta después de hacer una búsqueda.
+The user arrives at the route options screen after performing a search.
 
-### Flujo de Información
+### Information Flow
 
 **1. `RouteOptionsOverlay.initState()`**
 
-- **Input:** Ninguno
-- **Llama a:**
-  - `super.initState()`: 100% de las veces. Input: Ninguno
-  - `WidgetsBinding.instance.addPostFrameCallback(...)`: 100% de las veces. Input: Callback que llama a `_initializeCarousel()`
+- **Input:** None
+- **Calls:**
+  - `super.initState()`: 100% of the time. Input: None
+  - `WidgetsBinding.instance.addPostFrameCallback(...)`: 100% of the time. Input: Callback that calls `_initializeCarousel()`
 
 **2. `RouteOptionsOverlay._initializeCarousel()`**
 
-- **Input:** Ninguno
-- **Llama a:**
-  - `ref.read(appLogicProvider)`: 100% de las veces. Input: `appLogicProvider`
-  - `print`: 100% de las veces. Input: String
-  - `_showInitialPreview()`: Si `routeOptionsState != null && routeOptionsState.opcionesDeRuta.isNotEmpty`. Input: Ninguno
+- **Input:** None
+- **Calls:**
+  - `ref.read(appLogicProvider)`: 100% of the time. Input: `appLogicProvider`
+  - `print`: 100% of the time. Input: String
+  - `_showInitialPreview()`: If `routeOptionsState != null && routeOptionsState.opcionesDeRuta.isNotEmpty`. Input: None
 
 **3. `RouteOptionsOverlay._showInitialPreview()`**
 
-- **Input:** Ninguno
-- **Llama a:**
-  - `Future.delayed(Duration(milliseconds: 100)).then(...)`: Si `mounted` es true
+- **Input:** None
+- **Calls:**
+  - `Future.delayed(Duration(milliseconds: 100)).then(...)`: If `mounted` is true
     - `_showRoutePreview(_currentOptionIndex)`: Input: `_currentOptionIndex` (int)
-  - `Future.delayed(Duration(milliseconds: 800)).then(...)`: Si `mounted` es true
+  - `Future.delayed(Duration(milliseconds: 800)).then(...)`: If `mounted` is true
     - `_showRoutePreview(_currentOptionIndex)`: Input: `_currentOptionIndex` (int)
-  - `Future.delayed(Duration(milliseconds: 1500)).then(...)`: Si `mounted` es true
+  - `Future.delayed(Duration(milliseconds: 1500)).then(...)`: If `mounted` is true
     - `_showRoutePreview(_currentOptionIndex)`: Input: `_currentOptionIndex` (int)
-  - `print`: 100% de las veces. Input: String
+  - `print`: 100% of the time. Input: String
 
 **4. `RouteOptionsOverlay._showRoutePreview()`**
 
-- **Input:** `optionIndex` (int) = 0 (primera opción)
-- **Llama a:**
-  - `ref.read(appLogicProvider)`: 100% de las veces. Input: `appLogicProvider`
-  - `print`: 100% de las veces. Input: String
-  - `AppLogicNotifier.seleccionarOpcionDeRutaParaPrevisualizar(option.idOpcion)`: Si `routeOptionsState` no es null y `optionIndex` está en rango válido. Input: `option.idOpcion`
-  - `_displayRoutePreview(option)`: Si `routeOptionsState` no es null y `optionIndex` está en rango válido. Input: `option` (OpcionDeRutaMostrable)
+- **Input:** `optionIndex` (int) = 0 (first option)
+- **Calls:**
+  - `ref.read(appLogicProvider)`: 100% of the time. Input: `appLogicProvider`
+  - `print`: 100% of the time. Input: String
+  - `AppLogicNotifier.seleccionarOpcionDeRutaParaPrevisualizar(option.idOption)`: If `routeOptionsState` is not null and `optionIndex` is in a valid range. Input: `option.idOption`
+  - `_displayRoutePreview(option)`: If `routeOptionsState` is not null and `optionIndex` is in a valid range. Input: `option` (OpcionDeRutaMostrable)
 
 **5. `AppLogicNotifier.seleccionarOpcionDeRutaParaPrevisualizar()`**
 
-- **Input:** `idOpcionRuta` (String) = ID de la primera opción
-- **Llama a:**
-  - `state.datosFaseOpcionesRuta?.opcionesDeRuta.firstWhereOrNull(...)`: 100% de las veces si `state.datosFaseOpcionesRuta` no es null. Input: Callback `(opt) => opt.idOpcion == idOpcionRuta`
-  - `todosLosPuntosDeLaRuta.addAll(...)`: Si `tramo.geometriaPolilinea` no es null (dentro de bucle). Input: `tramo.geometriaPolilinea`
-  - `todosLosPuntosDeLaRuta.add(...)`: Si `tramo.posicionPunto` no es null (dentro de bucle). Input: `tramo.posicionPunto`
-  - `state = state.copyWith(...)`: Si `mounted` es true y `todosLosPuntosDeLaRuta` no está vacío. Input: Parámetros nombrados para actualizar estado
+- **Input:** `idOpcionRuta` (String) = ID of the first option
+- **Calls:**
+  - `state.datosFaseOpcionesRuta?.opcionesDeRuta.firstWhereOrNull(...)`: 100% of the time if `state.datosFaseOpcionesRuta` is not null. Input: Callback `(opt) => opt.idOption == idOpcionRuta`
+  - `todosLosPuntosDeLaRuta.addAll(...)`: If `leg.geometryPolyline` is not null (inside loop). Input: `leg.geometryPolyline`
+  - `todosLosPuntosDeLaRuta.add(...)`: If `leg.positionPunto` is not null (inside loop). Input: `leg.positionPunto`
+  - `state = state.copyWith(...)`: If `mounted` is true and `todosLosPuntosDeLaRuta` is not empty. Input: Named parameters to update the state
 
 **6. `RouteOptionsOverlay._displayRoutePreview()`**
 
-- **Input:** `ruta` (OpcionDeRutaMostrable) = primera opción con ETA
-- **Llama a:**
-  - `print`: 100% de las veces. Input: String
-  - `ref.read(mapManagerProvider)`: 100% de las veces. Input: `mapManagerProvider`
-  - `MapManager.showRoutePreview(ruta)`: Si `mapManager` no es null (dentro de bloque `try`). Input: `ruta` (OpcionDeRutaMostrable)
+- **Input:** `route` (OpcionDeRutaMostrable) = first option with ETA
+- **Calls:**
+  - `print`: 100% of the time. Input: String
+  - `ref.read(mapManagerProvider)`: 100% of the time. Input: `mapManagerProvider`
+  - `MapManager.showRoutePreview(route)`: If `mapManager` is not null (inside `try` block). Input: `route` (OpcionDeRutaMostrable)
 
 **7. `MapManager.showRoutePreview()`**
 
-- **Input:** `route` (OpcionDeRutaMostrable) = primera opción con ETA
-- **Llama a:**
-  - `initialize()`: Si `!_isInitialized`. Input: Ninguno
-  - `print`: 100% de las veces. Input: String
-  - `_cleanup.clearRoute()`: Si `_currentPreviewOptionId != route.idOpcion`. Input: Ninguno
-  - `_routeRenderer.renderRoute(route.tramosParaPreview)`: Si `needsRedraw || _activeLayers.isEmpty`. Input: `route.tramosParaPreview`
-  - `_busRealtime.displayRealtimeBusesForPreview(route)`: Si `needsRedraw || _activeLayers.isEmpty`. Input: `route`
-  - `_cameraController.zoomToRoutePreview(route)`: 100% de las veces. Input: `route`
+- **Input:** `route` (OpcionDeRutaMostrable) = first option with ETA
+- **Calls:**
+  - `initialize()`: If `!_isInitialized`. Input: None
+  - `print`: 100% of the time. Input: String
+  - `_cleanup.clearRoute()`: If `_currentPreviewOptionId != route.idOption`. Input: None
+  - `_routeRenderer.renderRoute(route.tramosParaPreview)`: If `needsRedraw || _activeLayers.isEmpty`. Input: `route.tramosParaPreview`
+  - `_busRealtime.displayRealtimeBusesForPreview(route)`: If `needsRedraw || _activeLayers.isEmpty`. Input: `route`
+  - `_cameraController.zoomToRoutePreview(route)`: 100% of the time. Input: `route`
 
 **8. `MapBusRealtime.displayRealtimeBusesForPreview()`**
 
-- **Input:** `route` (OpcionDeRutaMostrable) = primera opción con ETA
-- **Llama a:**
-  - `print`: 100% de las veces si `mapboxMap` no es null. Input: String
-  - `_addRealtimeBusToPreview(tramo, i)`: Para cada `tramo` en `route.tramosParaPreview` si `mapboxMap` no es null y `tramo.esTiempoRealBus` es true y `tramo.minutosEstimadosLlegadaBus` no es null y `tramo.minutosEstimadosLlegadaBus > 0`. Input: `tramo`, `i`
+- **Input:** `route` (OpcionDeRutaMostrable) = first option with ETA
+- **Calls:**
+  - `print`: 100% of the time if `mapboxMap` is not null. Input: String
+  - `_addRealtimeBusToPreview(leg, i)`: For each `leg` in `route.tramosParaPreview` if `mapboxMap` is not null and `leg.esTiempoRealBus` is true and `leg.minutosEstimadosLlegadaBus` is not null and `leg.minutosEstimadosLlegadaBus > 0`. Input: `leg`, `i`
 
 ---
 
-## Paso 2: Usuario cambia a la segunda opción (sin ETA)
+## Step 2: User switches to the second option (no ETA)
 
-### Acción del Usuario
+### User Action
 
-El usuario desliza el carousel o toca para cambiar a la segunda opción de ruta.
+The user swipes the carousel or taps to switch to the second route option.
 
-### Flujo de Información
+### Information Flow
 
-**9. `PageView.onPageChanged` callback en `RouteOptionsOverlay.build()`**
+**9. `PageView.onPageChanged` callback in `RouteOptionsOverlay.build()`**
 
-- **Input:** `index` (int) = 1 (segunda opción)
-- **Llama a:**
-  - `setState(...)`: 100% de las veces. Input: Callback que actualiza `_currentOptionIndex = index`
-  - `_showRoutePreview(index)`: 100% de las veces. Input: `index` (int) = 1
+- **Input:** `index` (int) = 1 (second option)
+- **Calls:**
+  - `setState(...)`: 100% of the time. Input: Callback that updates `_currentOptionIndex = index`
+  - `_showRoutePreview(index)`: 100% of the time. Input: `index` (int) = 1
 
 **10. `RouteOptionsOverlay._showRoutePreview()`**
 
-- **Input:** `optionIndex` (int) = 1 (segunda opción)
-- **Llama a:**
-  - `ref.read(appLogicProvider)`: 100% de las veces. Input: `appLogicProvider`
-  - `print`: 100% de las veces. Input: String
-  - `AppLogicNotifier.seleccionarOpcionDeRutaParaPrevisualizar(option.idOpcion)`: Si `routeOptionsState` no es null y `optionIndex` está en rango válido. Input: `option.idOpcion` (ID de segunda opción)
-  - `_displayRoutePreview(option)`: Si `routeOptionsState` no es null y `optionIndex` está en rango válido. Input: `option` (OpcionDeRutaMostrable de segunda opción)
+- **Input:** `optionIndex` (int) = 1 (second option)
+- **Calls:**
+  - `ref.read(appLogicProvider)`: 100% of the time. Input: `appLogicProvider`
+  - `print`: 100% of the time. Input: String
+  - `AppLogicNotifier.seleccionarOpcionDeRutaParaPrevisualizar(option.idOption)`: If `routeOptionsState` is not null and `optionIndex` is in a valid range. Input: `option.idOption` (ID of second option)
+  - `_displayRoutePreview(option)`: If `routeOptionsState` is not null and `optionIndex` is in a valid range. Input: `option` (OpcionDeRutaMostrable of second option)
 
 **11. `AppLogicNotifier.seleccionarOpcionDeRutaParaPrevisualizar()`**
 
-- **Input:** `idOpcionRuta` (String) = ID de la segunda opción
-- **Llama a:**
-  - `state.datosFaseOpcionesRuta?.opcionesDeRuta.firstWhereOrNull(...)`: 100% de las veces si `state.datosFaseOpcionesRuta` no es null. Input: Callback `(opt) => opt.idOpcion == idOpcionRuta`
-  - `todosLosPuntosDeLaRuta.addAll(...)`: Si `tramo.geometriaPolilinea` no es null (dentro de bucle). Input: `tramo.geometriaPolilinea`
-  - `todosLosPuntosDeLaRuta.add(...)`: Si `tramo.posicionPunto` no es null (dentro de bucle). Input: `tramo.posicionPunto`
-  - `state = state.copyWith(...)`: Si `mounted` es true y `todosLosPuntosDeLaRuta` no está vacío. Input: Parámetros nombrados para actualizar estado
+- **Input:** `idOpcionRuta` (String) = ID of the second option
+- **Calls:**
+  - `state.datosFaseOpcionesRuta?.opcionesDeRuta.firstWhereOrNull(...)`: 100% of the time if `state.datosFaseOpcionesRuta` is not null. Input: Callback `(opt) => opt.idOption == idOpcionRuta`
+  - `todosLosPuntosDeLaRuta.addAll(...)`: If `leg.geometryPolyline` is not null (inside loop). Input: `leg.geometryPolyline`
+  - `todosLosPuntosDeLaRuta.add(...)`: If `leg.positionPunto` is not null (inside loop). Input: `leg.positionPunto`
+  - `state = state.copyWith(...)`: If `mounted` is true and `todosLosPuntosDeLaRuta` is not empty. Input: Named parameters to update the state
 
 **12. `RouteOptionsOverlay._displayRoutePreview()`**
 
-- **Input:** `ruta` (OpcionDeRutaMostrable) = segunda opción sin ETA
-- **Llama a:**
-  - `print`: 100% de las veces. Input: String
-  - `ref.read(mapManagerProvider)`: 100% de las veces. Input: `mapManagerProvider`
-  - `MapManager.showRoutePreview(ruta)`: Si `mapManager` no es null (dentro de bloque `try`). Input: `ruta` (OpcionDeRutaMostrable)
+- **Input:** `route` (OpcionDeRutaMostrable) = second option without ETA
+- **Calls:**
+  - `print`: 100% of the time. Input: String
+  - `ref.read(mapManagerProvider)`: 100% of the time. Input: `mapManagerProvider`
+  - `MapManager.showRoutePreview(route)`: If `mapManager` is not null (inside `try` block). Input: `route` (OpcionDeRutaMostrable)
 
 **13. `MapManager.showRoutePreview()`**
 
-- **Input:** `route` (OpcionDeRutaMostrable) = segunda opción sin ETA
-- **Llama a:**
-  - `initialize()`: Si `!_isInitialized`. Input: Ninguno
-  - `print`: 100% de las veces. Input: String
-  - `_cleanup.clearRoute()`: Si `_currentPreviewOptionId != route.idOpcion`. Input: Ninguno
-  - `_routeRenderer.renderRoute(route.tramosParaPreview)`: Si `needsRedraw || _activeLayers.isEmpty`. Input: `route.tramosParaPreview`
-  - `_busRealtime.displayRealtimeBusesForPreview(route)`: Si `needsRedraw || _activeLayers.isEmpty`. Input: `route`
-  - `_cameraController.zoomToRoutePreview(route)`: 100% de las veces. Input: `route`
+- **Input:** `route` (OpcionDeRutaMostrable) = second option without ETA
+- **Calls:**
+  - `initialize()`: If `!_isInitialized`. Input: None
+  - `print`: 100% of the time. Input: String
+  - `_cleanup.clearRoute()`: If `_currentPreviewOptionId != route.idOption`. Input: None
+  - `_routeRenderer.renderRoute(route.tramosParaPreview)`: If `needsRedraw || _activeLayers.isEmpty`. Input: `route.tramosParaPreview`
+  - `_busRealtime.displayRealtimeBusesForPreview(route)`: If `needsRedraw || _activeLayers.isEmpty`. Input: `route`
+  - `_cameraController.zoomToRoutePreview(route)`: 100% of the time. Input: `route`
 
 **14. `MapBusRealtime.displayRealtimeBusesForPreview()`**
 
-- **Input:** `route` (OpcionDeRutaMostrable) = segunda opción sin ETA
-- **Llama a:**
-  - `print`: 100% de las veces si `mapboxMap` no es null. Input: String
-  - `_addRealtimeBusToPreview(tramo, i)`: Para cada `tramo` en `route.tramosParaPreview` si `mapboxMap` no es null y `tramo.esTiempoRealBus` es true y `tramo.minutosEstimadosLlegadaBus` no es null y `tramo.minutosEstimadosLlegadaBus > 0`. Input: `tramo`, `i`
-  - **Nota:** Como esta opción no tiene ETA, no se renderizarán buses en tiempo real.
+- **Input:** `route` (OpcionDeRutaMostrable) = second option without ETA
+- **Calls:**
+  - `print`: 100% of the time if `mapboxMap` is not null. Input: String
+  - `_addRealtimeBusToPreview(leg, i)`: For each `leg` in `route.tramosParaPreview` if `mapboxMap` is not null and `leg.esTiempoRealBus` is true and `leg.minutosEstimadosLlegadaBus` is not null and `leg.minutosEstimadosLlegadaBus > 0`. Input: `leg`, `i`
+  - **Note:** Since this option has no ETA, no real-time buses will be rendered.
 
 ---
 
-## Paso 3: Usuario cambia a la tercera opción (con ETA)
+## Step 3: User switches to the third option (with ETA)
 
-### Acción del Usuario
+### User Action
 
-El usuario desliza el carousel o toca para cambiar a la tercera opción de ruta.
+The user swipes the carousel or taps to switch to the third route option.
 
-### Flujo de Información
+### Information Flow
 
-**15. `PageView.onPageChanged` callback en `RouteOptionsOverlay.build()`**
+**15. `PageView.onPageChanged` callback in `RouteOptionsOverlay.build()`**
 
-- **Input:** `index` (int) = 2 (tercera opción)
-- **Llama a:**
-  - `setState(...)`: 100% de las veces. Input: Callback que actualiza `_currentOptionIndex = index`
-  - `_showRoutePreview(index)`: 100% de las veces. Input: `index` (int) = 2
+- **Input:** `index` (int) = 2 (third option)
+- **Calls:**
+  - `setState(...)`: 100% of the time. Input: Callback that updates `_currentOptionIndex = index`
+  - `_showRoutePreview(index)`: 100% of the time. Input: `index` (int) = 2
 
 **16. `RouteOptionsOverlay._showRoutePreview()`**
 
-- **Input:** `optionIndex` (int) = 2 (tercera opción)
-- **Llama a:**
-  - `ref.read(appLogicProvider)`: 100% de las veces. Input: `appLogicProvider`
-  - `print`: 100% de las veces. Input: String
-  - `AppLogicNotifier.seleccionarOpcionDeRutaParaPrevisualizar(option.idOpcion)`: Si `routeOptionsState` no es null y `optionIndex` está en rango válido. Input: `option.idOpcion` (ID de tercera opción)
-  - `_displayRoutePreview(option)`: Si `routeOptionsState` no es null y `optionIndex` está en rango válido. Input: `option` (OpcionDeRutaMostrable de tercera opción)
+- **Input:** `optionIndex` (int) = 2 (third option)
+- **Calls:**
+  - `ref.read(appLogicProvider)`: 100% of the time. Input: `appLogicProvider`
+  - `print`: 100% of the time. Input: String
+  - `AppLogicNotifier.seleccionarOpcionDeRutaParaPrevisualizar(option.idOption)`: If `routeOptionsState` is not null and `optionIndex` is in a valid range. Input: `option.idOption` (ID of third option)
+  - `_displayRoutePreview(option)`: If `routeOptionsState` is not null and `optionIndex` is in a valid range. Input: `option` (OpcionDeRutaMostrable of third option)
 
 **17. `AppLogicNotifier.seleccionarOpcionDeRutaParaPrevisualizar()`**
 
-- **Input:** `idOpcionRuta` (String) = ID de la tercera opción
-- **Llama a:**
-  - `state.datosFaseOpcionesRuta?.opcionesDeRuta.firstWhereOrNull(...)`: 100% de las veces si `state.datosFaseOpcionesRuta` no es null. Input: Callback `(opt) => opt.idOpcion == idOpcionRuta`
-  - `todosLosPuntosDeLaRuta.addAll(...)`: Si `tramo.geometriaPolilinea` no es null (dentro de bucle). Input: `tramo.geometriaPolilinea`
-  - `todosLosPuntosDeLaRuta.add(...)`: Si `tramo.posicionPunto` no es null (dentro de bucle). Input: `tramo.posicionPunto`
-  - `state = state.copyWith(...)`: Si `mounted` es true y `todosLosPuntosDeLaRuta` no está vacío. Input: Parámetros nombrados para actualizar estado
+- **Input:** `idOpcionRuta` (String) = ID of the third option
+- **Calls:**
+  - `state.datosFaseOpcionesRuta?.opcionesDeRuta.firstWhereOrNull(...)`: 100% of the time if `state.datosFaseOpcionesRuta` is not null. Input: Callback `(opt) => opt.idOption == idOpcionRuta`
+  - `todosLosPuntosDeLaRuta.addAll(...)`: If `leg.geometryPolyline` is not null (inside loop). Input: `leg.geometryPolyline`
+  - `todosLosPuntosDeLaRuta.add(...)`: If `leg.positionPunto` is not null (inside loop). Input: `leg.positionPunto`
+  - `state = state.copyWith(...)`: If `mounted` is true and `todosLosPuntosDeLaRuta` is not empty. Input: Named parameters to update the state
 
 **18. `RouteOptionsOverlay._displayRoutePreview()`**
 
-- **Input:** `ruta` (OpcionDeRutaMostrable) = tercera opción con ETA
-- **Llama a:**
-  - `print`: 100% de las veces. Input: String
-  - `ref.read(mapManagerProvider)`: 100% de las veces. Input: `mapManagerProvider`
-  - `MapManager.showRoutePreview(ruta)`: Si `mapManager` no es null (dentro de bloque `try`). Input: `ruta` (OpcionDeRutaMostrable)
+- **Input:** `route` (OpcionDeRutaMostrable) = third option with ETA
+- **Calls:**
+  - `print`: 100% of the time. Input: String
+  - `ref.read(mapManagerProvider)`: 100% of the time. Input: `mapManagerProvider`
+  - `MapManager.showRoutePreview(route)`: If `mapManager` is not null (inside `try` block). Input: `route` (OpcionDeRutaMostrable)
 
 **19. `MapManager.showRoutePreview()`**
 
-- **Input:** `route` (OpcionDeRutaMostrable) = tercera opción con ETA
-- **Llama a:**
-  - `initialize()`: Si `!_isInitialized`. Input: Ninguno
-  - `print`: 100% de las veces. Input: String
-  - `_cleanup.clearRoute()`: Si `_currentPreviewOptionId != route.idOpcion`. Input: Ninguno
-  - `_routeRenderer.renderRoute(route.tramosParaPreview)`: Si `needsRedraw || _activeLayers.isEmpty`. Input: `route.tramosParaPreview`
-  - `_busRealtime.displayRealtimeBusesForPreview(route)`: Si `needsRedraw || _activeLayers.isEmpty`. Input: `route`
-  - `_cameraController.zoomToRoutePreview(route)`: 100% de las veces. Input: `route`
+- **Input:** `route` (OpcionDeRutaMostrable) = third option with ETA
+- **Calls:**
+  - `initialize()`: If `!_isInitialized`. Input: None
+  - `print`: 100% of the time. Input: String
+  - `_cleanup.clearRoute()`: If `_currentPreviewOptionId != route.idOption`. Input: None
+  - `_routeRenderer.renderRoute(route.tramosParaPreview)`: If `needsRedraw || _activeLayers.isEmpty`. Input: `route.tramosParaPreview`
+  - `_busRealtime.displayRealtimeBusesForPreview(route)`: If `needsRedraw || _activeLayers.isEmpty`. Input: `route`
+  - `_cameraController.zoomToRoutePreview(route)`: 100% of the time. Input: `route`
 
 **20. `MapBusRealtime.displayRealtimeBusesForPreview()`**
 
-- **Input:** `route` (OpcionDeRutaMostrable) = tercera opción con ETA
-- **Llama a:**
-  - `print`: 100% de las veces si `mapboxMap` no es null. Input: String
-  - `_addRealtimeBusToPreview(tramo, i)`: Para cada `tramo` en `route.tramosParaPreview` si `mapboxMap` no es null y `tramo.esTiempoRealBus` es true y `tramo.minutosEstimadosLlegadaBus` no es null y `tramo.minutosEstimadosLlegadaBus > 0`. Input: `tramo`, `i`
+- **Input:** `route` (OpcionDeRutaMostrable) = third option with ETA
+- **Calls:**
+  - `print`: 100% of the time if `mapboxMap` is not null. Input: String
+  - `_addRealtimeBusToPreview(leg, i)`: For each `leg` in `route.tramosParaPreview` if `mapboxMap` is not null and `leg.esTiempoRealBus` is true and `leg.minutosEstimadosLlegadaBus` is not null and `leg.minutosEstimadosLlegadaBus > 0`. Input: `leg`, `i`
 
 ---
 
-## Paso 4: Usuario selecciona la tercera opción mostrada
+## Step 4: User selects the third option shown
 
-### Acción del Usuario
+### User Action
 
-El usuario presiona el botón "Iniciar Viaje" para confirmar la tercera opción de ruta.
+The user presses the "Start Trip" button to confirm the third route option.
 
-### Flujo de Información
+### Information Flow
 
-**21. `ElevatedButton.onPressed` callback en `RouteOptionsOverlay._buildFooter()`**
+**21. `ElevatedButton.onPressed` callback in `RouteOptionsOverlay._buildFooter()`**
 
-- **Input:** Ninguno (evento de presión del botón)
-- **Llama a:**
-  - `AppLogicNotifier.confirmarOpcionDeRutaEIniciarViaje(options[_currentOptionIndex].idOpcion)`: 100% de las veces. Input: `options[_currentOptionIndex].idOpcion` (ID de tercera opción)
+- **Input:** None (button press event)
+- **Calls:**
+  - `AppLogicNotifier.confirmarOpcionDeRutaEIniciarViaje(options[_currentOptionIndex].idOption)`: 100% of the time. Input: `options[_currentOptionIndex].idOption` (ID of third option)
 
 **22. `AppLogicNotifier.confirmarOpcionDeRutaEIniciarViaje()`**
 
-- **Input:** `idOpcionSeleccionada` (String) = ID de la tercera opción
-- **Llama a:**
-  - `print`: 100% de las veces. Input: String
-  - `state.datosFaseOpcionesRuta!.opcionesDeRuta.firstWhere(...)`: Si `state.faseActual` es `FaseApp.MOSTRANDO_OPCIONES_RUTA` y `state.datosFaseOpcionesRuta` no es null y `state.idOpcionRutaPrevisualizada` coincide con `idOpcionSeleccionada` (dentro de bloque `try`). Input: Callback `(opt) => opt.idOpcion == idOpcionSeleccionada`
-  - `print`: Si `opcionConfirmada` es null. Input: String
-  - `state = state.copyWith(...)`: Si `opcionConfirmada` es null. Input: Parámetros nombrados para actualizar estado con error
-  - `state = state.copyWith(...)`: Si `opcionConfirmada` no es null. Input: Parámetros nombrados para actualizar estado a fase de viaje activo
-  - `print`: Si `opcionConfirmada` no es null. Input: String
-  - `opcionConfirmada.tramosParaPreview.firstWhere(...)`: Si `opcionConfirmada` no es null. Input: Callback `(tramo) => tramo.tipo == TipoTramoViaje.VIAJE_EN_BUS`, orElse callback
-  - `iniciarSeguimientoBusTiempoReal(...)`: Si `primerTramoBus.idTramo` no es "placeholder_no_bus_tramo". Input: `idViajeActivo` (String), `idTramoBus` (String)
+- **Input:** `idOpcionSeleccionada` (String) = ID of the third option
+- **Calls:**
+  - `print`: 100% of the time. Input: String
+  - `state.datosFaseOpcionesRuta!.opcionesDeRuta.firstWhere(...)`: If `state.faseActual` is `FaseApp.MOSTRANDO_OPCIONES_RUTA` and `state.datosFaseOpcionesRuta` is not null and `state.idOpcionRutaPrevisualizada` matches `idOpcionSeleccionada` (inside `try` block). Input: Callback `(opt) => opt.idOption == idOpcionSeleccionada`
+  - `print`: If `opcionConfirmada` is null. Input: String
+  - `state = state.copyWith(...)`: If `opcionConfirmada` is null. Input: Named parameters to update the state with the error
+  - `state = state.copyWith(...)`: If `opcionConfirmada` is not null. Input: Named parameters to update the state to the active trip phase
+  - `print`: If `opcionConfirmada` is not null. Input: String
+  - `opcionConfirmada.tramosParaPreview.firstWhere(...)`: If `opcionConfirmada` is not null. Input: Callback `(leg) => leg.type == TypeLegTrip.VIAJE_EN_BUS`, orElse callback
+  - `iniciarSeguimientoBusTiempoReal(...)`: If `primerTramoBus.idLeg` is not "placeholder_no_bus_tramo". Input: `idViajeActivo` (String), `idTramoBus` (String)
 
 **23. `AppLogicNotifier.iniciarSeguimientoBusTiempoReal()`**
 
-- **Input:** `idViajeActivo` (String) = ID de la opción confirmada, `idTramoBus` (String) = ID del primer tramo de bus
-- **Llama a:**
-  - `print`: Si las condiciones iniciales de fase y datos de viaje no se cumplen. Input: String
-  - `print`: 100% de las veces si las condiciones iniciales se cumplen. Input: String
-  - `_seguimientoBusTimer?.cancel()`: 100% de las veces si las condiciones iniciales se cumplen. Input: Ninguno
-  - `state.datosFaseViajeActivo!.tramosDelViaje.firstWhere(...)`: Si las condiciones iniciales se cumplen. Input: Callback `(t) => t.idTramo == idTramoBus && t.tipo == TipoTramoViaje.VIAJE_EN_BUS`, orElse callback
-  - `state = state.copyWith(...)`: 100% de las veces si las condiciones iniciales se cumplen y hay datos suficientes. Input: Parámetros nombrados para actualizar estado
-  - `fetchEta()`: 100% de las veces al final de la función. Input: Ninguno
-  - `Timer.periodic(...)`: Si `mounted` es true y el ID del tramo en seguimiento coincide. Input: Duration, callback `(_) => fetchEta()`
+- **Input:** `idViajeActivo` (String) = ID of the confirmed option, `idTramoBus` (String) = ID of the first bus leg
+- **Calls:**
+  - `print`: If the initial phase and trip data conditions are not met. Input: String
+  - `print`: 100% of the time if the initial conditions are met. Input: String
+  - `_seguimientoBusTimer?.cancel()`: 100% of the time if the initial conditions are met. Input: None
+  - `state.datosFaseViajeActivo!.tramosDelViaje.firstWhere(...)`: If the initial conditions are met. Input: Callback `(t) => t.idLeg == idTramoBus && t.type == TypeLegTrip.VIAJE_EN_BUS`, orElse callback
+  - `state = state.copyWith(...)`: 100% of the time if the initial conditions are met and there is enough data. Input: Named parameters to update the state
+  - `fetchEta()`: 100% of the time at the end of the function. Input: None
+  - `Timer.periodic(...)`: If `mounted` is true and the ID of the tracked leg matches. Input: Duration, callback `(_) => fetchEta()`
 
-**24. Transición a Active Trip - Listener en `RouteOptionsOverlay.build()`**
+**24. Transition to Active Trip - Listener in `RouteOptionsOverlay.build()`**
 
-- **Input:** `next` (EstadoFaseViajeActivo) - nuevo estado del viaje activo
-- **Llama a:**
-  - `print`: 100% de las veces dentro del listener. Input: String
-  - **Nota:** El overlay de route options se cierra y se muestra el active trip overlay.
+- **Input:** `next` (EstadoFaseViajeActivo) - new active trip state
+- **Calls:**
+  - `print`: 100% of the time inside the listener. Input: String
+  - **Note:** The route options overlay closes and the active trip overlay is shown.
 
 ---
 
-## Paso 5: Usuario en active trip está en el paso de caminar hasta la parada
+## Step 5: User in active trip is in the walk-to-stop step
 
-### Acción del Usuario
+### User Action
 
-El sistema automáticamente muestra el active trip overlay con el primer paso del viaje (caminar hasta la parada).
+The system automatically shows the active trip overlay with the first step of the trip (walk to the stop).
 
-### Flujo de Información
+### Information Flow
 
 **25. `ActiveTripOverlay.initState()`**
 
-- **Input:** Ninguno
-- **Llama a:**
-  - `super.initState()`: 100% de las veces. Input: Ninguno
-  - `WidgetsBinding.instance.addPostFrameCallback(...)`: 100% de las veces. Input: Callback que llama a `_initializeActiveTrip()`
+- **Input:** None
+- **Calls:**
+  - `super.initState()`: 100% of the time. Input: None
+  - `WidgetsBinding.instance.addPostFrameCallback(...)`: 100% of the time. Input: Callback that calls `_initializeActiveTrip()`
 
 **26. `ActiveTripOverlay._initializeActiveTrip()`**
 
-- **Input:** Ninguno
-- **Llama a:**
-  - `print`: 100% de las veces. Input: String
-  - `ref.read(mapManagerProvider)`: 100% de las veces. Input: `mapManagerProvider`
-  - `print`: Si `mapManager` es null. Input: String
-  - `ref.read(appLogicProvider)`: Si `mapManager` no es null. Input: `appLogicProvider`
-  - `mapManager.showActiveTrip(activeTripState)`: Si `mapManager` no es null y `activeTripState` no es null y tiene tramos (dentro de bloque `try`). Input: `activeTripState`
-  - `print`: Si `mapManager` no es null y `activeTripState` no es null y tiene tramos. Input: String
-  - `mapManager.updateCurrentLeg(0, activeTripState.tramosDelViaje)`: Si `mapManager` no es null y `activeTripState` no es null y tiene tramos (dentro de bloque `try`). Input: `0` (primer paso), `activeTripState.tramosDelViaje`
+- **Input:** None
+- **Calls:**
+  - `print`: 100% of the time. Input: String
+  - `ref.read(mapManagerProvider)`: 100% of the time. Input: `mapManagerProvider`
+  - `print`: If `mapManager` is null. Input: String
+  - `ref.read(appLogicProvider)`: If `mapManager` is not null. Input: `appLogicProvider`
+  - `mapManager.showActiveTrip(activeTripState)`: If `mapManager` is not null and `activeTripState` is not null and has legs (inside `try` block). Input: `activeTripState`
+  - `print`: If `mapManager` is not null and `activeTripState` is not null and has legs. Input: String
+  - `mapManager.updateCurrentLeg(0, activeTripState.tramosDelViaje)`: If `mapManager` is not null and `activeTripState` is not null and has legs (inside `try` block). Input: `0` (first step), `activeTripState.tramosDelViaje`
 
 **27. `MapManager.showActiveTrip()`**
 
 - **Input:** `activeTripState` (EstadoFaseViajeActivo)
-- **Llama a:**
-  - `initialize()`: Si `!_isInitialized`. Input: Ninguno
-  - `print`: 100% de las veces. Input: String
-  - `_startActiveTripTracking(activeTripState)`: Si `isTransitionFromPreview` es true (viene del preview). Input: `activeTripState`
-  - `_cleanup.clearAll()`: Si `isTransitionFromPreview` es false. Input: Ninguno
-  - `_routeRenderer.renderRoute(activeTripState.tramosDelViaje)`: Si `isTransitionFromPreview` es false. Input: `activeTripState.tramosDelViaje`
-  - `_busRealtime.initializeActiveTripTracking(activeTripState)`: Si `isTransitionFromPreview` es false. Input: `activeTripState`
+- **Calls:**
+  - `initialize()`: If `!_isInitialized`. Input: None
+  - `print`: 100% of the time. Input: String
+  - `_startActiveTripTracking(activeTripState)`: If `isTransitionFromPreview` is true (coming from the preview). Input: `activeTripState`
+  - `_cleanup.clearAll()`: If `isTransitionFromPreview` is false. Input: None
+  - `_routeRenderer.renderRoute(activeTripState.tramosDelViaje)`: If `isTransitionFromPreview` is false. Input: `activeTripState.tramosDelViaje`
+  - `_busRealtime.initializeActiveTripTracking(activeTripState)`: If `isTransitionFromPreview` is false. Input: `activeTripState`
 
 **28. `MapManager._startActiveTripTracking()`**
 
 - **Input:** `activeTripState` (EstadoFaseViajeActivo)
-- **Llama a:**
-  - `print`: 100% de las veces. Input: String
-  - `_busRealtime.stopPreviewAnimations()`: 100% de las veces (dentro de bloque `try`). Input: Ninguno
-  - `_busRealtime.initializeActiveTripTracking(activeTripState)`: 100% de las veces (dentro de bloque `try`). Input: `activeTripState`
-  - `_cameraController.zoomToActiveTrip(activeTripState.tramosDelViaje)`: 100% de las veces (dentro de bloque `try`). Input: `activeTripState.tramosDelViaje`
+- **Calls:**
+  - `print`: 100% of the time. Input: String
+  - `_busRealtime.stopPreviewAnimations()`: 100% of the time (inside `try` block). Input: None
+  - `_busRealtime.initializeActiveTripTracking(activeTripState)`: 100% of the time (inside `try` block). Input: `activeTripState`
+  - `_cameraController.zoomToActiveTrip(activeTripState.tramosDelViaje)`: 100% of the time (inside `try` block). Input: `activeTripState.tramosDelViaje`
 
 **29. `MapManager.updateCurrentLeg()`**
 
-- **Input:** `legIndex` (int) = 0, `tramos` (List<TramoViajeMostrable>)
-- **Llama a:**
-  - `print`: Si `_currentPhase == 'active_trip'`. Input: String
-  - `_routeRenderer.highlightCurrentLeg(legIndex, tramos)`: Si `_currentPhase == 'active_trip'`. Input: `legIndex` (0), `tramos`
-  - `_cameraController.zoomToCurrentLeg(legIndex, tramos)`: Si `_currentPhase == 'active_trip'`. Input: `legIndex` (0), `tramos`
-  - `_busRealtime.updateBusTrackingForLeg(legIndex, tramos)`: Si `_currentPhase == 'active_trip'`. Input: `legIndex` (0), `tramos`
+- **Input:** `legIndex` (int) = 0, `legs` (List<LegTripDisplayable>)
+- **Calls:**
+  - `print`: If `_currentPhase == 'active_trip'`. Input: String
+  - `_routeRenderer.highlightCurrentLeg(legIndex, legs)`: If `_currentPhase == 'active_trip'`. Input: `legIndex` (0), `legs`
+  - `_cameraController.zoomToCurrentLeg(legIndex, legs)`: If `_currentPhase == 'active_trip'`. Input: `legIndex` (0), `legs`
+  - `_busRealtime.updateBusTrackingForLeg(legIndex, legs)`: If `_currentPhase == 'active_trip'`. Input: `legIndex` (0), `legs`
 
 ---
 
-## Paso 6: Usuario presiona botón para pasar al siguiente paso (esperar bus en parada)
+## Step 6: User presses the button to go to the next step (wait for bus at stop)
 
-### Acción del Usuario
+### User Action
 
-El usuario presiona el botón "Siguiente" en el navigation panel del active trip.
+The user presses the "Next" button in the active trip navigation panel.
 
-### Flujo de Información
+### Information Flow
 
-**30. `InkWell.onPressed` callback en `ActiveTripOverlay._buildCompactNavButton()` (botón siguiente)**
+**30. `InkWell.onPressed` callback in `ActiveTripOverlay._buildCompactNavButton()` (next button)**
 
-- **Input:** Ninguno (evento de presión del botón)
-- **Llama a:**
-  - `_onLegSelected(_currentLegIndex + 1)`: 100% de las veces si `enabled` es true. Input: `_currentLegIndex + 1` (int) = 1
+- **Input:** None (button press event)
+- **Calls:**
+  - `_onLegSelected(_currentLegIndex + 1)`: 100% of the time if `enabled` is true. Input: `_currentLegIndex + 1` (int) = 1
 
 **31. `ActiveTripOverlay._onLegSelected()`**
 
-- **Input:** `legIndex` (int) = 1 (segundo paso - esperar bus)
-- **Llama a:**
-  - `setState(...)`: 100% de las veces. Input: Callback que actualiza `_currentLegIndex = legIndex`
-  - `ref.read(mapManagerProvider)`: 100% de las veces. Input: `mapManagerProvider`
-  - `ref.read(appLogicProvider)`: 100% de las veces. Input: `appLogicProvider`
-  - `mapManager.updateCurrentLeg(legIndex, activeTripState.tramosDelViaje)`: Si `mapManager` no es null y `activeTripState` no es null. Input: `legIndex` (1), `activeTripState.tramosDelViaje`
-  - `print`: Si `mapManager` no es null y `activeTripState` no es null. Input: String
+- **Input:** `legIndex` (int) = 1 (second step - wait for bus)
+- **Calls:**
+  - `setState(...)`: 100% of the time. Input: Callback that updates `_currentLegIndex = legIndex`
+  - `ref.read(mapManagerProvider)`: 100% of the time. Input: `mapManagerProvider`
+  - `ref.read(appLogicProvider)`: 100% of the time. Input: `appLogicProvider`
+  - `mapManager.updateCurrentLeg(legIndex, activeTripState.tramosDelViaje)`: If `mapManager` is not null and `activeTripState` is not null. Input: `legIndex` (1), `activeTripState.tramosDelViaje`
+  - `print`: If `mapManager` is not null and `activeTripState` is not null. Input: String
 
 **32. `MapManager.updateCurrentLeg()`**
 
-- **Input:** `legIndex` (int) = 1, `tramos` (List<TramoViajeMostrable>)
-- **Llama a:**
-  - `print`: Si `_currentPhase == 'active_trip'`. Input: String
-  - `_routeRenderer.highlightCurrentLeg(legIndex, tramos)`: Si `_currentPhase == 'active_trip'`. Input: `legIndex` (1), `tramos`
-  - `_cameraController.zoomToCurrentLeg(legIndex, tramos)`: Si `_currentPhase == 'active_trip'`. Input: `legIndex` (1), `tramos`
-  - `_busRealtime.updateBusTrackingForLeg(legIndex, tramos)`: Si `_currentPhase == 'active_trip'`. Input: `legIndex` (1), `tramos`
+- **Input:** `legIndex` (int) = 1, `legs` (List<LegTripDisplayable>)
+- **Calls:**
+  - `print`: If `_currentPhase == 'active_trip'`. Input: String
+  - `_routeRenderer.highlightCurrentLeg(legIndex, legs)`: If `_currentPhase == 'active_trip'`. Input: `legIndex` (1), `legs`
+  - `_cameraController.zoomToCurrentLeg(legIndex, legs)`: If `_currentPhase == 'active_trip'`. Input: `legIndex` (1), `legs`
+  - `_busRealtime.updateBusTrackingForLeg(legIndex, legs)`: If `_currentPhase == 'active_trip'`. Input: `legIndex` (1), `legs`
 
 **33. `MapBusRealtime.updateBusTrackingForLeg()`**
 
-- **Input:** `legIndex` (int) = 1, `tramos` (List<TramoViajeMostrable>)
-- **Llama a:**
-  - `print`: 100% de las veces si `mapboxMap` no es null. Input: String
-  - `_stopBusTracking()`: 100% de las veces si `mapboxMap` no es null. Input: Ninguno
-  - `_startBusTracking(nextBusSegment)`: Si `mapboxMap` no es null y se encuentra un `nextBusSegment` para trackear. Input: `nextBusSegment` (TramoViajeMostrable)
+- **Input:** `legIndex` (int) = 1, `legs` (List<LegTripDisplayable>)
+- **Calls:**
+  - `print`: 100% of the time if `mapboxMap` is not null. Input: String
+  - `_stopBusTracking()`: 100% of the time if `mapboxMap` is not null. Input: None
+  - `_startBusTracking(nextBusSegment)`: If `mapboxMap` is not null and a `nextBusSegment` to track is found. Input: `nextBusSegment` (LegTripDisplayable)
 
 ---
 
-## Paso 7: Usuario presiona botón para pasar al siguiente paso (ir hasta parada de destino)
+## Step 7: User presses the button to go to the next step (go to destination stop)
 
-### Acción del Usuario
+### User Action
 
-El usuario presiona el botón "Siguiente" en el navigation panel del active trip.
+The user presses the "Next" button in the active trip navigation panel.
 
-### Flujo de Información
+### Information Flow
 
-**34. `InkWell.onPressed` callback en `ActiveTripOverlay._buildCompactNavButton()` (botón siguiente)**
+**34. `InkWell.onPressed` callback in `ActiveTripOverlay._buildCompactNavButton()` (next button)**
 
-- **Input:** Ninguno (evento de presión del botón)
-- **Llama a:**
-  - `_onLegSelected(_currentLegIndex + 1)`: 100% de las veces si `enabled` es true. Input: `_currentLegIndex + 1` (int) = 2
+- **Input:** None (button press event)
+- **Calls:**
+  - `_onLegSelected(_currentLegIndex + 1)`: 100% of the time if `enabled` is true. Input: `_currentLegIndex + 1` (int) = 2
 
 **35. `ActiveTripOverlay._onLegSelected()`**
 
-- **Input:** `legIndex` (int) = 2 (tercer paso - viaje en bus)
-- **Llama a:**
-  - `setState(...)`: 100% de las veces. Input: Callback que actualiza `_currentLegIndex = legIndex`
-  - `ref.read(mapManagerProvider)`: 100% de las veces. Input: `mapManagerProvider`
-  - `ref.read(appLogicProvider)`: 100% de las veces. Input: `appLogicProvider`
-  - `mapManager.updateCurrentLeg(legIndex, activeTripState.tramosDelViaje)`: Si `mapManager` no es null y `activeTripState` no es null. Input: `legIndex` (2), `activeTripState.tramosDelViaje`
-  - `print`: Si `mapManager` no es null y `activeTripState` no es null. Input: String
+- **Input:** `legIndex` (int) = 2 (third step - bus ride)
+- **Calls:**
+  - `setState(...)`: 100% of the time. Input: Callback that updates `_currentLegIndex = legIndex`
+  - `ref.read(mapManagerProvider)`: 100% of the time. Input: `mapManagerProvider`
+  - `ref.read(appLogicProvider)`: 100% of the time. Input: `appLogicProvider`
+  - `mapManager.updateCurrentLeg(legIndex, activeTripState.tramosDelViaje)`: If `mapManager` is not null and `activeTripState` is not null. Input: `legIndex` (2), `activeTripState.tramosDelViaje`
+  - `print`: If `mapManager` is not null and `activeTripState` is not null. Input: String
 
 **36. `MapManager.updateCurrentLeg()`**
 
-- **Input:** `legIndex` (int) = 2, `tramos` (List<TramoViajeMostrable>)
-- **Llama a:**
-  - `print`: Si `_currentPhase == 'active_trip'`. Input: String
-  - `_routeRenderer.highlightCurrentLeg(legIndex, tramos)`: Si `_currentPhase == 'active_trip'`. Input: `legIndex` (2), `tramos`
-  - `_cameraController.zoomToCurrentLeg(legIndex, tramos)`: Si `_currentPhase == 'active_trip'`. Input: `legIndex` (2), `tramos`
-  - `_busRealtime.updateBusTrackingForLeg(legIndex, tramos)`: Si `_currentPhase == 'active_trip'`. Input: `legIndex` (2), `tramos`
+- **Input:** `legIndex` (int) = 2, `legs` (List<LegTripDisplayable>)
+- **Calls:**
+  - `print`: If `_currentPhase == 'active_trip'`. Input: String
+  - `_routeRenderer.highlightCurrentLeg(legIndex, legs)`: If `_currentPhase == 'active_trip'`. Input: `legIndex` (2), `legs`
+  - `_cameraController.zoomToCurrentLeg(legIndex, legs)`: If `_currentPhase == 'active_trip'`. Input: `legIndex` (2), `legs`
+  - `_busRealtime.updateBusTrackingForLeg(legIndex, legs)`: If `_currentPhase == 'active_trip'`. Input: `legIndex` (2), `legs`
 
 **37. `MapCameraController.zoomToCurrentLeg()`**
 
-- **Input:** `legIndex` (int) = 2, `tramos` (List<TramoViajeMostrable>)
-- **Llama a:**
-  - `print`: 100% de las veces si `mapboxMap` no es null y `legIndex` es válido. Input: String
-  - `_addBusCoordinatesForWaitingLeg(tramos, legIndex, coordinatesForZoom)`: Si `mapboxMap` no es null, `legIndex` es válido y `tramo.tipo` es `TipoTramoViaje.ESPERAR_BUS` (dentro de bloque `try`). Input: `tramos`, `legIndex` (2), `coordinatesForZoom`
-  - `_zoomToCoordinates(coordinatesForZoom, _getCurrentLegPadding())`: Si `mapboxMap` no es null, `legIndex` es válido, `coordinatesForZoom.length > 1` y no hay excepción (dentro de bloque `try`). Input: `coordinatesForZoom`, padding
-  - `mapboxMap!.flyTo(...)`: Si `mapboxMap` no es null, `legIndex` es válido, `coordinatesForZoom.length == 1` y no hay excepción (dentro de bloque `try`). Input: `CameraOptions`, `MapAnimationOptions`
+- **Input:** `legIndex` (int) = 2, `legs` (List<LegTripDisplayable>)
+- **Calls:**
+  - `print`: 100% of the time if `mapboxMap` is not null and `legIndex` is valid. Input: String
+  - `_addBusCoordinatesForWaitingLeg(legs, legIndex, coordinatesForZoom)`: If `mapboxMap` is not null, `legIndex` is valid and `leg.type` is `TypeLegTrip.ESPERAR_BUS` (inside `try` block). Input: `legs`, `legIndex` (2), `coordinatesForZoom`
+  - `_zoomToCoordinates(coordinatesForZoom, _getCurrentLegPadding())`: If `mapboxMap` is not null, `legIndex` is valid, `coordinatesForZoom.length > 1` and there is no exception (inside `try` block). Input: `coordinatesForZoom`, padding
+  - `mapboxMap!.flyTo(...)`: If `mapboxMap` is not null, `legIndex` is valid, `coordinatesForZoom.length == 1` and there is no exception (inside `try` block). Input: `CameraOptions`, `MapAnimationOptions`
 
 ---
 
-## Paso 8: Usuario presiona botón para pasar al siguiente paso (esperar segundo bus)
+## Step 8: User presses the button to go to the next step (wait for second bus)
 
-### Acción del Usuario
+### User Action
 
-El usuario presiona el botón "Siguiente" en el navigation panel del active trip.
+The user presses the "Next" button in the active trip navigation panel.
 
-### Flujo de Información
+### Information Flow
 
-**38. `InkWell.onPressed` callback en `ActiveTripOverlay._buildCompactNavButton()` (botón siguiente)**
+**38. `InkWell.onPressed` callback in `ActiveTripOverlay._buildCompactNavButton()` (next button)**
 
-- **Input:** Ninguno (evento de presión del botón)
-- **Llama a:**
-  - `_onLegSelected(_currentLegIndex + 1)`: 100% de las veces si `enabled` es true. Input: `_currentLegIndex + 1` (int) = 3
+- **Input:** None (button press event)
+- **Calls:**
+  - `_onLegSelected(_currentLegIndex + 1)`: 100% of the time if `enabled` is true. Input: `_currentLegIndex + 1` (int) = 3
 
 **39. `ActiveTripOverlay._onLegSelected()`**
 
-- **Input:** `legIndex` (int) = 3 (cuarto paso - esperar segundo bus)
-- **Llama a:**
-  - `setState(...)`: 100% de las veces. Input: Callback que actualiza `_currentLegIndex = legIndex`
-  - `ref.read(mapManagerProvider)`: 100% de las veces. Input: `mapManagerProvider`
-  - `ref.read(appLogicProvider)`: 100% de las veces. Input: `appLogicProvider`
-  - `mapManager.updateCurrentLeg(legIndex, activeTripState.tramosDelViaje)`: Si `mapManager` no es null y `activeTripState` no es null. Input: `legIndex` (3), `activeTripState.tramosDelViaje`
-  - `print`: Si `mapManager` no es null y `activeTripState` no es null. Input: String
+- **Input:** `legIndex` (int) = 3 (fourth step - wait for second bus)
+- **Calls:**
+  - `setState(...)`: 100% of the time. Input: Callback that updates `_currentLegIndex = legIndex`
+  - `ref.read(mapManagerProvider)`: 100% of the time. Input: `mapManagerProvider`
+  - `ref.read(appLogicProvider)`: 100% of the time. Input: `appLogicProvider`
+  - `mapManager.updateCurrentLeg(legIndex, activeTripState.tramosDelViaje)`: If `mapManager` is not null and `activeTripState` is not null. Input: `legIndex` (3), `activeTripState.tramosDelViaje`
+  - `print`: If `mapManager` is not null and `activeTripState` is not null. Input: String
 
 **40. `MapManager.updateCurrentLeg()`**
 
-- **Input:** `legIndex` (int) = 3, `tramos` (List<TramoViajeMostrable>)
-- **Llama a:**
-  - `print`: Si `_currentPhase == 'active_trip'`. Input: String
-  - `_routeRenderer.highlightCurrentLeg(legIndex, tramos)`: Si `_currentPhase == 'active_trip'`. Input: `legIndex` (3), `tramos`
-  - `_cameraController.zoomToCurrentLeg(legIndex, tramos)`: Si `_currentPhase == 'active_trip'`. Input: `legIndex` (3), `tramos`
-  - `_busRealtime.updateBusTrackingForLeg(legIndex, tramos)`: Si `_currentPhase == 'active_trip'`. Input: `legIndex` (3), `tramos`
+- **Input:** `legIndex` (int) = 3, `legs` (List<LegTripDisplayable>)
+- **Calls:**
+  - `print`: If `_currentPhase == 'active_trip'`. Input: String
+  - `_routeRenderer.highlightCurrentLeg(legIndex, legs)`: If `_currentPhase == 'active_trip'`. Input: `legIndex` (3), `legs`
+  - `_cameraController.zoomToCurrentLeg(legIndex, legs)`: If `_currentPhase == 'active_trip'`. Input: `legIndex` (3), `legs`
+  - `_busRealtime.updateBusTrackingForLeg(legIndex, legs)`: If `_currentPhase == 'active_trip'`. Input: `legIndex` (3), `legs`
 
 **41. `MapBusRealtime.updateBusTrackingForLeg()`**
 
-- **Input:** `legIndex` (int) = 3, `tramos` (List<TramoViajeMostrable>)
-- **Llama a:**
-  - `print`: 100% de las veces si `mapboxMap` no es null. Input: String
-  - `_stopBusTracking()`: 100% de las veces si `mapboxMap` no es null. Input: Ninguno
-  - `_startBusTracking(nextBusSegment)`: Si `mapboxMap` no es null y se encuentra un `nextBusSegment` para trackear (usando `_findNextBusSegment`). Input: `nextBusSegment` (segundo tramo de bus)
+- **Input:** `legIndex` (int) = 3, `legs` (List<LegTripDisplayable>)
+- **Calls:**
+  - `print`: 100% of the time if `mapboxMap` is not null. Input: String
+  - `_stopBusTracking()`: 100% of the time if `mapboxMap` is not null. Input: None
+  - `_startBusTracking(nextBusSegment)`: If `mapboxMap` is not null and a `nextBusSegment` to track is found (using `_findNextBusSegment`). Input: `nextBusSegment` (second bus leg)
 
 **42. `MapBusRealtime._findNextBusSegment()`**
 
-- **Input:** `tramos` (List<TramoViajeMostrable>), `currentLegIndex` (int) = 3
-- **Llama a:**
-  - `print`: Condicionalmente para propósitos de depuración. Input: String
-  - **Nota:** Busca el siguiente tramo de tipo `VIAJE_EN_BUS` después del índice actual.
+- **Input:** `legs` (List<LegTripDisplayable>), `currentLegIndex` (int) = 3
+- **Calls:**
+  - `print`: Conditionally, for debugging purposes. Input: String
+  - **Note:** Looks for the next leg of type `VIAJE_EN_BUS` after the current index.
 
 ---
 
-## Paso 9: Usuario presiona botón para pasar al siguiente paso (caminar hasta destino)
+## Step 9: User presses the button to go to the next step (walk to destination)
 
-### Acción del Usuario
+### User Action
 
-El usuario presiona el botón "Siguiente" en el navigation panel del active trip para ir al paso final.
+The user presses the "Next" button in the active trip navigation panel to go to the final step.
 
-### Flujo de Información
+### Information Flow
 
-**43. `InkWell.onPressed` callback en `ActiveTripOverlay._buildCompactNavButton()` (botón siguiente)**
+**43. `InkWell.onPressed` callback in `ActiveTripOverlay._buildCompactNavButton()` (next button)**
 
-- **Input:** Ninguno (evento de presión del botón)
-- **Llama a:**
-  - `_onLegSelected(_currentLegIndex + 1)`: 100% de las veces si `enabled` es true. Input: `_currentLegIndex + 1` (int) = 4
+- **Input:** None (button press event)
+- **Calls:**
+  - `_onLegSelected(_currentLegIndex + 1)`: 100% of the time if `enabled` is true. Input: `_currentLegIndex + 1` (int) = 4
 
 **44. `ActiveTripOverlay._onLegSelected()`**
 
-- **Input:** `legIndex` (int) = 4 (quinto paso - caminar hasta destino)
-- **Llama a:**
-  - `setState(...)`: 100% de las veces. Input: Callback que actualiza `_currentLegIndex = legIndex`
-  - `ref.read(mapManagerProvider)`: 100% de las veces. Input: `mapManagerProvider`
-  - `ref.read(appLogicProvider)`: 100% de las veces. Input: `appLogicProvider`
-  - `mapManager.updateCurrentLeg(legIndex, activeTripState.tramosDelViaje)`: Si `mapManager` no es null y `activeTripState` no es null. Input: `legIndex` (4), `activeTripState.tramosDelViaje`
-  - `print`: Si `mapManager` no es null y `activeTripState` no es null. Input: String
+- **Input:** `legIndex` (int) = 4 (fifth step - walk to destination)
+- **Calls:**
+  - `setState(...)`: 100% of the time. Input: Callback that updates `_currentLegIndex = legIndex`
+  - `ref.read(mapManagerProvider)`: 100% of the time. Input: `mapManagerProvider`
+  - `ref.read(appLogicProvider)`: 100% of the time. Input: `appLogicProvider`
+  - `mapManager.updateCurrentLeg(legIndex, activeTripState.tramosDelViaje)`: If `mapManager` is not null and `activeTripState` is not null. Input: `legIndex` (4), `activeTripState.tramosDelViaje`
+  - `print`: If `mapManager` is not null and `activeTripState` is not null. Input: String
 
 **45. `MapManager.updateCurrentLeg()`**
 
-- **Input:** `legIndex` (int) = 4, `tramos` (List<TramoViajeMostrable>)
-- **Llama a:**
-  - `print`: Si `_currentPhase == 'active_trip'`. Input: String
-  - `_routeRenderer.highlightCurrentLeg(legIndex, tramos)`: Si `_currentPhase == 'active_trip'`. Input: `legIndex` (4), `tramos`
-  - `_cameraController.zoomToCurrentLeg(legIndex, tramos)`: Si `_currentPhase == 'active_trip'`. Input: `legIndex` (4), `tramos`
-  - `_busRealtime.updateBusTrackingForLeg(legIndex, tramos)`: Si `_currentPhase == 'active_trip'`. Input: `legIndex` (4), `tramos`
+- **Input:** `legIndex` (int) = 4, `legs` (List<LegTripDisplayable>)
+- **Calls:**
+  - `print`: If `_currentPhase == 'active_trip'`. Input: String
+  - `_routeRenderer.highlightCurrentLeg(legIndex, legs)`: If `_currentPhase == 'active_trip'`. Input: `legIndex` (4), `legs`
+  - `_cameraController.zoomToCurrentLeg(legIndex, legs)`: If `_currentPhase == 'active_trip'`. Input: `legIndex` (4), `legs`
+  - `_busRealtime.updateBusTrackingForLeg(legIndex, legs)`: If `_currentPhase == 'active_trip'`. Input: `legIndex` (4), `legs`
 
 **46. `MapBusRealtime.updateBusTrackingForLeg()`**
 
-- **Input:** `legIndex` (int) = 4, `tramos` (List<TramoViajeMostrable>)
-- **Llama a:**
-  - `print`: 100% de las veces si `mapboxMap` no es null. Input: String
-  - `_stopBusTracking()`: 100% de las veces si `mapboxMap` no es null. Input: Ninguno
-  - `_startBusTracking(nextBusSegment)`: Si `mapboxMap` no es null y se encuentra un `nextBusSegment` para trackear. Input: `nextBusSegment`
-  - **Nota:** Como este es el último paso (caminar al destino), no habrá más tramos de bus para trackear.
+- **Input:** `legIndex` (int) = 4, `legs` (List<LegTripDisplayable>)
+- **Calls:**
+  - `print`: 100% of the time if `mapboxMap` is not null. Input: String
+  - `_stopBusTracking()`: 100% of the time if `mapboxMap` is not null. Input: None
+  - `_startBusTracking(nextBusSegment)`: If `mapboxMap` is not null and a `nextBusSegment` to track is found. Input: `nextBusSegment`
+  - **Note:** Since this is the last step (walk to destination), there will be no more bus legs to track.
 
 **47. `MapCameraController.zoomToCurrentLeg()`**
 
-- **Input:** `legIndex` (int) = 4, `tramos` (List<TramoViajeMostrable>)
-- **Llama a:**
-  - `print`: 100% de las veces si `mapboxMap` no es null y `legIndex` es válido. Input: String
-  - `_zoomToCoordinates(coordinatesForZoom, _getCurrentLegPadding())`: Si `mapboxMap` no es null, `legIndex` es válido, `coordinatesForZoom.length > 1` y no hay excepción (dentro de bloque `try`). Input: `coordinatesForZoom` (coordenadas del último tramo de caminata), padding
-  - `mapboxMap!.flyTo(...)`: Si `mapboxMap` no es null, `legIndex` es válido, `coordinatesForZoom.length == 1` y no hay excepción (dentro de bloque `try`). Input: `CameraOptions`, `MapAnimationOptions`
+- **Input:** `legIndex` (int) = 4, `legs` (List<LegTripDisplayable>)
+- **Calls:**
+  - `print`: 100% of the time if `mapboxMap` is not null and `legIndex` is valid. Input: String
+  - `_zoomToCoordinates(coordinatesForZoom, _getCurrentLegPadding())`: If `mapboxMap` is not null, `legIndex` is valid, `coordinatesForZoom.length > 1` and there is no exception (inside `try` block). Input: `coordinatesForZoom` (coordinates of the last walk leg), padding
+  - `mapboxMap!.flyTo(...)`: If `mapboxMap` is not null, `legIndex` is valid, `coordinatesForZoom.length == 1` and there is no exception (inside `try` block). Input: `CameraOptions`, `MapAnimationOptions`
 
 ---
 
-## Resumen del Flujo Completo
+## Complete Flow Summary
 
-### Componentes Principales Involucrados
+### Main Components Involved
 
-1. **RouteOptionsOverlay** - Maneja la selección de opciones de ruta (pasos 1-4)
-2. **ActiveTripOverlay** - Maneja la navegación del viaje activo (pasos 5-9)
-3. **AppLogicNotifier** - Coordina el estado global de la aplicación
-4. **MapManager** - Orquesta todas las operaciones del mapa
-5. **MapBusRealtime** - Gestiona la visualización de buses en tiempo real
-6. **MapCameraController** - Controla el zoom y posicionamiento de la cámara
-7. **MapRouteRenderer** - Renderiza las rutas en el mapa
+1. **RouteOptionsOverlay** - Handles route option selection (steps 1-4)
+2. **ActiveTripOverlay** - Handles active trip navigation (steps 5-9)
+3. **AppLogicNotifier** - Coordinates the global application state
+4. **MapManager** - Orchestrates all map operations
+5. **MapBusRealtime** - Manages real-time bus display
+6. **MapCameraController** - Controls zoom and camera positioning
+7. **MapRouteRenderer** - Renders the routes on the map
 
-### Patrón de Flujo
+### Flow Pattern
 
-Cada acción del usuario sigue un patrón consistente:
+Every user action follows a consistent pattern:
 
 **UI Component → State Notifier → Map Manager → Specialized Map Components**
 
-1. El componente de UI detecta la acción del usuario
-2. Actualiza el estado a través del AppLogicNotifier
-3. El MapManager coordina la respuesta visual
-4. Los componentes especializados (BusRealtime, CameraController, RouteRenderer) ejecutan las operaciones específicas
+1. The UI component detects the user action
+2. It updates the state through the AppLogicNotifier
+3. The MapManager coordinates the visual response
+4. The specialized components (BusRealtime, CameraController, RouteRenderer) execute the specific operations
 
-Este flujo asegura una separación clara de responsabilidades y permite que el sistema responda de manera coherente a cada interacción del usuario.
+This flow ensures a clear separation of responsibilities and allows the system to respond coherently to each user interaction.

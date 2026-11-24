@@ -1,35 +1,35 @@
-# Plan de Migración: Flujo Manual → Flujo Automático
+# Migration Plan: Manual Flow → Automatic Flow
 
-## 🔍 **Análisis Diferencial: Flujo Actual vs Nuevo**
+## 🔍 **Differential Analysis: Current vs New Flow**
 
-### **Arquitectura Actual**
-
-```
-RouteOptionsOverlay (Manual) → ActiveTripOverlay (Botones) → MapManager → Componentes especializados
-```
-
-### **Arquitectura Nueva**
+### **Current Architecture**
 
 ```
-RouteOptionsOverlay → UserJourneyOrchestrator (Auto) → ActiveTripOverlay (Auto) → MapManager → Componentes especializados
+RouteOptionsOverlay (Manual) → ActiveTripOverlay (Buttons) → MapManager → Specialized components
 ```
 
-## 📋 **Plan de Implementación Incremental**
+### **New Architecture**
 
-### **Fase 1: Agregar Sistema de Tracking de Ubicación (Sin cambiar UI)**
+```
+RouteOptionsOverlay → UserJourneyOrchestrator (Auto) → ActiveTripOverlay (Auto) → MapManager → Specialized components
+```
 
-**Nuevos componentes a crear:**
+## 📋 **Incremental Implementation Plan**
 
-#### **1.1 LocationTracker - Seguimiento GPS**
+### **Phase 1: Add Location Tracking System (Without Changing the UI)**
+
+**New components to create:**
+
+#### **1.1 LocationTracker - GPS Tracking**
 
 ```dart
 // lib/journey/location_tracker.dart
 class LocationTracker {
   Timer? _trackingTimer;
-  final Function(Coordenada) onLocationUpdate;
+  final Function(Coordinate) onLocationUpdate;
   final Function(String) onArrivalDetected;
 
-  Coordenada? _lastKnownLocation;
+  Coordinate? _lastKnownLocation;
   List<GeofenceZone> _activeGeofences = [];
 
   static const int UPDATE_INTERVAL_MS = 5000;
@@ -40,7 +40,7 @@ class LocationTracker {
     required this.onArrivalDetected,
   });
 
-  // DIFF: Nuevo método
+  // DIFF: New method
   Future<void> startTracking() async {
     _trackingTimer = Timer.periodic(
       Duration(milliseconds: UPDATE_INTERVAL_MS),
@@ -48,7 +48,7 @@ class LocationTracker {
     );
   }
 
-  // DIFF: Nuevo método
+  // DIFF: New method
   Future<void> _performLocationUpdate() async {
     final newLocation = await _getCurrentGPSLocation();
     if (newLocation != null) {
@@ -58,8 +58,8 @@ class LocationTracker {
     }
   }
 
-  // DIFF: Nuevo método
-  void _checkArrivals(Coordenada userLocation) {
+  // DIFF: New method
+  void _checkArrivals(Coordinate userLocation) {
     for (final geofence in _activeGeofences) {
       final distance = _calculateDistance(userLocation, geofence.center);
       if (distance <= ARRIVAL_THRESHOLD_METERS) {
@@ -68,8 +68,8 @@ class LocationTracker {
     }
   }
 
-  // DIFF: Nuevo método
-  void setupGeofencesForStep(List<Coordenada> destinations, List<String> ids) {
+  // DIFF: New method
+  void setupGeofencesForStep(List<Coordinate> destinations, List<String> ids) {
     _activeGeofences.clear();
     for (int i = 0; i < destinations.length; i++) {
       _activeGeofences.add(GeofenceZone(
@@ -83,27 +83,27 @@ class LocationTracker {
 
 class GeofenceZone {
   final String id;
-  final Coordenada center;
+  final Coordinate center;
   final double radius;
 
   GeofenceZone({required this.id, required this.center, required this.radius});
 }
 ```
 
-#### **1.2 JourneyStepState - Estado del paso actual**
+#### **1.2 JourneyStepState - Current Step State**
 
 ```dart
 // lib/journey/journey_step_state.dart
 class JourneyStepState {
   final int stepIndex;
   final JourneyStepType type;
-  final Coordenada? destination;
+  final Coordinate? destination;
   final String? busLine;
   final double? remainingDistance;
   final int? remainingTimeSeconds;
   final double? progressPercentage;
 
-  // DIFF: Nueva clase para estado del paso
+  // DIFF: New class for the step state
   JourneyStepState({
     required this.stepIndex,
     required this.type,
@@ -123,73 +123,73 @@ enum JourneyStepType {
 }
 ```
 
-### **Fase 2: Modificar AppLogicNotifier (Cambios mínimos)**
+### **Phase 2: Modify AppLogicNotifier (Minimal Changes)**
 
-**Cambios en `lib/backend/providers/app_logic_provider.dart`:**
+**Changes in `lib/backend/providers/app_logic_provider.dart`:**
 
 ```dart
 class AppLogicNotifier extends StateNotifier<AppUiState> with IAppLogic {
-  // DIFF: Agregar nuevo componente
+  // DIFF: Add new component
   LocationTracker? _locationTracker;
   JourneyStepState? _currentJourneyStep;
 
-  // DIFF: Nuevo método para inicializar tracking automático
+  // DIFF: New method to initialize automatic tracking
   @override
   void confirmarOpcionDeRutaEIniciarViaje(String idOpcionSeleccionada) {
-    // ... código existente ...
+    // ... existing code ...
 
-    // CAMBIO MÍNIMO: Agregar al final
+    // MINIMAL CHANGE: Add at the end
     if (opcionConfirmada != null) {
       _initializeAutomaticTracking(opcionConfirmada);
     }
   }
 
-  // DIFF: Nuevo método
+  // DIFF: New method
   Future<void> _initializeAutomaticTracking(OpcionDeRutaMostrable option) async {
     _locationTracker = LocationTracker(
       onLocationUpdate: _onUserLocationUpdate,
       onArrivalDetected: _onArrivalDetected,
     );
 
-    // Configurar primer paso
+    // Set up first step
     _currentJourneyStep = JourneyStepState(
       stepIndex: 0,
       type: _determineStepType(option.tramosParaPreview[0]),
       destination: _getStepDestination(option.tramosParaPreview[0]),
     );
 
-    // Configurar geofences para primer paso
+    // Set up geofences for first step
     _setupGeofencesForCurrentStep();
 
-    // Iniciar tracking
+    // Start tracking
     await _locationTracker!.startTracking();
   }
 
-  // DIFF: Nuevo método - callback de ubicación
-  void _onUserLocationUpdate(Coordenada newLocation) {
+  // DIFF: New method - location callback
+  void _onUserLocationUpdate(Coordinate newLocation) {
     if (_currentJourneyStep == null) return;
 
-    // Calcular progreso dinámico
+    // Calculate dynamic progress
     final progress = _calculateStepProgress(newLocation);
 
-    // Actualizar estado
+    // Update state
     _currentJourneyStep = _currentJourneyStep!.copyWith(
       remainingDistance: progress.remainingDistance,
       remainingTimeSeconds: progress.remainingTimeSeconds,
       progressPercentage: progress.progressPercentage,
     );
 
-    // Notificar cambios a la UI
+    // Notify UI of changes
     _updateUIWithLocationProgress();
   }
 
-  // DIFF: Nuevo método - callback de llegada
+  // DIFF: New method - arrival callback
   void _onArrivalDetected(String geofenceId) {
     print("[AppLogicNotifier] Auto-arrival detected: $geofenceId");
     _transitionToNextStep();
   }
 
-  // DIFF: Nuevo método - transición automática
+  // DIFF: New method - automatic transition
   void _transitionToNextStep() {
     if (_currentJourneyStep == null) return;
 
@@ -198,48 +198,48 @@ class AppLogicNotifier extends StateNotifier<AppUiState> with IAppLogic {
 
     if (activeTripState == null ||
         nextStepIndex >= activeTripState.tramosDelViaje.length) {
-      // Viaje completado
+      // Trip completed
       _completeJourney();
       return;
     }
 
-    // Actualizar al siguiente paso
+    // Update to the next step
     final nextTramo = activeTripState.tramosDelViaje[nextStepIndex];
     _currentJourneyStep = JourneyStepState(
       stepIndex: nextStepIndex,
       type: _determineStepType(nextTramo),
       destination: _getStepDestination(nextTramo),
-      busLine: nextTramo.nombreLineaBus,
+      busLine: nextTramo.nameLineBus,
     );
 
-    // Reconfigurar geofences
+    // Reconfigure geofences
     _setupGeofencesForCurrentStep();
 
-    // Notificar cambio a UI (esto hará que ActiveTripOverlay se actualice)
+    // Notify UI of the change (this will make ActiveTripOverlay update)
     _notifyStepTransition();
   }
 }
 ```
 
-### **Fase 3: Modificar ActiveTripOverlay (Cambios mínimos)**
+### **Phase 3: Modify ActiveTripOverlay (Minimal Changes)**
 
-**Cambios en `lib/ui/overlays/active_trip_overlay.dart`:**
+**Changes in `lib/ui/overlays/active_trip_overlay.dart`:**
 
 ```dart
 class _ActiveTripOverlayState extends ConsumerState<ActiveTripOverlay> {
   int _currentLegIndex = 0;
-  // DIFF: Agregar listener para transiciones automáticas
+  // DIFF: Add listener for automatic transitions
   bool _automaticNavigationEnabled = true;
 
   @override
   Widget build(BuildContext context) {
-    // ... código existente ...
+    // ... existing code ...
 
-    // DIFF: Agregar listener para transiciones automáticas
+    // DIFF: Add listener for automatic transitions
     ref.listen<AppUiState>(appLogicProvider, (previous, next) {
-      // ... listeners existentes ...
+      // ... existing listeners ...
 
-      // NUEVO: Listener para transiciones automáticas
+      // NEW: Listener for automatic transitions
       final prevStep = previous?.currentJourneyStep;
       final nextStep = next.currentJourneyStep;
 
@@ -252,81 +252,81 @@ class _ActiveTripOverlayState extends ConsumerState<ActiveTripOverlay> {
     return _buildUI();
   }
 
-  // DIFF: Nuevo método para transiciones automáticas
+  // DIFF: New method for automatic transitions
   void _onAutomaticStepTransition(int newStepIndex) {
     setState(() {
       _currentLegIndex = newStepIndex;
     });
 
-    // Usar lógica existente
+    // Use existing logic
     _onLegSelected(newStepIndex);
   }
 
-  // DIFF: Modificar método existente para soportar modo automático
+  // DIFF: Modify existing method to support automatic mode
   void _onLegSelected(int legIndex) {
-    // ... código existente sin cambios ...
+    // ... existing code unchanged ...
 
-    // NUEVO: Si es transición automática, actualizar tracking
+    // NEW: If it is an automatic transition, update tracking
     if (_automaticNavigationEnabled) {
       _updateTrackingForAutomaticMode(legIndex);
     }
   }
 
-  // DIFF: Nuevo método
+  // DIFF: New method
   void _updateTrackingForAutomaticMode(int legIndex) {
     final activeTripState = ref.read(appLogicProvider).datosFaseViajeActivo;
     if (activeTripState == null) return;
 
     final currentTramo = activeTripState.tramosDelViaje[legIndex];
 
-    // Manejar tracking de bus según el tipo de paso
-    switch (currentTramo.tipo) {
-      case TipoTramoViaje.WAITING_FOR_BUS:
-        // Iniciar tracking de bus en tiempo real
+    // Handle bus tracking according to the step type
+    switch (currentTramo.type) {
+      case TypeLegTrip.WAITING_FOR_BUS:
+        // Start real-time bus tracking
         _startBusTrackingForStep(currentTramo);
         break;
-      case TipoTramoViaje.RIDING_BUS:
-        // Cambiar a tracking del usuario
+      case TypeLegTrip.RIDING_BUS:
+        // Switch to user location tracking
         _switchToUserLocationTracking();
         break;
       default:
-        // Detener tracking de bus
+        // Stop bus tracking
         _stopBusTracking();
     }
   }
 }
 ```
 
-### **Fase 4: Extender MapBusRealtime (Cambios mínimos)**
+### **Phase 4: Extend MapBusRealtime (Minimal Changes)**
 
-**Cambios en `lib/map_manager/map_bus_realtime.dart`:**
+**Changes in `lib/map_manager/map_bus_realtime.dart`:**
 
 ```dart
 class MapBusRealtime {
-  // DIFF: Agregar estado para tracking híbrido
+  // DIFF: Add state for hybrid tracking
   BusTrackingMode _trackingMode = BusTrackingMode.INACTIVE;
 
-  // DIFF: Nuevo método para cambiar modo de tracking
+  // DIFF: New method to change the tracking mode
   Future<void> switchToUserLocationMode() async {
     print("[MapBusRealtime] Switching to user location tracking mode");
 
     _trackingMode = BusTrackingMode.USER_LOCATION;
 
-    // Detener sondeo de API
+    // Stop API polling
     _busTrackingTimer?.cancel();
 
-    // El bus ahora será renderizado usando la ubicación del usuario
-    // Esto se manejará desde el LocationTracker
+    // The bus will now be rendered using the user's location
+    // This will be handled from the LocationTracker
   }
 
-  // DIFF: Nuevo método para renderizar bus en ubicación del usuario
-  Future<void> updateBusToUserLocation(Coordenada userLocation) async {
+  // DIFF: New method to render the bus at the user's location
+  Future<void> updateBusToUserLocation(Coordinate userLocation) async {
     if (_trackingMode != BusTrackingMode.USER_LOCATION) return;
 
-    // Renderizar icono de bus en la ubicación del usuario
+    // Render bus icon at the user's location
     await _displayBusOnMap(userLocation);
 
-    // Actualizar línea hacia parada de destino
+    // Update line toward the destination stop
     if (_currentStopPosition != null) {
       await _updateBusApproachLineForActiveTrip(userLocation, _currentStopPosition!);
     }
@@ -340,16 +340,16 @@ enum BusTrackingMode {
 }
 ```
 
-### **Fase 5: Agregar RouteDynamicCalculator (Componente nuevo)**
+### **Phase 5: Add RouteDynamicCalculator (New Component)**
 
 ```dart
 // lib/journey/route_dynamic_calculator.dart
 class RouteDynamicCalculator {
-  // DIFF: Nuevo componente para cálculos dinámicos
+  // DIFF: New component for dynamic calculations
   static Future<RouteProgress> calculateProgress({
-    required Coordenada startLocation,
-    required Coordenada currentLocation,
-    required Coordenada destination,
+    required Coordinate startLocation,
+    required Coordinate currentLocation,
+    required Coordinate destination,
   }) async {
 
     final totalDistance = _calculateDistance(startLocation, destination);
@@ -364,22 +364,22 @@ class RouteDynamicCalculator {
     );
   }
 
-  static Future<List<Coordenada>> _calculateOptimalRoute(
-    Coordenada from,
-    Coordenada to
+  static Future<List<Coordinate>> _calculateOptimalRoute(
+    Coordinate from,
+    Coordinate to
   ) async {
-    // Usar servicio existente de routing o implementar lógica simple
-    // Por ahora, línea recta como MVP
+    // Use existing routing service or implement simple logic
+    // For now, a straight line as MVP
     return [from, to];
   }
 
-  static double _calculateDistance(Coordenada a, Coordenada b) {
-    // Usar fórmula haversine existente
+  static double _calculateDistance(Coordinate a, Coordinate b) {
+    // Use existing haversine formula
     return GeometryUtils.calculateDistance(a, b);
   }
 
   static int _estimateWalkingTime(double distanceMeters) {
-    const double walkingSpeedMps = 1.4; // 1.4 m/s = velocidad promedio caminando
+    const double walkingSpeedMps = 1.4; // 1.4 m/s = average walking speed
     return (distanceMeters / walkingSpeedMps).round();
   }
 }
@@ -388,7 +388,7 @@ class RouteProgress {
   final double percentageComplete;
   final double remainingDistance;
   final int remainingTimeSeconds;
-  final List<Coordenada> currentOptimalRoute;
+  final List<Coordinate> currentOptimalRoute;
 
   RouteProgress({
     required this.percentageComplete,
@@ -399,90 +399,90 @@ class RouteProgress {
 }
 ```
 
-## 🎯 **Resumen de Cambios Mínimos**
+## 🎯 **Summary of Minimal Changes**
 
-### **Archivos a Crear (Nuevos):**
+### **Files to Create (New):**
 
-1. `lib/journey/location_tracker.dart` - Tracking GPS cada 5s
-2. `lib/journey/journey_step_state.dart` - Estado del paso actual
-3. `lib/journey/route_dynamic_calculator.dart` - Cálculos dinámicos
+1. `lib/journey/location_tracker.dart` - GPS tracking every 5s
+2. `lib/journey/journey_step_state.dart` - Current step state
+3. `lib/journey/route_dynamic_calculator.dart` - Dynamic calculations
 
-### **Archivos a Modificar (Mínimos diffs):**
+### **Files to Modify (Minimal Diffs):**
 
-1. `lib/backend/providers/app_logic_provider.dart` - Agregar lógica automática
-2. `lib/ui/overlays/active_trip_overlay.dart` - Agregar listener automático
-3. `lib/map_manager/map_bus_realtime.dart` - Agregar modo híbrido
+1. `lib/backend/providers/app_logic_provider.dart` - Add automatic logic
+2. `lib/ui/overlays/active_trip_overlay.dart` - Add automatic listener
+3. `lib/map_manager/map_bus_realtime.dart` - Add hybrid mode
 
-### **Estado Actual a Extender:**
+### **Current State to Extend:**
 
 ```dart
-// En AppUiState - DIFF mínimo
+// In AppUiState - minimal DIFF
 class AppUiState {
-  // ... campos existentes ...
+  // ... existing fields ...
 
-  // NUEVOS campos
+  // NEW fields
   final JourneyStepState? currentJourneyStep;
   final bool isAutomaticNavigationEnabled;
-  final Coordenada? currentUserLocation;
+  final Coordinate? currentUserLocation;
   final RouteProgress? currentStepProgress;
 }
 ```
 
-## 🚀 **Estrategia de Implementación**
+## 🚀 **Implementation Strategy**
 
-### **Semana 1: Fundación**
+### **Week 1: Foundation**
 
-- Crear LocationTracker (sin conectar a UI)
-- Crear JourneyStepState
-- Tests unitarios básicos
+- Create LocationTracker (not connected to the UI)
+- Create JourneyStepState
+- Basic unit tests
 
-### **Semana 2: Integración Básica**
+### **Week 2: Basic Integration**
 
-- Conectar LocationTracker a AppLogicNotifier
-- Implementar detección de llegadas básica
-- Mantener navegación manual como fallback
+- Connect LocationTracker to AppLogicNotifier
+- Implement basic arrival detection
+- Keep manual navigation as a fallback
 
-### **Semana 3: Transiciones Automáticas**
+### **Week 3: Automatic Transitions**
 
-- Implementar `_transitionToNextStep()`
-- Conectar ActiveTripOverlay con listener automático
-- Sistema híbrido de tracking de bus
+- Implement `_transitionToNextStep()`
+- Connect ActiveTripOverlay with the automatic listener
+- Hybrid bus tracking system
 
-### **Semana 4: Refinamiento**
+### **Week 4: Refinement**
 
-- RouteDynamicCalculator para rutas dinámicas
-- Optimizaciones de performance
-- Manejo de casos edge
+- RouteDynamicCalculator for dynamic routes
+- Performance optimizations
+- Handling of edge cases
 
-## 📊 **Diferencias Principales Implementadas**
+## 📊 **Main Differences Implemented**
 
-| Aspecto                    | Flujo Actual     | Flujo Nuevo                | Cambio Requerido                |
+| Aspect                     | Current Flow     | New Flow                   | Required Change                 |
 | -------------------------- | ---------------- | -------------------------- | ------------------------------- |
-| **Navegación entre pasos** | Manual (botones) | Automática (geofencing)    | LocationTracker + callbacks     |
-| **Tracking de usuario**    | No implementado  | GPS cada 5s                | LocationTracker.startTracking() |
-| **Detección de llegadas**  | No existe        | Automática (50m threshold) | GeofenceZone.checkArrivals()    |
-| **Seguimiento de bus**     | Solo API         | Híbrido API→Usuario        | BusTrackingMode.USER_LOCATION   |
-| **Cálculo de progreso**    | Estático         | Dinámico                   | RouteDynamicCalculator          |
-| **Actualización de rutas** | Fija             | Recalculada en tiempo real | calculateProgress()             |
+| **Navigation between steps** | Manual (buttons) | Automatic (geofencing)   | LocationTracker + callbacks     |
+| **User tracking**          | Not implemented  | GPS every 5s               | LocationTracker.startTracking() |
+| **Arrival detection**      | Does not exist   | Automatic (50m threshold)  | GeofenceZone.checkArrivals()    |
+| **Bus tracking**           | API only         | Hybrid API→User            | BusTrackingMode.USER_LOCATION   |
+| **Progress calculation**   | Static           | Dynamic                    | RouteDynamicCalculator          |
+| **Route updates**          | Fixed            | Recalculated in real time  | calculateProgress()             |
 
-## 🔧 **Compatibilidad y Fallbacks**
+## 🔧 **Compatibility and Fallbacks**
 
-### **Modo Híbrido:**
+### **Hybrid Mode:**
 
-- Mantener navegación manual como backup
-- Toggle entre automático/manual en UI
-- Fallback a comportamiento actual si GPS falla
+- Keep manual navigation as a backup
+- Toggle between automatic/manual in the UI
+- Fall back to current behavior if GPS fails
 
-### **Detección de Errores:**
+### **Error Detection:**
 
-- GPS no disponible → usar navegación manual
-- Timeout en tracking → notificar usuario
-- Fallos en geofencing → usar distancia simple
+- GPS unavailable → use manual navigation
+- Tracking timeout → notify the user
+- Geofencing failures → use simple distance
 
 ### **Performance:**
 
-- Timer de 5s optimizado para batería
-- Usar geofences nativos cuando sea posible
-- Caché de cálculos de rutas
+- 5s timer optimized for battery
+- Use native geofences when possible
+- Cache route calculations
 
-Este plan permite implementar el nuevo flujo de forma incremental manteniendo la funcionalidad existente como fallback durante toda la migración.
+This plan allows implementing the new flow incrementally while keeping the existing functionality as a fallback throughout the whole migration.
