@@ -2351,7 +2351,20 @@ void _paintFixed(Canvas c, _Plane p, _Finish f) {
     if (accent != null) {
       c.drawRRect(
         RRect.fromRectAndRadius(
-          Rect.fromLTWH(rect.left + 8, rect.top + 14, 3, rect.height - 28),
+          // Compact ports center their name: the stripe goes along the foot.
+          p.compact
+              ? Rect.fromLTWH(
+                rect.left + 14,
+                rect.bottom - 7,
+                rect.width - 28,
+                2.5,
+              )
+              : Rect.fromLTWH(
+                rect.left + 8,
+                rect.top + 14,
+                3,
+                rect.height - 28,
+              ),
           const Radius.circular(1.5),
         ),
         Paint()..color = accent.withValues(alpha: 0.55),
