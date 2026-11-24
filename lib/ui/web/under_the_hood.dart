@@ -1253,12 +1253,16 @@ class _Console extends StatelessWidget {
         style: _style(13, w.title, weight: FontWeight.w600),
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+        padding: const EdgeInsets.fromLTRB(16, 7, 16, 10),
         child: ClipRect(
           child: ValueListenableBuilder<List<_Line>>(
             valueListenable: lines,
             builder:
+                // Like a terminal: the newest call is the last line, at the
+                // bottom, and the older ones climb and fade.
                 (context, ls, _) => ListView(
+                  key: const ValueKey('console-lines'),
+                  reverse: true,
                   physics: const NeverScrollableScrollPhysics(),
                   padding: EdgeInsets.zero,
                   children: [
@@ -1269,7 +1273,7 @@ class _Console extends StatelessWidget {
                           1.0,
                         ),
                         child: Padding(
-                          padding: const EdgeInsets.only(bottom: 5),
+                          padding: const EdgeInsets.only(top: 5),
                           child: Text.rich(
                             TextSpan(
                               children: [

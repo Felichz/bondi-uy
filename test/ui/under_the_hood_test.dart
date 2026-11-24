@@ -123,6 +123,25 @@ void main() {
             reason: 'calls ${pair.$1} -> ${pair.$2}',
           );
         }
+        // The console reads like a terminal: the newest call is the bottom
+        // line (the list holds them newest first).
+        final lines =
+            tester
+                .widgetList<RichText>(
+                  find.descendant(
+                    of: find.byKey(const ValueKey('console-lines')),
+                    matching: find.byType(RichText),
+                  ),
+                )
+                .toList();
+        expect(lines.length, greaterThan(3));
+        double top(RichText r) => tester.getTopLeft(find.byWidget(r)).dy;
+        expect(
+          top(lines.first),
+          greaterThan(top(lines[1])),
+          reason: 'the newest call is below the previous one',
+        );
+
         // The console sits in the portfolio's window: the green light
         // maximizes it over the story column, and restores it.
         final zoom = find.byKey(const ValueKey('console-zoom'));
