@@ -114,7 +114,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     };
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: (c.glow == Brightness.dark
+      value: (c.brightness == Brightness.dark
               ? SystemUiOverlayStyle.light
               : SystemUiOverlayStyle.dark)
           .copyWith(statusBarColor: Colors.transparent),

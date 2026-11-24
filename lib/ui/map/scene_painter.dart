@@ -758,7 +758,9 @@ class SceneDrawer {
       Icons.flag_rounded,
       head.translate(0, 1),
       15,
-      style.glow == Brightness.dark ? const Color(0xFF111318) : Colors.white,
+      style.brightness == Brightness.dark
+          ? const Color(0xFF111318)
+          : Colors.white,
     );
   }
 
@@ -1078,7 +1080,7 @@ class SceneDrawer {
     c.drawPath(queue, Paint()..color = background);
     // Same family as the cards: a gradient slightly lighter at the top
     // and an edge that glows at the top and fades at the bottom.
-    final dark = style.glow == Brightness.dark;
+    final dark = style.brightness == Brightness.dark;
     c.drawRRect(
       box,
       Paint()
@@ -1230,7 +1232,7 @@ class SceneDrawer {
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors:
-              style.glow == Brightness.dark
+              style.brightness == Brightness.dark
                   ? [
                     Colors.white.withValues(alpha: 0.18),
                     Colors.white.withValues(alpha: 0.04),

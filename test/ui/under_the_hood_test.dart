@@ -46,13 +46,19 @@ void main() {
   });
 
   // A large desktop, and a 1920 one with the browser at 125 %.
-  for (final size in const [Size(1920, 1080), Size(1536, 745)]) {
+  // A big desktop and a 1920 one with the browser at 125 %, in both themes.
+  for (final (size, dark) in const [
+    (Size(1920, 1080), false),
+    (Size(1536, 745), false),
+    (Size(1536, 745), true),
+  ]) {
     testWidgets(
-      'a trip, seen under the hood (${size.width.round()}x${size.height.round()})',
+      'a trip, seen under the hood (${size.width.round()}x${size.height.round()}${dark ? ', dark' : ''})',
       (tester) async {
         final a = await Harness.mount(
           tester,
-          prefix: 'under_the_hood_${size.width.round()}',
+          prefix: 'under_the_hood_${size.width.round()}${dark ? '_dark' : ''}',
+          dark: dark,
           demo: true,
           frame: true,
           size: size,

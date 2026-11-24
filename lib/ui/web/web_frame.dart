@@ -107,14 +107,16 @@ class _WebFrameState extends ConsumerState<WebFrame> {
         underTheHoodPossible
             ? _Selector(
               underTheHood: _underTheHood,
-              dark: _underTheHood || c.glow == Brightness.dark,
+              dark: c.brightness == Brightness.dark,
               onChange: (v) => setState(() => _underTheHood = v),
             )
             : null;
     if (underTheHoodPossible && _underTheHood) {
+      final light = c.brightness == Brightness.light;
       return ColoredBox(
-        color: const Color(0xFF06080B),
+        color: light ? const Color(0xFFDDE1E6) : const Color(0xFF06080B),
         child: UnderTheHood(
+          light: light,
           sizePhone: sizeCore,
           phone: FittedBox(child: device),
           // If they do not fit in one line, the selector moves to the next.
@@ -122,7 +124,7 @@ class _WebFrameState extends ConsumerState<WebFrame> {
             spacing: 24,
             runSpacing: 14,
             crossAxisAlignment: WrapCrossAlignment.center,
-            children: [const _Marker(dark: true), selector!],
+            children: [_Marker(dark: !light), selector!],
           ),
         ),
       );
@@ -130,7 +132,7 @@ class _WebFrameState extends ConsumerState<WebFrame> {
     final width = size.width >= 1000;
     return ColoredBox(
       color:
-          c.glow == Brightness.dark
+          c.brightness == Brightness.dark
               ? const Color(0xFF0E1014)
               : const Color(0xFFEEF1F5),
       child: Center(
@@ -199,7 +201,7 @@ class _Presentation extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (selector != null) ...[selector!, const SizedBox(height: 28)],
-          _Marker(dark: c.glow == Brightness.dark),
+          _Marker(dark: c.brightness == Brightness.dark),
           const SizedBox(height: 20),
           Text(tx.webMotto, style: t.headlineSmall?.copyWith(height: 1.25)),
           const SizedBox(height: 14),

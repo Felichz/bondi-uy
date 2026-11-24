@@ -8,7 +8,7 @@ import '../map/map_style.dart';
 /// Semantic colors of the app, in light and dark.
 @immutable
 class BondiColors extends ThemeExtension<BondiColors> {
-  final Brightness glow;
+  final Brightness brightness;
 
   /// Sheet fill (panels, cards, sheets): opaque, with a barely perceptible
   /// gradient (lighter at the top). And the solid color for flat backgrounds
@@ -49,7 +49,7 @@ class BondiColors extends ThemeExtension<BondiColors> {
   final MapStyle map;
 
   const BondiColors({
-    required this.glow,
+    required this.brightness,
     required this.sheetAbove,
     required this.sheetBelow,
     required this.sheetSolid,
@@ -76,7 +76,7 @@ class BondiColors extends ThemeExtension<BondiColors> {
   });
 
   static const light = BondiColors(
-    glow: Brightness.light,
+    brightness: Brightness.light,
     sheetAbove: Color(0xFFFFFFFF),
     sheetBelow: Color(0xFFF4F6F9),
     sheetSolid: Color(0xFFFFFFFF),
@@ -103,7 +103,7 @@ class BondiColors extends ThemeExtension<BondiColors> {
   );
 
   static const dark = BondiColors(
-    glow: Brightness.dark,
+    brightness: Brightness.dark,
     sheetAbove: Color(0xFF2B2F38),
     sheetBelow: Color(0xFF1E2128),
     sheetSolid: Color(0xFF1C1F26),
@@ -142,11 +142,12 @@ class BondiColors extends ThemeExtension<BondiColors> {
 
 const _figures = [FontFeature.tabularFigures()];
 
-ThemeData themeBondi(Brightness glow) {
-  final c = glow == Brightness.dark ? BondiColors.dark : BondiColors.light;
+ThemeData themeBondi(Brightness brightness) {
+  final c =
+      brightness == Brightness.dark ? BondiColors.dark : BondiColors.light;
   final scheme = ColorScheme.fromSeed(
     seedColor: c.walk,
-    brightness: glow,
+    brightness: brightness,
     primary: c.action,
     onPrimary: c.overAction,
     surface: c.sheetSolid,
@@ -155,7 +156,7 @@ ThemeData themeBondi(Brightness glow) {
   );
   final base = ThemeData(
     useMaterial3: true,
-    brightness: glow,
+    brightness: brightness,
     colorScheme: scheme,
     scaffoldBackgroundColor: c.map.land,
     splashFactory: InkSparkle.splashFactory,
@@ -234,7 +235,7 @@ ThemeData themeBondi(Brightness glow) {
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
       backgroundColor:
-          glow == Brightness.dark
+          brightness == Brightness.dark
               ? const Color(0xFF2A2E36)
               : const Color(0xFF1B1E24),
       contentTextStyle: t.bodyLarge?.copyWith(

@@ -111,7 +111,7 @@ class _BondiMapState extends State<BondiMap> with TickerProviderStateMixin {
   Camera? _previousTarget;
 
   TileManager _manager(MapStyle e) =>
-      _managers[e.glow] ??= TileManager(
+      _managers[e.brightness] ??= TileManager(
         widget.source,
         e,
         useIsolate: widget.decodeInIsolate,

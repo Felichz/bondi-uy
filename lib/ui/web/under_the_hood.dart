@@ -30,6 +30,81 @@ const _backgroundCenter = Color(0xFF12161D);
 const _backgroundBorder = Color(0xFF06080B);
 const _track = Color(0xFF232A35);
 const _trackLight = Color(0xFF2E3744);
+
+/// The materials of the fixed layer. The chassis (the UI side) follows the
+/// app's theme; the board is always dark, and next to a light chassis it is a
+/// little lighter (graphite), so the step between the two is not harsh.
+class _Finish {
+  final Color chassisTop;
+  final Color chassisBottom;
+
+  /// Brushed grain: dark streaks on light metal, light ones on dark metal.
+  final bool darkGrain;
+  final Color boardCenter;
+  final Color boardBorder;
+  final Color track;
+  final Color trackLight;
+  final Color boardShadow;
+  final Color uiSilkscreen;
+
+  const _Finish._({
+    required this.chassisTop,
+    required this.chassisBottom,
+    required this.darkGrain,
+    required this.boardCenter,
+    required this.boardBorder,
+    required this.track,
+    required this.trackLight,
+    required this.boardShadow,
+    required this.uiSilkscreen,
+  });
+
+  static const dark = _Finish._(
+    chassisTop: Color(0xFF1C222B),
+    chassisBottom: Color(0xFF0F1318),
+    darkGrain: false,
+    boardCenter: _backgroundCenter,
+    boardBorder: _backgroundBorder,
+    track: _track,
+    trackLight: _trackLight,
+    boardShadow: Color(0xCC000000),
+    uiSilkscreen: Color(0x40FFFFFF),
+  );
+
+  static const light = _Finish._(
+    chassisTop: Color(0xFFDDE1E6),
+    chassisBottom: Color(0xFFC9CED5),
+    darkGrain: true,
+    boardCenter: Color(0xFF2A313B),
+    boardBorder: Color(0xFF1E242C),
+    track: Color(0xFF38414E),
+    trackLight: Color(0xFF485465),
+    boardShadow: Color(0x66000000),
+    uiSilkscreen: Color(0x59000000),
+  );
+}
+
+/// The ink of the story column, on the chassis.
+class _Ink {
+  final Color text;
+  final Color soft;
+  final Color faint;
+
+  /// The "actions" dot of the legend (white on dark, graphite on light).
+  final Color action;
+  final double dotGlow;
+  const _Ink._(this.text, this.soft, this.faint, this.action, this.dotGlow);
+
+  static const dark = _Ink._(_text, _textSoft, _textFaint, _action, 0.7);
+  static const light = _Ink._(
+    Color(0xFF111318),
+    Color(0xFF4A515C),
+    Color(0xFF6B7380),
+    Color(0xFF39414C),
+    0.35,
+  );
+}
+
 const _chip = Color(0xFF151A21);
 const _chipTop = Color(0xFF1D232C);
 const _chipEdge = Color(0xFF323B48);
@@ -730,11 +805,15 @@ class UnderTheHood extends ConsumerStatefulWidget {
   /// Header (brand and view selector).
   final Widget header;
 
+  /// Light theme: the UI side turns light; the board stays dark.
+  final bool light;
+
   const UnderTheHood({
     super.key,
     required this.phone,
     required this.sizePhone,
     required this.header,
+    this.light = false,
   });
 
   @override
@@ -748,7 +827,7 @@ class _UnderTheHoodState extends ConsumerState<UnderTheHood>
   StreamSubscription<Trace>? _traces;
   _Plane? _plane;
   ui.Image? _fixed;
-  (Size, double, Language)? _fixedKey;
+  (Size, double, Language, bool)? _fixedKey;
   double _lastStatus = -10;
 
   /// The piece under the mouse (its card is shown next to it).
@@ -813,7 +892,7 @@ class _UnderTheHoodState extends ConsumerState<UnderTheHood>
   ui.Image _recordFixed(_Plane p, double density) {
     final rec = ui.PictureRecorder();
     final c = Canvas(rec)..scale(density);
-    _paintFixed(c, p);
+    _paintFixed(c, p, widget.light ? _Finish.light : _Finish.dark);
     final drawing = rec.endRecording();
     final image = drawing.toImageSync(
       (p.size.width * density).ceil(),
@@ -835,10 +914,10 @@ class _UnderTheHoodState extends ConsumerState<UnderTheHood>
         }
         final plane = _plane!;
         final density = MediaQuery.devicePixelRatioOf(context);
-        if (_fixedKey != (size, density, tx.language)) {
+        if (_fixedKey != (size, density, tx.language, widget.light)) {
           _fixed?.dispose();
           _fixed = _recordFixed(plane, density);
-          _fixedKey = (size, density, tx.language);
+          _fixedKey = (size, density, tx.language, widget.light);
         }
         return Material(
           type: MaterialType.transparency,
@@ -882,7 +961,7 @@ class _UnderTheHoodState extends ConsumerState<UnderTheHood>
                   children: [
                     widget.header,
                     const SizedBox(height: 28),
-                    const _Narrative(),
+                    _Narrative(widget.light ? _Ink.light : _Ink.dark),
                     const SizedBox(height: 20),
                     Expanded(
                       child: LayoutBuilder(
@@ -895,7 +974,10 @@ class _UnderTheHoodState extends ConsumerState<UnderTheHood>
                                       alignment: Alignment.topLeft,
                                       child: SizedBox(
                                         height: math.min(b.maxHeight, 340),
-                                        child: _Console(_live.console),
+                                        child: _Console(
+                                          _live.console,
+                                          light: widget.light,
+                                        ),
                                       ),
                                     ),
                       ),
@@ -1006,7 +1088,8 @@ class _Card extends StatelessWidget {
 }
 
 class _Narrative extends StatelessWidget {
-  const _Narrative();
+  final _Ink ink;
+  const _Narrative(this.ink);
 
   @override
   Widget build(BuildContext context) {
@@ -1022,12 +1105,15 @@ class _Narrative extends StatelessWidget {
               color: c,
               shape: BoxShape.circle,
               boxShadow: [
-                BoxShadow(color: c.withValues(alpha: 0.7), blurRadius: 8),
+                BoxShadow(
+                  color: c.withValues(alpha: ink.dotGlow),
+                  blurRadius: 8,
+                ),
               ],
             ),
           ),
           const SizedBox(width: 8),
-          Text(s, style: _style(13, _textSoft)),
+          Text(s, style: _style(13, ink.soft)),
         ],
       ),
     );
@@ -1038,16 +1124,16 @@ class _Narrative extends StatelessWidget {
           tx.coreTitle,
           style: _style(
             40,
-            _text,
+            ink.text,
             weight: FontWeight.w800,
           ).copyWith(letterSpacing: -1.2, height: 1.05),
         ),
         const SizedBox(height: 16),
-        Text(tx.coreLede, style: _style(16, _textSoft).copyWith(height: 1.55)),
+        Text(tx.coreLede, style: _style(16, ink.soft).copyWith(height: 1.55)),
         const SizedBox(height: 18),
         Wrap(
           children: [
-            legendItem(_action, tx.coreKeyActions),
+            legendItem(ink.action, tx.coreKeyActions),
             legendItem(_status, tx.coreKeyStatus),
             legendItem(_location, tx.coreKeyLocation),
             legendItem(_bus, tx.coreKeyBuses),
@@ -1055,7 +1141,7 @@ class _Narrative extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 6),
-        Text(tx.coreNoteDemo, style: _style(12.5, _textFaint)),
+        Text(tx.coreNoteDemo, style: _style(12.5, ink.faint)),
       ],
     );
   }
@@ -1063,7 +1149,10 @@ class _Narrative extends StatelessWidget {
 
 class _Console extends StatelessWidget {
   final ValueNotifier<List<_Line>> lines;
-  const _Console(this.lines);
+
+  /// On a light chassis the console is a graphite terminal, like the board.
+  final bool light;
+  const _Console(this.lines, {this.light = false});
 
   static String _time(DateTime t) =>
       '${t.hour.toString().padLeft(2, '0')}:'
@@ -1088,18 +1177,23 @@ class _Console extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
+        gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [Color(0xE6161B22), Color(0xE60D1015)],
+          colors:
+              light
+                  ? const [Color(0xFF2C333D), Color(0xFF20262E)]
+                  : const [Color(0xE6161B22), Color(0xE60D1015)],
         ),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFF262E39)),
-        boxShadow: const [
+        border: Border.all(
+          color: light ? const Color(0xFF323A45) : const Color(0xFF262E39),
+        ),
+        boxShadow: [
           BoxShadow(
-            color: Color(0x66000000),
+            color: light ? const Color(0x33000000) : const Color(0x66000000),
             blurRadius: 40,
-            offset: Offset(0, 20),
+            offset: const Offset(0, 20),
           ),
         ],
       ),
@@ -1237,7 +1331,7 @@ class _HeartbeatState extends State<_Heartbeat>
 
 /// The fixed part: background, grid, decorative tracks, the network tracks and the
 /// chip bodies.
-void _paintFixed(Canvas c, _Plane p) {
+void _paintFixed(Canvas c, _Plane p, _Finish f) {
   final r = Offset.zero & p.size;
   final board = p.board;
 
@@ -1246,9 +1340,9 @@ void _paintFixed(Canvas c, _Plane p) {
   c.drawRect(
     r,
     Paint()
-      ..shader = ui.Gradient.linear(r.topCenter, r.bottomCenter, const [
-        Color(0xFF1C222B),
-        Color(0xFF0F1318),
+      ..shader = ui.Gradient.linear(r.topCenter, r.bottomCenter, [
+        f.chassisTop,
+        f.chassisBottom,
       ]),
   );
   // Brushed grain: fine horizontal streaks of uneven length and brightness.
@@ -1261,7 +1355,10 @@ void _paintFixed(Canvas c, _Plane p) {
       Offset(x, y),
       Offset(x + long, y),
       Paint()
-        ..color = Color.fromARGB(6 + grain.nextInt(9), 255, 255, 255)
+        ..color =
+            f.darkGrain
+                ? Color.fromARGB(5 + grain.nextInt(8), 0, 0, 0)
+                : Color.fromARGB(6 + grain.nextInt(9), 255, 255, 255)
         ..strokeWidth = 0.6,
     );
   }
@@ -1270,7 +1367,7 @@ void _paintFixed(Canvas c, _Plane p) {
   c.drawPath(
     board.shift(const Offset(-2, 6)),
     Paint()
-      ..color = const Color(0xCC000000)
+      ..color = f.boardShadow
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 16),
   );
   c.drawPath(
@@ -1279,7 +1376,7 @@ void _paintFixed(Canvas c, _Plane p) {
       ..shader = ui.Gradient.radial(
         Offset(p.size.width * 0.6, p.size.height * 0.5),
         p.size.longestSide * 0.75,
-        const [_backgroundCenter, _backgroundBorder],
+        [f.boardCenter, f.boardBorder],
       ),
   );
   // Its edge catches a bit of light.
@@ -1309,23 +1406,23 @@ void _paintFixed(Canvas c, _Plane p) {
     final v = Offset(p.boardEdge + 9, y);
     if (!board.contains(v) || stitched.any((o) => o.contains(v))) continue;
     c.drawCircle(v, 2.4, Paint()..color = const Color(0x1AFFFFFF));
-    c.drawCircle(v, 1, Paint()..color = _backgroundBorder);
+    c.drawCircle(v, 1, Paint()..color = f.boardBorder);
   }
 
   // Silkscreen: which layer is which, at the foot of the edge.
-  TextPainter silkscreen(String s) => TextPainter(
+  TextPainter silkscreen(String s, Color ink) => TextPainter(
     text: TextSpan(
       text: s,
       style: _style(
         10,
-        const Color(0x40FFFFFF),
+        ink,
         weight: FontWeight.w700,
       ).copyWith(letterSpacing: 2.2),
     ),
     textDirection: TextDirection.ltr,
   )..layout();
-  final ui_ = silkscreen(tx.coreLayerUi);
-  final logic = silkscreen(tx.coreLayerLogic);
+  final ui_ = silkscreen(tx.coreLayerUi, f.uiSilkscreen);
+  final logic = silkscreen(tx.coreLayerLogic, const Color(0x40FFFFFF));
   final y = p.size.height - 26;
   ui_.paint(c, Offset(p.boardEdge - 14 - ui_.width, y));
   logic.paint(c, Offset(p.boardEdge + 14, y));
@@ -1379,7 +1476,7 @@ void _paintFixed(Canvas c, _Plane p) {
     c.drawPath(
       path,
       Paint()
-        ..color = _track
+        ..color = f.track
         ..style = PaintingStyle.stroke
         ..strokeWidth = 5
         ..strokeJoin = StrokeJoin.round
@@ -1388,15 +1485,15 @@ void _paintFixed(Canvas c, _Plane p) {
     c.drawPath(
       path,
       Paint()
-        ..color = _trackLight
+        ..color = f.trackLight
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.4
         ..strokeJoin = StrokeJoin.round,
     );
     for (final v in [pts.first, pts.last]) {
       if (p.pins.containsKey(v)) continue;
-      c.drawCircle(v, 4.5, Paint()..color = _track);
-      c.drawCircle(v, 2, Paint()..color = _backgroundBorder);
+      c.drawCircle(v, 4.5, Paint()..color = f.track);
+      c.drawCircle(v, 2, Paint()..color = f.boardBorder);
     }
   }
 

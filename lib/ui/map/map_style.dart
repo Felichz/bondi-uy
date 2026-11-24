@@ -6,7 +6,7 @@
 import 'dart:ui';
 
 class MapStyle {
-  final Brightness glow;
+  final Brightness brightness;
 
   // --- base ---
   final Color land;
@@ -43,7 +43,7 @@ class MapStyle {
   final Color networkStop;
 
   const MapStyle({
-    required this.glow,
+    required this.brightness,
     required this.land,
     required this.block,
     required this.commercial,
@@ -77,7 +77,7 @@ class MapStyle {
   });
 
   static const light = MapStyle(
-    glow: Brightness.light,
+    brightness: Brightness.light,
     land: Color(0xFFF4F3EF),
     block: Color(0xFFEFEEE9),
     commercial: Color(0xFFF1EDEA),
@@ -111,7 +111,7 @@ class MapStyle {
   );
 
   static const dark = MapStyle(
-    glow: Brightness.dark,
+    brightness: Brightness.dark,
     land: Color(0xFF181B21),
     block: Color(0xFF1C2027),
     commercial: Color(0xFF1E2128),

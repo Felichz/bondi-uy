@@ -65,7 +65,7 @@ void main() {
           final img = rec.endRecording().toImageSync(256, 256);
           await save(
             img,
-            '${style.glow.name}_z${zoom}_${x}_${y}_$sub',
+            '${style.brightness.name}_z${zoom}_${x}_${y}_$sub',
             scale: 2,
           );
         }
